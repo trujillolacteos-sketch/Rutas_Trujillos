@@ -1,0 +1,6 @@
+{
+  "name": "Lácteos Trujillos - Rutas",
+  "description": "Sistema inteligente de planificación de rutas, geocodificación de clientes y control de visitas de Lácteos Trujillos integrado con Odoo.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,7 @@
+Balance: [
+  { name: 'Ruta 1', visitCount: 69, Lunes: 25 },
+  { name: 'Ruta 2', visitCount: 0, Lunes: 0 },
+  { name: 'Ruta 3', visitCount: 0, Lunes: 0 },
+  { name: 'Ruta 4', visitCount: 0, Lunes: 0 },
+  { name: 'Ruta 5', visitCount: 615, Lunes: 139 }
+]

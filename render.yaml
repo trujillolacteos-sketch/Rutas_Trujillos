@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: lacteos-trujillos-rutas
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ODOO_URL
+        value: https://lacteos-trujillos2.odoo.com/jsonrpc
+      - key: ODOO_DB
+        value: lacteos-trujillos2
+      - key: ODOO_USER
+        value: estelacampos1200@gmail.com
+      - key: ODOO_PASS
+        value: LacteosTrujillos2024

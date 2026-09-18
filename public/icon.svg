@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#blueGrad)"/>
+  <!-- Route Icon -->
+  <circle cx="160" cy="170" r="32" fill="#ffffff" />
+  <circle cx="352" cy="342" r="32" fill="#ffffff" />
+  <path d="M160 202 C 160 300, 352 210, 352 310" fill="none" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-dasharray="1 1" />
+  <path d="M160 202 C 160 300, 352 210, 352 310" fill="none" stroke="#93c5fd" stroke-width="20" stroke-linecap="round" />
+  <!-- Small Truck / Pin -->
+  <path d="M230 380 L282 380 L282 350 L260 350 Z" fill="#ffffff" opacity="0.9" />
+  <text x="256" y="445" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="2">TRUJILLOS</text>
+</svg>
