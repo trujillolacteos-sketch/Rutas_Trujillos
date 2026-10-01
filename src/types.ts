@@ -70,5 +70,7 @@ export interface AppState {
     commissionRateCompany?: number; // percentage, default 1.0
     commissionRatePerson?: number; // percentage, default 2.0
     commissionAdjustmentMultiplier?: number; // 1.0 = sin ajuste, 1.10 = +10%, 0.90 = -10%
+    baseSalaries?: Record<string, number>; // Centralized salaries per route e.g. { "Ruta 1": 1500 }
   };
+  stateVersion?: number; // Incremented on any server state update for Hive Mind sync
 }

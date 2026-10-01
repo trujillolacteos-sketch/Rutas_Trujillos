@@ -7,17 +7,66 @@ import { executeKw } from './server/odoo';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { startOdooSync, syncCommissions, loadLocalCommissions, saveLocalCommissions } from './server/odooSync.ts';
 import { getSalesReport } from './server/reportsService';
-import { db } from './src/db/index.ts';
+import { db, pool } from './src/db/index.ts';
 import { gpsLogs, commissions, payrolls } from './src/db/schema.ts';
 import { getUserRole } from './src/db/users.ts';
 import { eq, desc } from 'drizzle-orm';
 
 const STORE_FILE = 'data_store.json';
-
+let _cachedState: AppState | null = null;
 
 import { AppState } from './src/types.ts';
+
+async function initPersistentDatabase() {
+  if (!process.env.DATABASE_URL) {
+    console.log("No DATABASE_URL configured. Running with local JSON persistence.");
+    return;
+  }
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS app_state (
+          key TEXT PRIMARY KEY,
+          data TEXT NOT NULL,
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+      const res = await client.query(`SELECT data FROM app_state WHERE key = 'master_state' LIMIT 1;`);
+      if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+        try {
+          const dbState = JSON.parse(res.rows[0].data);
+          if (dbState && typeof dbState === 'object') {
+            _cachedState = dbState;
+            fs.writeFileSync(STORE_FILE, JSON.stringify(dbState, null, 2));
+            console.log("Master state restored from PostgreSQL database.");
+          }
+        } catch (parseErr) {
+          console.error("Error parsing master state from database:", parseErr);
+        }
+      } else {
+        const currentState = loadState();
+        await client.query(`
+          INSERT INTO app_state (key, data, updated_at)
+          VALUES ('master_state', $1, NOW())
+          ON CONFLICT (key) DO UPDATE
+          SET data = EXCLUDED.data, updated_at = NOW();
+        `, [JSON.stringify(currentState)]);
+        console.log("Master state initialized in PostgreSQL database.");
+      }
+    } finally {
+      client.release();
+    }
+  } catch (err: any) {
+    console.warn("PostgreSQL notice (using local storage fallback):", err.message);
+  }
+}
+
 function loadState(): AppState {
-  let state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
+  if (_cachedState) {
+    return _cachedState;
+  }
+  let state: any = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
   if (fs.existsSync(STORE_FILE)) {
     try {
       state = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
@@ -29,8 +78,7 @@ function loadState(): AppState {
   // Weekly reset check
   const now = new Date();
   const day = now.getDay();
-  // Get start of week (Sunday or Monday, here Sunday=0)
-  // Let's use Monday as start of week:
+  // Monday as start of week:
   const diff = now.getDate() - day + (day === 0 ? -6 : 1);
   const currentWeekStart = new Date(now.setDate(diff));
   currentWeekStart.setHours(0,0,0,0);
@@ -38,7 +86,7 @@ function loadState(): AppState {
   
   if (state.lastWeekReset !== currentWeekStartStr) {
       if (state.visits && state.visits.length > 0) {
-          state.visits.forEach(v => {
+          state.visits.forEach((v: any) => {
               v.status = 'PENDIENTE';
           });
       }
@@ -47,7 +95,6 @@ function loadState(): AppState {
   }
 
   if (!state.users || state.users.length === 0) {
-
     state.users = [
       { id: 1, username: 'Administrador', role: 'admin', password: 'Admin.1234' },
       { id: 2, username: 'Supervisor', role: 'supervisor', password: 'Super.1234' },
@@ -59,16 +106,40 @@ function loadState(): AppState {
     ];
     saveState(state);
   }
+
+  if (!state.stateVersion) {
+    state.stateVersion = Date.now();
+  }
+
+  _cachedState = state;
   return state;
 }
 
 function saveState(state: any) {
-  fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2));
+  state.stateVersion = Date.now();
+  _cachedState = state;
+  try {
+    fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2));
+  } catch (e) {
+    console.error("Error writing data_store.json", e);
+  }
+
+  if (process.env.DATABASE_URL) {
+    pool.query(`
+      INSERT INTO app_state (key, data, updated_at)
+      VALUES ('master_state', $1, NOW())
+      ON CONFLICT (key) DO UPDATE
+      SET data = EXCLUDED.data, updated_at = NOW();
+    `, [JSON.stringify(state)]).catch((err: any) => {
+      console.warn("Notice: could not persist state to PostgreSQL:", err.message);
+    });
+  }
 }
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  await initPersistentDatabase();
   startOdooSync();
   const PORT = process.env.PORT || 3000;
 
@@ -94,7 +165,8 @@ async function startServer() {
         users: existingState.users || [],
         trackingLogs: existingState.trackingLogs || [],
         lastWeekReset: existingState.lastWeekReset,
-        lastSync: new Date().toISOString()
+        lastSync: new Date().toISOString(),
+        stateVersion: Date.now()
       };
       saveState(state);
       res.json({ success: true, state });
@@ -104,13 +176,34 @@ async function startServer() {
     }
   });
 
-
   app.get('/api/data/delta', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const since = parseInt(req.query.since as string) || 0;
+    const clientVersion = parseInt(req.query.version as string) || 0;
     const state = loadState();
-    const deltaVisits = state.visits.filter((v: any) => v.updatedAt && v.updatedAt >= since);
-    res.json({ visits: deltaVisits });
+    const deltaVisits = (state.visits || []).filter((v: any) => v.updatedAt && v.updatedAt >= since);
+    
+    const needsFullSync = !clientVersion || clientVersion !== state.stateVersion;
+    
+    if (needsFullSync) {
+      res.json({
+        needsFullSync: true,
+        stateVersion: state.stateVersion,
+        users: state.users || [],
+        settings: state.settings || {},
+        routes: state.routes || [],
+        disabledZones: state.disabledZones || [],
+        clientOverrides: state.clientOverrides || {},
+        zoneOverrides: state.zoneOverrides || {},
+        visits: deltaVisits
+      });
+    } else {
+      res.json({
+        needsFullSync: false,
+        stateVersion: state.stateVersion,
+        visits: deltaVisits
+      });
+    }
   });
 
   app.get('/api/data', (req, res) => {
@@ -331,6 +424,71 @@ async function startServer() {
     state.users = state.users.filter(u => u.id !== id);
     saveState(state);
     res.json({ success: true });
+  });
+
+  app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: "Usuario y contraseña requeridos" });
+    }
+    const state = loadState();
+    const sanitizedUsername = String(username).trim().toLowerCase().replace(/[\x00-\x1F\x7F]/g, '');
+    const sanitizedPassword = String(password).trim();
+    
+    const foundUser = (state.users || []).find((u: any) => 
+      String(u.username).trim().toLowerCase() === sanitizedUsername && 
+      String(u.password).trim() === sanitizedPassword
+    );
+    
+    if (foundUser) {
+      res.json({
+        success: true,
+        user: {
+          id: foundUser.id,
+          username: foundUser.username,
+          role: foundUser.role
+        }
+      });
+    } else {
+      res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+    }
+  });
+
+  // Backup / Export Master State
+  app.get('/api/backup/export', (req, res) => {
+    const state = loadState();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="lacteos_backup_' + new Date().toISOString().slice(0, 10) + '.json"');
+    res.send(JSON.stringify(state, null, 2));
+  });
+
+  // Restore Master State
+  app.post('/api/backup/restore', (req, res) => {
+    try {
+      const backupData = req.body;
+      if (!backupData || typeof backupData !== 'object') {
+        return res.status(400).json({ error: "Datos de respaldo inválidos" });
+      }
+      const existing = loadState();
+      const restoredState: AppState = {
+        clients: backupData.clients || existing.clients || [],
+        visits: backupData.visits || existing.visits || [],
+        routes: backupData.routes || existing.routes || [],
+        users: backupData.users || existing.users || [],
+        trackingLogs: existing.trackingLogs || [],
+        disabledZones: backupData.disabledZones || existing.disabledZones || [],
+        clientOverrides: backupData.clientOverrides || existing.clientOverrides || {},
+        zoneOverrides: backupData.zoneOverrides || existing.zoneOverrides || {},
+        settings: backupData.settings || existing.settings || { closeTime: "18:00" },
+        lastSync: backupData.lastSync || existing.lastSync,
+        lastWeekReset: backupData.lastWeekReset || existing.lastWeekReset,
+        stateVersion: Date.now()
+      };
+      saveState(restoredState);
+      res.json({ success: true, state: restoredState });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // Vite middleware for development

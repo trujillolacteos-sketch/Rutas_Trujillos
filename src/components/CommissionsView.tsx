@@ -47,14 +47,11 @@ export default function CommissionsView({ token, state }: { token: string; state
 
 
 
-  const [baseSalaries, setBaseSalaries] = useState<Record<string, number>>(() => {
-    try {
-      const stored = localStorage.getItem("base_salaries");
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [localSalaries, setLocalSalaries] = useState<Record<string, number>>({});
+
+  const baseSalaries = useMemo(() => {
+    return { ...(state?.settings?.baseSalaries || {}), ...localSalaries };
+  }, [state?.settings?.baseSalaries, localSalaries]);
 
   useEffect(() => {
     fetchCommissions();
@@ -137,11 +134,19 @@ export default function CommissionsView({ token, state }: { token: string; state
     }
   };
 
-  const handleSalaryChange = (routeId: string, val: string) => {
+  const handleSalaryChange = async (routeId: string, val: string) => {
     const num = parseFloat(val) || 0;
     const newSalaries = { ...baseSalaries, [routeId]: num };
-    setBaseSalaries(newSalaries);
-    localStorage.setItem("base_salaries", JSON.stringify(newSalaries));
+    setLocalSalaries(newSalaries);
+    try {
+      await apiFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { baseSalaries: newSalaries } })
+      });
+    } catch (e) {
+      console.error("Error al guardar sueldos base:", e);
+    }
   };
 
   const routeStats = useMemo(() => {
@@ -162,7 +167,7 @@ export default function CommissionsView({ token, state }: { token: string; state
       // Keep it in stats if not there
       if (!stats[rid]) stats[rid] = { total: 0, ind: 0, comp: 0 };
 
-      if (c.isLiquidated === false) continue;
+      // Comisiones sobre venta hecha con cliente asignado
       const week = `Semana ${getWeekNumber(c.dateOrder)}`;
       if (selectedWeek && selectedWeek !== "ALL" && week !== selectedWeek) continue;
 
@@ -369,7 +374,7 @@ export default function CommissionsView({ token, state }: { token: string; state
           {(() => {
             const grouped = (commissions || []).reduce((acc, c) => {
               const week = `Semana ${getWeekNumber(c.dateOrder)}`;
-              if (selectedWeek && selectedWeek !== "ALL" && week !== selectedWeek && c.isLiquidated !== false) return acc;
+              if (selectedWeek && selectedWeek !== "ALL" && week !== selectedWeek) return acc;
               
               const routeObj = (state?.routes || []).find(r => r.id === c.routeId);
               const routeName = routeObj?.name || `Ruta ${c.routeId || "Sin Asignar"}`;
@@ -453,19 +458,9 @@ export default function CommissionsView({ token, state }: { token: string; state
                             ${c.commissionAmount.toFixed(2)}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {c.isLiquidated === false ? (
-                              <button
-                                onClick={() => handleLiquidate(c.id)}
-                                className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors shadow-sm whitespace-nowrap"
-                                title="Crédito pendiente. Click para liquidar y asignar a la semana actual."
-                              >
-                                Liquidar
-                              </button>
-                            ) : (
-                              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md">
-                                Pagado
-                              </span>
-                            )}
+                            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md">
+                              Venta Hecha
+                            </span>
                           </td>
                         </tr>
                       );

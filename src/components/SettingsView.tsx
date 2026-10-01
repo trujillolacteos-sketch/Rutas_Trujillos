@@ -13,6 +13,8 @@ import {
   Map,
   ShieldAlert,
   ShieldCheck,
+  Download,
+  Upload,
 } from "lucide-react";
 import UsersManagement from "./UsersManagement";
 export default function SettingsView({
@@ -26,6 +28,43 @@ export default function SettingsView({
   const [msg, setMsg] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
+  const [backupMsg, setBackupMsg] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  const handleDownloadBackup = () => {
+    window.open('/api/backup/export', '_blank');
+  };
+
+  const handleUploadBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setRestoring(true);
+        setBackupMsg("Restaurando copia de seguridad...");
+        const json = JSON.parse(event.target?.result as string);
+        const res = await apiFetch("/api/backup/restore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(json),
+        });
+        const data = await res.json();
+        if (data.success && data.state) {
+          setState(data.state);
+          setBackupMsg("¡Copia de seguridad restaurada con éxito en todos los dispositivos!");
+          setTimeout(() => setBackupMsg(""), 4000);
+        } else {
+          setBackupMsg("Error al restaurar: " + (data.error || "Datos inválidos"));
+        }
+      } catch (err: any) {
+        setBackupMsg("Error leyendo archivo: " + err.message);
+      } finally {
+        setRestoring(false);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const getLogIcon = (type: string) => {
     switch (type) {
@@ -386,6 +425,47 @@ export default function SettingsView({
         <hr className="border-slate-100" />
 
         <UsersManagement state={state} setState={setState} />
+
+        <hr className="border-slate-100" />
+
+        {/* Respaldo y Restauración Permanente */}
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+          <div className="flex items-center gap-3 mb-2">
+            <Database className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-semibold text-slate-800">Copia de Seguridad y Sincronización Permanente</h3>
+          </div>
+          <p className="text-sm text-slate-500 mb-4">
+            El sistema sincroniza automáticamente todos los celulares y computadoras en tiempo real. Puedes descargar una copia de seguridad en JSON de toda tu configuración, clientes y rutas, o restaurar una copia guardada previamente.
+          </p>
+
+          {backupMsg && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-medium">
+              {backupMsg}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-4 items-center">
+            <button
+              onClick={handleDownloadBackup}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-sm font-medium transition shadow-sm"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              Descargar Respaldo JSON
+            </button>
+
+            <label className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium cursor-pointer transition shadow-sm">
+              <Upload className="w-4 h-4 text-indigo-600" />
+              {restoring ? 'Restaurando...' : 'Restaurar Respaldo JSON'}
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                disabled={restoring}
+                onChange={handleUploadBackup}
+              />
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   );

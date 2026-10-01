@@ -131,26 +131,8 @@ export async function syncCommissions() {
     return state !== 'draft' && state !== 'cancel' && state !== 'cancelled';
   });
 
-  // Identifica ventas a crédito / Cuenta de cliente.
-  const allPaymentIds = validOrders.flatMap((o: any) => o.payment_ids || []);
-  const creditOrderIds = new Set<number>();
-
-  if (allPaymentIds.length > 0) {
-    const payments = await executeKw(
-      'pos.payment',
-      'search_read',
-      [[['id', 'in', allPaymentIds]]],
-      { fields: ['id', 'payment_method_id', 'pos_order_id'] },
-    );
-
-    for (const p of payments || []) {
-      if (isCustomerAccountPayment(p.payment_method_id) && p.pos_order_id) {
-        creditOrderIds.add(p.pos_order_id[0]);
-      }
-    }
-  }
-
-  // Sólo una venta POS con cliente puede generar comisión.
+  // Regla: Las comisiones son sobre VENTA HECHA, condicionadas únicamente a tener cliente asignado.
+  // Ya no se requiere consultar pos.payment ni condicionar a venta cobrada / crédito.
   const partnerIds = new Set<number>();
   for (const o of validOrders) {
     if (o.partner_id) partnerIds.add(o.partner_id[0]);
@@ -169,7 +151,7 @@ export async function syncCommissions() {
       partnersMap.set(p.id, p);
     }
   }
-  // Leemos registros existentes para NO perder una liquidación manual al sincronizar.
+  // Leemos registros existentes para preservar pagos previos
   const existingByOrderId = new Map<number, any>();
   const orderIds = validOrders.map((o: any) => o.id);
   let dbAvailable = true;
@@ -199,7 +181,7 @@ export async function syncCommissions() {
   const newRecords: any[] = [];
 
   for (const o of validOrders) {
-    // Regla 1: venta POS sin cliente = NO comisión.
+    // Venta POS sin cliente = NO genera comisión.
     if (!o.partner_id) continue;
 
     const pId = o.partner_id[0];
@@ -214,14 +196,7 @@ export async function syncCommissions() {
     const baseRate = isCompany ? rateCompany : ratePerson;
     const effectiveRate = baseRate * adjustmentMultiplier;
     const commissionAmount = Number(o.amount_total || 0) * effectiveRate;
-
-    const isCredit = creditOrderIds.has(o.id);
     const previous = existingByOrderId.get(o.id);
-
-    // Regla 2: contado queda cubierto de inmediato.
-    // Crédito queda pendiente hasta que se liquide.
-    // Si ya fue liquidado manualmente, una sincronización posterior NO lo revierte.
-    const isLiquidated = !isCredit || previous?.isLiquidated === true;
 
     newRecords.push({
       orderId: o.id,
@@ -234,7 +209,7 @@ export async function syncCommissions() {
       commissionAmount,
       commissionRate: effectiveRate,
       isPaid: previous?.isPaid ?? false,
-      isLiquidated,
+      isLiquidated: true, // Venta hecha con cliente asignado -> Comisión activa inmediata
       dateOrder: new Date(o.date_order),
     });
   }

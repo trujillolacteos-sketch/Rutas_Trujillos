@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
 import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3 } from 'lucide-react';
@@ -65,9 +65,15 @@ function App() {
       });
   };
 
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const fetchDelta = () => {
     const since = Date.now() - 15 * 60 * 1000; // 15 mins
-    apiFetch('/api/data/delta?since=' + since, { cache: 'no-store' })
+    const currentVersion = stateRef.current?.stateVersion || 0;
+    apiFetch(`/api/data/delta?since=${since}&version=${currentVersion}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(delta => {
         setState(prev => {
@@ -79,7 +85,26 @@ function App() {
                else newVisits.push(dv);
              });
           }
-          const newState = { ...prev, visits: newVisits };
+          let newState: AppState;
+          if (delta.needsFullSync) {
+            newState = {
+              ...prev,
+              visits: newVisits,
+              users: delta.users || prev.users,
+              settings: delta.settings || prev.settings,
+              routes: delta.routes || prev.routes,
+              disabledZones: delta.disabledZones || prev.disabledZones,
+              clientOverrides: delta.clientOverrides || prev.clientOverrides,
+              zoneOverrides: delta.zoneOverrides || prev.zoneOverrides,
+              stateVersion: delta.stateVersion || prev.stateVersion,
+            };
+          } else {
+            newState = {
+              ...prev,
+              visits: newVisits,
+              stateVersion: delta.stateVersion || prev.stateVersion
+            };
+          }
           localStorage.setItem('offline_state', JSON.stringify(newState));
           return newState;
         });
@@ -119,7 +144,7 @@ function App() {
     }
   }, [state]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const sanitizedUsername = loginForm.username.trim().replace(/[\x00-\x1F\x7F]/g, '');
@@ -128,6 +153,31 @@ function App() {
     if (!sanitizedUsername || !sanitizedPassword) {
       setLoginError('Por favor, completa ambos campos.');
       return;
+    }
+
+    try {
+      const res = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: sanitizedUsername, password: sanitizedPassword })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          const userInfo = { username: data.user.username, role: data.user.role };
+          setUser(userInfo);
+          localStorage.setItem('offline_user', JSON.stringify(userInfo));
+          setLoginError('');
+          setLoginForm({ username: '', password: '' });
+          fetchDelta();
+          return;
+        }
+      } else if (res.status === 401) {
+        setLoginError('Usuario o contraseña incorrectos');
+        return;
+      }
+    } catch (netErr) {
+      console.warn("Server login unreachable, trying offline fallback:", netErr);
     }
 
     const fallbackUsers = [
@@ -141,7 +191,10 @@ function App() {
     ];
 
     const usersList = (state?.users && state.users.length > 0) ? state.users : fallbackUsers;
-    const foundUser = usersList.find((u: any) => u.username === sanitizedUsername && u.password === sanitizedPassword);
+    const foundUser = usersList.find((u: any) => 
+      u.username?.toLowerCase() === sanitizedUsername.toLowerCase() && 
+      u.password === sanitizedPassword
+    );
     
     if (foundUser) {
       const userInfo = { username: foundUser.username, role: foundUser.role };

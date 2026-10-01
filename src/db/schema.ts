@@ -45,3 +45,10 @@ export const commissions = pgTable('commissions', {
   dateOrder: timestamp('date_order').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const appStateTable = pgTable('app_state', {
+  key: text('key').primaryKey(),
+  data: text('data').notNull(), // Master JSON state string
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
