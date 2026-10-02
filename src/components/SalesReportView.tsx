@@ -205,20 +205,22 @@ export default function SalesReportView({ state }: { state: AppState }) {
     const isPositive = pct > 0;
     const isZero = pct === 0;
 
-    let colorClasses = isPositive
+    const colorClasses = isPositive
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
       : isZero
       ? 'bg-slate-50 text-slate-600 border-slate-200'
       : 'bg-rose-50 text-rose-700 border-rose-200';
 
     const Icon = isPositive ? ArrowUpRight : isZero ? Minus : ArrowDownRight;
+    const diffFormatted = `${isPositive ? '+' : ''}${isCurrency ? prefix : ''}${diff.toLocaleString(undefined, { maximumFractionDigits: 1 })}${!isCurrency ? ' ' + prefix : ''}`;
+    const pctFormatted = `${isPositive ? '+' : ''}${pct}%`;
 
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${colorClasses}`}>
-        <Icon className="w-3 h-3" />
-        <span>{isPositive ? '+' : ''}{pct}%</span>
+        <Icon className="w-3 h-3 shrink-0" />
+        <span>{pctFormatted}</span>
         <span className="text-[10px] font-normal opacity-75">
-          ({isPositive ? '+' : ''}{isCurrency ? prefix : ''}{diff.toLocaleString(undefined, { maximumFractionDigits: 1 })}{!isCurrency ? ' ' + prefix : ''})
+          {`(${diffFormatted})`}
         </span>
       </span>
     );
@@ -262,10 +264,11 @@ export default function SalesReportView({ state }: { state: AppState }) {
         {/* Global Toolbar */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Period Type Switcher */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200">
+          <div className="bg-slate-100 p-1 rounded-xl flex items-center border border-slate-200 notranslate" translate="no">
             <button
               onClick={() => setPeriodType('weekly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              translate="no"
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all notranslate ${
                 periodType === 'weekly'
                   ? 'bg-white text-indigo-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -275,7 +278,8 @@ export default function SalesReportView({ state }: { state: AppState }) {
             </button>
             <button
               onClick={() => setPeriodType('monthly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              translate="no"
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all notranslate ${
                 periodType === 'monthly'
                   ? 'bg-white text-indigo-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -285,7 +289,8 @@ export default function SalesReportView({ state }: { state: AppState }) {
             </button>
             <button
               onClick={() => setPeriodType('yearly')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              translate="no"
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all notranslate ${
                 periodType === 'yearly'
                   ? 'bg-white text-indigo-700 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -370,7 +375,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
           </div>
           <div>
             <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              ${report?.kpis.current.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+              {`$${report?.kpis.current.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
             </h3>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
@@ -395,7 +400,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
           </div>
           <div>
             <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              {report?.kpis.current.totalPieces.toLocaleString() || '0'}{' '}
+              {`${report?.kpis.current.totalPieces.toLocaleString() || '0'} `}
               <span className="text-xs font-medium text-slate-400">pzas</span>
             </h3>
           </div>
@@ -421,7 +426,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
           </div>
           <div>
             <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              {report?.kpis.current.totalOrders.toLocaleString() || '0'}{' '}
+              {`${report?.kpis.current.totalOrders.toLocaleString() || '0'} `}
               <span className="text-xs font-medium text-slate-400">pedidos</span>
             </h3>
           </div>
@@ -447,7 +452,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
           </div>
           <div>
             <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              ${report?.kpis.current.ticketAvgAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+              {`$${report?.kpis.current.ticketAvgAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}
             </h3>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
@@ -472,7 +477,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
           </div>
           <div>
             <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              {report?.kpis.current.ticketAvgPieces || 0}{' '}
+              {`${report?.kpis.current.ticketAvgPieces || 0} `}
               <span className="text-xs font-medium text-slate-400">pzas/pedido</span>
             </h3>
           </div>
@@ -507,11 +512,11 @@ export default function SalesReportView({ state }: { state: AppState }) {
           <div className="flex items-center gap-4 text-xs font-semibold">
             <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
               <span className="w-3 h-3 bg-emerald-500 rounded-sm inline-block"></span>
-              Ticket ($): ${report?.kpis.current.ticketAvgAmount.toFixed(2) || '0.00'}
+              <span>{`Ticket ($): $${report?.kpis.current.ticketAvgAmount.toFixed(2) || '0.00'}`}</span>
             </div>
             <div className="flex items-center gap-1.5 text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
               <span className="w-3 h-1.5 bg-indigo-600 rounded-full inline-block"></span>
-              Ticket (Pzas): {report?.kpis.current.ticketAvgPieces || 0} pzas
+              <span>{`Ticket (Pzas): ${report?.kpis.current.ticketAvgPieces || 0} pzas`}</span>
             </div>
           </div>
         </div>
@@ -620,15 +625,15 @@ export default function SalesReportView({ state }: { state: AppState }) {
           <div className="flex flex-wrap items-center gap-4 text-xs font-semibold">
             <div className="flex items-center gap-1.5 text-blue-700">
               <span className="w-3 h-3 bg-blue-600 rounded-sm"></span>
-              Periodo Actual (${report?.kpis.current.totalSales.toLocaleString() || 0})
+              <span>{`Periodo Actual ($${report?.kpis.current.totalSales.toLocaleString() || 0})`}</span>
             </div>
             <div className="flex items-center gap-1.5 text-slate-500">
               <span className="w-3 h-3 bg-slate-400 rounded-sm"></span>
-              Periodo Anterior (${report?.kpis.previousPeriod.totalSales.toLocaleString() || 0})
+              <span>{`Periodo Anterior ($${report?.kpis.previousPeriod.totalSales.toLocaleString() || 0})`}</span>
             </div>
             <div className="flex items-center gap-1.5 text-amber-600">
               <span className="w-3 h-3 bg-amber-400 rounded-sm"></span>
-              Año Pasado (${report?.kpis.samePeriodLastYear.totalSales.toLocaleString() || 0})
+              <span>{`Año Pasado ($${report?.kpis.samePeriodLastYear.totalSales.toLocaleString() || 0})`}</span>
             </div>
           </div>
         </div>
@@ -755,7 +760,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
                           : 'bg-white text-slate-500 border border-slate-200'
                       }`}
                     >
-                      #{idx + 1}
+                      {`#${idx + 1}`}
                     </span>
 
                     <div className="min-w-0 flex-1">
@@ -763,7 +768,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
                         <h4 className="font-semibold text-slate-900 text-sm truncate">{item.name}</h4>
                         {item.avgPrice > 0 && (
                           <span className="text-[11px] text-slate-400 hidden sm:inline">
-                            Precio prom: ${item.avgPrice.toFixed(2)}
+                            {`Precio prom: $${item.avgPrice.toFixed(2)}`}
                           </span>
                         )}
                       </div>
@@ -785,14 +790,14 @@ export default function SalesReportView({ state }: { state: AppState }) {
                     <div className="text-right">
                       <span className="text-xs text-slate-400 block font-medium">Piezas</span>
                       <span className="text-sm font-bold text-slate-800">
-                        {item.pieces.toLocaleString()} pzas
+                        {`${item.pieces.toLocaleString()} pzas`}
                       </span>
                     </div>
 
                     <div className="text-right min-w-[90px]">
                       <span className="text-xs text-slate-400 block font-medium">Venta Total</span>
                       <span className="text-sm font-bold text-emerald-700">
-                        ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {`$${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                       </span>
                     </div>
                   </div>
