@@ -67,8 +67,18 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
     }));
   }, [commissions]);
 
-  const projectedSales = state.clients.reduce((acc, c) => acc + (c.salesVolume || 0), 0) / 14; // roughly per week
   const currentWeekNumber = getWeekNumber(new Date());
+
+  const averageWeeklySales = React.useMemo(() => {
+    if (weeklySalesData.length > 0) {
+      const completedWeeks = weeklySalesData.filter(w => w.name !== `Semana ${currentWeekNumber}`);
+      const sliceWeeks = completedWeeks.length >= 2 ? completedWeeks.slice(-4) : weeklySalesData;
+      const total = sliceWeeks.reduce((acc, w) => acc + w.Ventas, 0);
+      return Math.round(total / (sliceWeeks.length || 1));
+    }
+    return Math.round(state.clients.reduce((acc, c) => acc + (c.salesVolume || 0), 0) / 14);
+  }, [weeklySalesData, state.clients, currentWeekNumber]);
+
   const actualSalesThisWeek = React.useMemo(() => {
     if (commissions && commissions.length > 0) {
       const thisWeekOrders = commissions.filter(c => getWeekNumber(c.dateOrder) === currentWeekNumber);
@@ -77,13 +87,13 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
       }
     }
     return state.clients.filter(c => c.boughtThisWeek).reduce((acc, c) => acc + (c.salesVolume || 0) / 14, 0);
-  }, [commissions, state.clients]);
+  }, [commissions, state.clients, currentWeekNumber]);
 
   const salesData = [
     {
       name: 'Ventas Semana',
-      Proyectadas: Math.round(projectedSales),
-      Reales: Math.round(actualSalesThisWeek),
+      'Promedio Semanal': averageWeeklySales,
+      'Venta Actual': Math.round(actualSalesThisWeek),
     }
   ];
 
@@ -227,10 +237,11 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
               <TrendingUp className="w-5 h-5" />
             </div>
+            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded-md">Últimas 4 Semanas</span>
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500 mb-1">Proyección de Venta</p>
-            <h3 className="text-2xl font-bold text-slate-900">${projectedSales.toLocaleString(undefined, {maximumFractionDigits: 0})}</h3>
+            <p className="text-sm font-medium text-slate-500 mb-1">Promedio Semanal</p>
+            <h3 className="text-2xl font-bold text-slate-900">${averageWeeklySales.toLocaleString(undefined, {maximumFractionDigits: 0})}</h3>
           </div>
         </div>
 
@@ -298,7 +309,7 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <h3 className="font-bold text-slate-800 mb-4 flex justify-between items-center">
              <span>Ventas Reales por Semana (Odoo - 100 Días)</span>
-             <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md">Tickets Cobrados</span>
+             <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md">Ventas Hechas</span>
           </h3>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">

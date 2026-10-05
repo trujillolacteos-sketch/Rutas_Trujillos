@@ -11,6 +11,7 @@ import { db, pool } from './src/db/index.ts';
 import { gpsLogs, commissions, payrolls } from './src/db/schema.ts';
 import { getUserRole } from './src/db/users.ts';
 import { eq, desc } from 'drizzle-orm';
+import cron from 'node-cron';
 
 const STORE_FILE = 'data_store.json';
 let _cachedState: AppState | null = null;
@@ -62,37 +63,88 @@ async function initPersistentDatabase() {
   }
 }
 
-function loadState(): AppState {
-  if (_cachedState) {
-    return _cachedState;
-  }
-  let state: any = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
-  if (fs.existsSync(STORE_FILE)) {
+export async function triggerWeeklyAutomatedSync() {
+  try {
+    const existingState = loadState();
+    console.log("Iniciando cálculo automático semanal de rutas y sincronización con Odoo...");
     try {
-      state = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-    } catch (e) {
-      console.error("Error loading state", e);
+      await syncCommissions();
+    } catch (commErr) {
+      console.warn("Non-fatal error in syncCommissions:", commErr);
     }
+    const plan = await generateMasterPlan(
+      existingState.routes || [],
+      existingState.clientOverrides || {},
+      existingState.disabledZones || [],
+      existingState.visits || [],
+      existingState.zoneOverrides || {}
+    );
+    const state = {
+      clients: plan.clients,
+      visits: plan.visits,
+      routes: plan.routes,
+      syncLogs: plan.logs,
+      disabledZones: existingState.disabledZones || [],
+      clientOverrides: existingState.clientOverrides || {},
+      zoneOverrides: existingState.zoneOverrides || {},
+      settings: existingState.settings || { closeTime: "18:00" },
+      users: existingState.users || [],
+      trackingLogs: existingState.trackingLogs || [],
+      lastWeekReset: existingState.lastWeekReset,
+      lastSync: new Date().toISOString(),
+      stateVersion: Date.now()
+    };
+    saveState(state);
+    console.log("Cálculo automático semanal completado con éxito.");
+    return state;
+  } catch (error: any) {
+    console.error("Error en triggerWeeklyAutomatedSync:", error);
+    throw error;
   }
-  
-  // Weekly reset check
+}
+
+function checkWeeklyReset(state: any) {
   const now = new Date();
   const day = now.getDay();
   // Monday as start of week:
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const currentWeekStart = new Date(now.setDate(diff));
-  currentWeekStart.setHours(0,0,0,0);
+  const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+  const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), diff);
+  currentWeekStart.setHours(0, 0, 0, 0);
   const currentWeekStartStr = currentWeekStart.toISOString().split('T')[0];
-  
+
   if (state.lastWeekReset !== currentWeekStartStr) {
-      if (state.visits && state.visits.length > 0) {
-          state.visits.forEach((v: any) => {
-              v.status = 'PENDIENTE';
-          });
-      }
-      state.lastWeekReset = currentWeekStartStr;
-      saveState(state);
+    console.log(`[Reinicio Semanal] Semana anterior: ${state.lastWeekReset}, Nueva semana: ${currentWeekStartStr}. Reiniciando visitas a PENDIENTE.`);
+    if (state.visits && state.visits.length > 0) {
+      state.visits.forEach((v: any) => {
+        v.status = 'PENDIENTE';
+        v.updatedAt = Date.now();
+      });
+    }
+    state.lastWeekReset = currentWeekStartStr;
+    saveState(state);
+
+    // Trigger automated route plan recalculation in background
+    setTimeout(() => {
+      triggerWeeklyAutomatedSync().catch(e => console.error("Error en sincronización automática de inicio de semana:", e));
+    }, 2000);
   }
+}
+
+function loadState(): AppState {
+  let state: any = _cachedState;
+  if (!state) {
+    state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
+    if (fs.existsSync(STORE_FILE)) {
+      try {
+        state = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
+      } catch (e) {
+        console.error("Error loading state", e);
+      }
+    }
+  }
+
+  // Always check weekly reset even when cached state is present!
+  checkWeeklyReset(state);
 
   if (!state.users || state.users.length === 0) {
     state.users = [
@@ -141,34 +193,23 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   await initPersistentDatabase();
   startOdooSync();
+
+  // Automated Cron for Sunday and Monday 3:00 AM
+  cron.schedule('0 3 * * 0,1', async () => {
+    console.log('[Cron] Ejecutando sincronización y cálculo de rutas de inicio de semana...');
+    try {
+      await triggerWeeklyAutomatedSync();
+    } catch (e) {
+      console.error('[Cron] Error en sincronización semanal programada:', e);
+    }
+  });
+
   const PORT = process.env.PORT || 3000;
 
   // Sync / Calculate Routes
   app.post('/api/sync', async (req, res) => {
     try {
-      const existingState = loadState();
-      try {
-        await syncCommissions();
-      } catch (commErr) {
-        console.warn("Non-fatal error in syncCommissions:", commErr);
-      }
-      const plan = await generateMasterPlan(existingState.routes || [], existingState.clientOverrides || {}, existingState.disabledZones || [], existingState.visits || [], existingState.zoneOverrides || {});
-      const state = {
-        clients: plan.clients,
-        visits: plan.visits,
-        routes: plan.routes,
-        syncLogs: plan.logs,
-        disabledZones: existingState.disabledZones || [],
-        clientOverrides: existingState.clientOverrides || {},
-        zoneOverrides: existingState.zoneOverrides || {},
-        settings: existingState.settings || { closeTime: "18:00" },
-        users: existingState.users || [],
-        trackingLogs: existingState.trackingLogs || [],
-        lastWeekReset: existingState.lastWeekReset,
-        lastSync: new Date().toISOString(),
-        stateVersion: Date.now()
-      };
-      saveState(state);
+      const state = await triggerWeeklyAutomatedSync();
       res.json({ success: true, state });
     } catch (error: any) {
       console.error(error);
