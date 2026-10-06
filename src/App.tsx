@@ -452,13 +452,17 @@ function App() {
             </div>
           ) : (
             <ErrorBoundary>
-              {(isAdmin || isSupervisor) && (
-                <LiveRouteMonitor state={state} setState={setState} />
-              )}
               {activeTab === 'dashboard' && <DashboardView state={state} role={role} />}
               {activeTab === 'planner' && <PlannerView state={state} role={role} user={user} setState={setState} />}
               {activeTab === 'clientes' && <ClientsView state={state} setState={setState} />}
-              {activeTab === 'reports' && <ReportsView state={state} />}
+              {activeTab === 'reports' && (
+                <>
+                  {(isAdmin || isSupervisor) && (
+                    <LiveRouteMonitor state={state} setState={setState} />
+                  )}
+                  <ReportsView state={state} />
+                </>
+              )}
               {activeTab === 'sales_reports' && <SalesReportView state={state} />}
               {activeTab === 'commissions' && <CommissionsView token={token!} state={state} />}
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
