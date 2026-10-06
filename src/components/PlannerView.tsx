@@ -491,8 +491,14 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
 
   const atRiskCount = visitsWithETA.filter(v => v.isAtRisk).length;
 
-  
-
+  const getPosUrl = (routeId?: number | null, clientId?: number | null) => {
+    const baseUrl = 'https://lacteos-trujillos2.odoo.com';
+    if (routeId) {
+      // In Odoo POS, config_id opens the direct POS session for this specific truck/route
+      return `${baseUrl}/pos/ui?config_id=${routeId}`;
+    }
+    return `${baseUrl}/pos/ui`;
+  };
 
   const renderReachedModal = () => {
     if (!reachedVisit) return null;
@@ -517,23 +523,38 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
           </p>
 
           <div className="space-y-3">
+            <a
+              href={getPosUrl(reachedVisit.routeId, reachedVisit.clientId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                setProcessedVisits(prev => new Set(prev).add(reachedVisit.id));
+                handleStatusChange(reachedVisit, 'VISITADO');
+                setReachedVisit(null);
+              }}
+              className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-sm text-center"
+              title={`Abrir ticket de POS para ${reachedVisit.clientName}`}
+            >
+              <ShoppingCart className="w-5 h-5" />
+              Abrir POS y Surtir
+            </a>
             <button
               onClick={() => {
                 setProcessedVisits(prev => new Set(prev).add(reachedVisit.id));
                 handleStatusChange(reachedVisit, 'VISITADO');
                 setReachedVisit(null);
               }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
             >
-              <ShoppingCart className="w-5 h-5" />
-              Surtir / Finalizar Visita
+              <CheckCircle className="w-4 h-4" />
+              Marcar como Visitado
             </button>
             <button
               onClick={() => {
                 setProcessedVisits(prev => new Set(prev).add(reachedVisit.id));
                 setReachedVisit(null);
               }}
-              className="w-full text-slate-400 hover:text-slate-600 font-bold py-2"
+              className="w-full text-slate-400 hover:text-slate-600 font-bold py-2 text-xs"
             >
               Cerrar
             </button>
@@ -587,35 +608,47 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
         {renderSkipModal()}
         {renderReachedModal()}
         
-        <div className="bg-slate-900 text-white p-4 flex justify-between items-center shadow-md z-10">
+        <div className="bg-slate-900 text-white p-3 sm:p-4 flex flex-wrap justify-between items-center shadow-md z-10 gap-2">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-2 rounded-lg">
               <Navigation className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-lg leading-tight">Navegación Activa</h2>
-              <p className="text-slate-400 text-xs">
-                {activeVisit ? `Hacia: ${activeVisit.clientName}` : 'Sigue la ruta marcada'}
+              <h2 className="font-bold text-base sm:text-lg leading-tight">Navegación Activa</h2>
+              <p className="text-slate-400 text-xs truncate max-w-[200px] sm:max-w-xs">
+                {activeVisit ? `Destino: ${activeVisit.clientName}` : 'Sigue la ruta marcada'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {activeVisit && (
+              <a
+                href={getPosUrl(activeVisit.routeId, activeVisit.clientId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm flex items-center gap-1.5"
+                title={`Abrir ticket de POS de ${activeVisit.routeName} en Odoo`}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>POS / Surtir</span>
+              </a>
+            )}
             <button 
               onClick={handlePauseRoute}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
+              className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors"
             >
-              Pausar Ruta
+              Pausar
             </button>
-            <div className="flex items-center gap-2 mr-2 border-r border-slate-700 pr-4">
-              <button onClick={() => setIsMuted(!isMuted)} className="text-slate-300 hover:text-white transition-colors">
-                {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            <div className="flex items-center gap-2 border-l border-r border-slate-700 px-2 sm:px-3">
+              <button onClick={() => setIsMuted(!isMuted)} className="text-slate-300 hover:text-white transition-colors" title={isMuted ? "Activar voz" : "Silenciar voz"}>
+                {isMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5" />}
               </button>
             </div>
             <button 
               onClick={handleStopNavigation}
-              className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
+              className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors"
             >
-              Salir de Navegación
+              Salir
             </button>
           </div>
         </div>
@@ -628,19 +661,52 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
             voiceVolume={voiceVolume}
           />
           {activeVisit && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-md px-4">
-              <div className="bg-white rounded-3xl shadow-2xl p-4 flex flex-col gap-3 border border-slate-100">
-                <div className="text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Destino Actual</p>
-                  <p className="text-lg font-bold text-slate-800 truncate">{activeVisit.clientName}</p>
+            <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-[1000] w-full max-w-lg px-3 sm:px-4">
+              <div className="bg-white rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col gap-3 border border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                    Parada Actual
+                  </span>
+                  {distanceToNext !== null && (
+                    <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
+                      A {Math.round(distanceToNext)}m
+                    </span>
+                  )}
                 </div>
-                <div className="flex gap-2">
+                <div>
+                  <p className="text-base sm:text-lg font-bold text-slate-900 truncate">
+                    {activeVisit.clientName}
+                  </p>
+                  <p className="text-xs text-slate-500 truncate">
+                    {getClientData(activeVisit.clientId)?.street || 'Sin dirección'}, {getClientData(activeVisit.clientId)?.city || ''}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <a
+                    href={getPosUrl(activeVisit.routeId, activeVisit.clientId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
+                    title={`Abrir ticket de POS para ${activeVisit.clientName} en Odoo`}
+                  >
+                    <ShoppingCart className="w-4 h-4 shrink-0" />
+                    <span>POS / Surtir</span>
+                  </a>
+                  <button
+                    onClick={() => handleStatusChange(activeVisit, 'VISITADO')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
+                    title="Marcar como Visitado"
+                  >
+                    <CheckCircle className="w-4 h-4 shrink-0" />
+                    <span>Visitado</span>
+                  </button>
                   <button 
                     onClick={() => setSkipVisitModal(activeVisit)}
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                    className="bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
                     title="Reportar Incidencia o Cerrado"
                   >
-                    <AlertTriangle className="w-5 h-5" /> Omitir Cliente
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Omitir</span>
                   </button>
                 </div>
               </div>
@@ -801,10 +867,11 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
                         Navegar
                       </button>
                       <a 
-                        href={`https://lacteos-trujillos2.odoo.com/pos/ui`}
+                        href={getPosUrl(activeVisit.routeId, activeVisit.clientId)}
                         target="_blank"
+                        rel="noopener noreferrer"
                         className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-3 lg:px-5 py-2 lg:py-2.5 rounded-xl text-xs lg:text-sm font-bold transition-colors shadow-sm"
-                        title="Abrir Punto de Venta"
+                        title={`Abrir ticket de POS de ${activeVisit.routeName} en Odoo`}
                       >
                         <ShoppingCart className="w-4 h-4 flex-shrink-0" />
                         POS
@@ -907,10 +974,11 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
                           <AlertTriangle className="w-4 h-4" />
                         </button>
                         <a 
-                          href={`https://lacteos-trujillos2.odoo.com/pos/ui`}
+                          href={getPosUrl(v.routeId, v.clientId)}
                           target="_blank"
+                          rel="noopener noreferrer"
                           className="p-1 rounded-md bg-slate-800 text-white hover:bg-slate-900 transition-colors flex items-center justify-center"
-                          title="Abrir Punto de Venta"
+                          title={`Abrir ticket de POS para ${v.clientName} en Odoo`}
                         >
                           <ShoppingCart className="w-4 h-4" />
                         </a>
