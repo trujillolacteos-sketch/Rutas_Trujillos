@@ -407,6 +407,9 @@ async function startServer() {
     if (client) {
        if (updates.isActive !== undefined) client.isActive = updates.isActive;
        if (updates.assignedRouteId !== undefined) client.assignedRouteId = updates.assignedRouteId;
+       if (updates.permanentRouteId !== undefined) client.permanentRouteId = updates.permanentRouteId;
+       if (updates.assignedDay !== undefined) client.assignedDay = updates.assignedDay;
+       if (updates.permanentDay !== undefined) client.permanentDay = updates.permanentDay;
        if (updates.visitFrequency !== undefined) client.visitFrequency = updates.visitFrequency;
     }
     

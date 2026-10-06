@@ -203,13 +203,17 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     const normCity = cityStr.trim().toLowerCase();
     const zOverride = zoneOverrides[normCity] || {};
     const cOverride = clientOverrides[c.id] || {};
-    const finalRouteId = cOverride.assignedRouteId !== void 0 ? cOverride.assignedRouteId : zOverride.assignedRouteId;
-    const finalDay = cOverride.assignedDay !== void 0 ? cOverride.assignedDay : zOverride.assignedDay;
+    const permanentRouteId = cOverride.permanentRouteId !== void 0 ? cOverride.permanentRouteId : (c.permanentRouteId || undefined);
+    const permanentDay = cOverride.permanentDay !== void 0 ? cOverride.permanentDay : (c.permanentDay || undefined);
+    const finalRouteId = permanentRouteId !== void 0 ? permanentRouteId : (cOverride.assignedRouteId !== void 0 ? cOverride.assignedRouteId : zOverride.assignedRouteId);
+    const finalDay = permanentDay !== void 0 ? permanentDay : (cOverride.assignedDay !== void 0 ? cOverride.assignedDay : zOverride.assignedDay);
     return {
       id: c.id,
       isActive,
       assignedRouteId: finalRouteId,
+      permanentRouteId: permanentRouteId,
       assignedDay: finalDay,
+      permanentDay: permanentDay,
       name: c.name,
       lat,
       lng,
@@ -385,11 +389,23 @@ console.log('TSP MacroCities:', macroCities.map(m => m.city));
   colonias = newColonias;
 
   // 3. Asignar colonias a rutas equilibrando la carga de forma equitativa (Target Dinámico)
+  // Pre-asignar clientes con ruta permanente/fidelizada
+  validClients.forEach(c => {
+    if (c.permanentRouteId !== undefined) {
+      const rIdx = activeRoutes.findIndex(r => r.id === c.permanentRouteId);
+      if (rIdx !== -1) {
+        c.assignedRouteId = activeRoutes[rIdx].id;
+        routeAssignments[rIdx].push(c);
+        routeCosts[rIdx] += c.cost;
+      }
+    }
+  });
+
   let currentRIdx = 0;
   
   let unassignedColonias = [];
   colonias.forEach(col => {
-      let pending = col.clients.filter(c => !c.assignedRouteId);
+      let pending = col.clients.filter(c => c.permanentRouteId === undefined);
       if (pending.length > 0) {
           unassignedColonias.push({ clients: pending, cost: pending.reduce((sum, c) => sum + c.cost, 0), city: col.city, bearing: col.bearing });
       }

@@ -20,6 +20,9 @@ import {
   Save,
   Download,
   Map as MapIcon,
+  Lock,
+  Clock,
+  Zap,
 } from "lucide-react";
 
 export default function ClientsView({
@@ -36,6 +39,9 @@ export default function ClientsView({
   const [statusFilter, setStatusFilter] = useState<"all" | "missing" | "valid">(
     "all",
   );
+  const [assignmentFilter, setAssignmentFilter] = useState<
+    "all" | "permanent" | "temporal" | "auto"
+  >("all");
   const [sortBy, setSortBy] = useState<
     "name" | "sales_desc" | "sales_asc" | "visits_desc" | "visits_asc"
   >("sales_desc");
@@ -43,6 +49,9 @@ export default function ClientsView({
   const [selectedClient, setSelectedClient] = useState<ClientData | null>(null);
   const [editFreq, setEditFreq] = useState<number | null>(null);
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
+  const [editAssignmentType, setEditAssignmentType] = useState<
+    "auto" | "temporal" | "permanent"
+  >("auto");
   const [editAssignedRouteId, setEditAssignedRouteId] = useState<
     number | "none"
   >("none");
@@ -63,6 +72,25 @@ export default function ClientsView({
       list = list.filter((c) => c.lat !== 0 && c.lng !== 0);
     if (statusFilter === "missing")
       list = list.filter((c) => c.lat === 0 || c.lng === 0);
+
+    if (assignmentFilter === "permanent") {
+      list = list.filter((c) => {
+        const pId = state.clientOverrides?.[c.id]?.permanentRouteId ?? c.permanentRouteId;
+        return pId !== undefined && pId !== null;
+      });
+    } else if (assignmentFilter === "temporal") {
+      list = list.filter((c) => {
+        const pId = state.clientOverrides?.[c.id]?.permanentRouteId ?? c.permanentRouteId;
+        const aId = state.clientOverrides?.[c.id]?.assignedRouteId ?? c.assignedRouteId;
+        return (pId === undefined || pId === null) && aId !== undefined && aId !== null;
+      });
+    } else if (assignmentFilter === "auto") {
+      list = list.filter((c) => {
+        const pId = state.clientOverrides?.[c.id]?.permanentRouteId ?? c.permanentRouteId;
+        const aId = state.clientOverrides?.[c.id]?.assignedRouteId ?? c.assignedRouteId;
+        return (pId === undefined || pId === null) && (aId === undefined || aId === null);
+      });
+    }
 
     if (searchTerm) {
       list = list.filter(
@@ -86,7 +114,7 @@ export default function ClientsView({
     });
 
     return list;
-  }, [state.clients, statusFilter, searchTerm, sortBy]);
+  }, [state.clients, state.clientOverrides, statusFilter, assignmentFilter, searchTerm, sortBy]);
 
   // Zonas Aisladas
   const cityCounts = new Map<string, number>();
@@ -111,15 +139,47 @@ export default function ClientsView({
     (group: any) => group.length > 1,
   );
 
+  const openClientModal = (client: ClientData) => {
+    setSelectedClient(client);
+    setEditFreq(client.visitFrequency);
+    setEditIsActive(client.isActive !== false);
+
+    const permRoute = state.clientOverrides?.[client.id]?.permanentRouteId ?? client.permanentRouteId;
+    const tempRoute = state.clientOverrides?.[client.id]?.assignedRouteId ?? client.assignedRouteId;
+
+    if (permRoute !== undefined && permRoute !== null) {
+      setEditAssignmentType("permanent");
+      setEditAssignedRouteId(permRoute);
+    } else if (tempRoute !== undefined && tempRoute !== null) {
+      setEditAssignmentType("temporal");
+      setEditAssignedRouteId(tempRoute);
+    } else {
+      setEditAssignmentType("auto");
+      setEditAssignedRouteId("none");
+    }
+
+    setEditLat(client.lat ? client.lat.toString() : "");
+    setEditLng(client.lng ? client.lng.toString() : "");
+  };
+
   const handleSaveOverride = async () => {
     if (selectedClient && editFreq !== null) {
       setSavingOverride(true);
-      const updates = {
+      const updates: any = {
         visitFrequency: editFreq,
         isActive: editIsActive,
-        assignedRouteId:
-          editAssignedRouteId === "none" ? undefined : editAssignedRouteId,
       };
+
+      if (editAssignmentType === "permanent") {
+        updates.permanentRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
+        updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
+      } else if (editAssignmentType === "temporal") {
+        updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
+        updates.permanentRouteId = null;
+      } else {
+        updates.assignedRouteId = null;
+        updates.permanentRouteId = null;
+      }
 
       try {
         const res = await apiFetch(
@@ -293,9 +353,19 @@ export default function ClientsView({
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 className="bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium"
               >
-                <option value="all">Todos los estados</option>
+                <option value="all">Todos los estados GPS</option>
                 <option value="valid">Solo GPS Válido</option>
                 <option value="missing">Solo sin GPS</option>
+              </select>
+              <select
+                value={assignmentFilter}
+                onChange={(e) => setAssignmentFilter(e.target.value as any)}
+                className="bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              >
+                <option value="all">Todas las asignaciones</option>
+                <option value="permanent">🔒 Solo Fidelizados (Permanentes)</option>
+                <option value="temporal">⏱️ Solo Temporales</option>
+                <option value="auto">⚡ Solo Automáticos</option>
               </select>
             </div>
           </div>
@@ -314,10 +384,13 @@ export default function ClientsView({
                     Ciudad / Zona
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Ventas (Semestre)
+                    Ventas
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Visitas Sem.
+                    Visitas
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Asignación Ruta
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Estado GPS
@@ -327,20 +400,16 @@ export default function ClientsView({
               <tbody className="divide-y divide-slate-100">
                 {filteredClients.map((client) => {
                   const hasLocation = client.lat !== 0 && client.lng !== 0;
+                  const permRouteId = state.clientOverrides?.[client.id]?.permanentRouteId ?? client.permanentRouteId;
+                  const tempRouteId = state.clientOverrides?.[client.id]?.assignedRouteId ?? client.assignedRouteId;
+                  const permRoute = permRouteId ? state.routes.find((r) => r.id === permRouteId) : null;
+                  const tempRoute = tempRouteId ? state.routes.find((r) => r.id === tempRouteId) : null;
+
                   return (
                     <tr
                       key={client.id}
                       className="hover:bg-slate-50 transition-colors cursor-pointer"
-                      onClick={() => {
-                        setSelectedClient(client);
-                        setEditFreq(client.visitFrequency);
-                        setEditIsActive(client.isActive !== false);
-                        setEditAssignedRouteId(
-                          client.assignedRouteId || "none",
-                        );
-                        setEditLat(client.lat ? client.lat.toString() : "");
-                        setEditLng(client.lng ? client.lng.toString() : "");
-                      }}
+                      onClick={() => openClientModal(client)}
                     >
                       <td className="px-6 py-4">
                         <p className="text-sm font-bold text-slate-900">
@@ -376,6 +445,21 @@ export default function ClientsView({
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">
                           {client.visitFrequency}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {permRoute ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200" title="Fidelizado permanentemente a esta ruta">
+                            <Lock className="w-3 h-3 text-purple-600" /> {permRoute.name}
+                          </span>
+                        ) : tempRoute ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200" title="Asignación temporal para esta semana">
+                            <Clock className="w-3 h-3 text-sky-600" /> Temp: {tempRoute.name}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium" title="Balanceo dinámico automático">
+                            <Zap className="w-3 h-3 text-slate-400" /> Auto
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {hasLocation ? (
@@ -431,14 +515,7 @@ export default function ClientsView({
                   <tr
                     key={client.id}
                     className="hover:bg-slate-50 cursor-pointer"
-                    onClick={() => {
-                      setSelectedClient(client);
-                      setEditFreq(client.visitFrequency);
-                      setEditIsActive(client.isActive !== false);
-                      setEditAssignedRouteId(client.assignedRouteId || "none");
-                      setEditLat(client.lat ? client.lat.toString() : "");
-                      setEditLng(client.lng ? client.lng.toString() : "");
-                    }}
+                    onClick={() => openClientModal(client)}
                   >
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold text-slate-900">
@@ -496,12 +573,7 @@ export default function ClientsView({
                       <div
                         key={c.id}
                         className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-100 cursor-pointer hover:border-blue-300"
-                        onClick={() => {
-                          setSelectedClient(c);
-                          setEditFreq(c.visitFrequency);
-                          setEditIsActive(c.isActive !== false);
-                          setEditAssignedRouteId(c.assignedRouteId || "none");
-                        }}
+                        onClick={() => openClientModal(c)}
                       >
                         <div>
                           <p className="text-sm font-bold text-slate-800">
@@ -545,14 +617,7 @@ export default function ClientsView({
                   <tr
                     key={client.id}
                     className="hover:bg-slate-50 cursor-pointer"
-                    onClick={() => {
-                      setSelectedClient(client);
-                      setEditFreq(client.visitFrequency);
-                      setEditIsActive(client.isActive !== false);
-                      setEditAssignedRouteId(client.assignedRouteId || "none");
-                      setEditLat(client.lat ? client.lat.toString() : "");
-                      setEditLng(client.lng ? client.lng.toString() : "");
-                    }}
+                    onClick={() => openClientModal(client)}
                   >
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold text-slate-900">
@@ -585,7 +650,7 @@ export default function ClientsView({
       {/* Client Profile / Edit Modal */}
       {selectedClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 mb-1">
@@ -605,7 +670,7 @@ export default function ClientsView({
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -641,28 +706,100 @@ export default function ClientsView({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Asignar Ruta Específica (Opcional)
+              {/* Fidelización / Asignación de Ruta */}
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-slate-700">
+                  Modalidad de Asignación a Ruta
                 </label>
-                <select
-                  value={editAssignedRouteId}
-                  onChange={(e) =>
-                    setEditAssignedRouteId(
-                      e.target.value === "none"
-                        ? "none"
-                        : parseInt(e.target.value),
-                    )
-                  }
-                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                >
-                  <option value="none">Sin asignación (Automático)</option>
-                  {state.routes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* Automático */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditAssignmentType("auto");
+                      setEditAssignedRouteId("none");
+                    }}
+                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${editAssignmentType === "auto" ? "border-blue-500 bg-blue-50/80 ring-2 ring-blue-500/20" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Zap className={`w-4 h-4 ${editAssignmentType === "auto" ? "text-blue-600" : "text-slate-400"}`} />
+                      {editAssignmentType === "auto" && <div className="w-2 h-2 rounded-full bg-blue-600"></div>}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">⚡ Automático</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Balanceo dinámico semanal según demanda.</p>
+                    </div>
+                  </button>
+
+                  {/* Temporal */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditAssignmentType("temporal");
+                      if (editAssignedRouteId === "none" && state.routes.length > 0) {
+                        setEditAssignedRouteId(state.routes[0].id);
+                      }
+                    }}
+                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${editAssignmentType === "temporal" ? "border-sky-500 bg-sky-50/80 ring-2 ring-sky-500/20" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Clock className={`w-4 h-4 ${editAssignmentType === "temporal" ? "text-sky-600" : "text-slate-400"}`} />
+                      {editAssignmentType === "temporal" && <div className="w-2 h-2 rounded-full bg-sky-600"></div>}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">⏱️ Temporal</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Asignar solo para esta semana actual.</p>
+                    </div>
+                  </button>
+
+                  {/* Fidelizado Permanente */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditAssignmentType("permanent");
+                      if (editAssignedRouteId === "none" && state.routes.length > 0) {
+                        setEditAssignedRouteId(state.routes[0].id);
+                      }
+                    }}
+                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all ${editAssignmentType === "permanent" ? "border-purple-600 bg-purple-50 ring-2 ring-purple-600/20" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Lock className={`w-4 h-4 ${editAssignmentType === "permanent" ? "text-purple-600" : "text-slate-400"}`} />
+                      {editAssignmentType === "permanent" && <div className="w-2 h-2 rounded-full bg-purple-600"></div>}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-purple-900">🔒 Fidelizado</p>
+                      <p className="text-[11px] text-purple-700/80 mt-0.5">Fijo 100% permanente a esta ruta.</p>
+                    </div>
+                  </button>
+                </div>
+
+                {editAssignmentType !== "auto" && (
+                  <div className="mt-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      {editAssignmentType === "permanent" ? "🔒 Seleccionar Ruta Fidelizada Permanente" : "⏱️ Seleccionar Ruta Temporal (Esta semana)"}
+                    </label>
+                    <select
+                      value={editAssignedRouteId}
+                      onChange={(e) =>
+                        setEditAssignedRouteId(
+                          e.target.value === "none"
+                            ? "none"
+                            : parseInt(e.target.value),
+                        )
+                      }
+                      className="w-full bg-white border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
+                    >
+                      <option value="none">Seleccione una ruta...</option>
+                      {state.routes.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div>

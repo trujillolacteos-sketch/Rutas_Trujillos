@@ -13,6 +13,7 @@ import ZonesView from './components/ZonesView';
 import ClientsView from './components/ClientsView';
 import ReportsView from './components/ReportsView';
 import SalesReportView from './components/SalesReportView';
+import LiveRouteMonitor from './components/LiveRouteMonitor';
 import ErrorBoundary from './ErrorBoundary';
 import { useAuth } from './hooks/useAuth';
 import CommissionsView from './components/CommissionsView';
@@ -451,6 +452,9 @@ function App() {
             </div>
           ) : (
             <ErrorBoundary>
+              {(isAdmin || isSupervisor) && (
+                <LiveRouteMonitor state={state} setState={setState} />
+              )}
               {activeTab === 'dashboard' && <DashboardView state={state} role={role} />}
               {activeTab === 'planner' && <PlannerView state={state} role={role} user={user} setState={setState} />}
               {activeTab === 'clientes' && <ClientsView state={state} setState={setState} />}
