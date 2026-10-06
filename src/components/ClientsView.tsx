@@ -23,6 +23,7 @@ import {
   Lock,
   Clock,
   Zap,
+  Calendar,
 } from "lucide-react";
 
 export default function ClientsView({
@@ -42,6 +43,7 @@ export default function ClientsView({
   const [assignmentFilter, setAssignmentFilter] = useState<
     "all" | "permanent" | "temporal" | "auto"
   >("all");
+  const [dayFilter, setDayFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<
     "name" | "sales_desc" | "sales_asc" | "visits_desc" | "visits_asc"
   >("sales_desc");
@@ -55,6 +57,7 @@ export default function ClientsView({
   const [editAssignedRouteId, setEditAssignedRouteId] = useState<
     number | "none"
   >("none");
+  const [editAssignedDay, setEditAssignedDay] = useState<string>("auto");
   const [savingOverride, setSavingOverride] = useState(false);
   const [editLat, setEditLat] = useState<string>("");
   const [editLng, setEditLng] = useState<string>("");
@@ -92,6 +95,22 @@ export default function ClientsView({
       });
     }
 
+    if (dayFilter !== "all") {
+      if (dayFilter === "auto") {
+        list = list.filter((c) => {
+          const pDay = state.clientOverrides?.[c.id]?.permanentDay ?? c.permanentDay;
+          const aDay = state.clientOverrides?.[c.id]?.assignedDay ?? c.assignedDay;
+          return !pDay && !aDay;
+        });
+      } else {
+        list = list.filter((c) => {
+          const pDay = state.clientOverrides?.[c.id]?.permanentDay ?? c.permanentDay;
+          const aDay = state.clientOverrides?.[c.id]?.assignedDay ?? c.assignedDay;
+          return pDay === dayFilter || aDay === dayFilter;
+        });
+      }
+    }
+
     if (searchTerm) {
       list = list.filter(
         (c) =>
@@ -114,7 +133,7 @@ export default function ClientsView({
     });
 
     return list;
-  }, [state.clients, state.clientOverrides, statusFilter, assignmentFilter, searchTerm, sortBy]);
+  }, [state.clients, state.clientOverrides, statusFilter, assignmentFilter, dayFilter, searchTerm, sortBy]);
 
   // Zonas Aisladas
   const cityCounts = new Map<string, number>();
@@ -146,6 +165,8 @@ export default function ClientsView({
 
     const permRoute = state.clientOverrides?.[client.id]?.permanentRouteId ?? client.permanentRouteId;
     const tempRoute = state.clientOverrides?.[client.id]?.assignedRouteId ?? client.assignedRouteId;
+    const permDay = state.clientOverrides?.[client.id]?.permanentDay ?? client.permanentDay;
+    const tempDay = state.clientOverrides?.[client.id]?.assignedDay ?? client.assignedDay;
 
     if (permRoute !== undefined && permRoute !== null) {
       setEditAssignmentType("permanent");
@@ -158,6 +179,7 @@ export default function ClientsView({
       setEditAssignedRouteId("none");
     }
 
+    setEditAssignedDay(permDay || tempDay || "auto");
     setEditLat(client.lat ? client.lat.toString() : "");
     setEditLng(client.lng ? client.lng.toString() : "");
   };
@@ -170,15 +192,23 @@ export default function ClientsView({
         isActive: editIsActive,
       };
 
+      const selectedDayVal = editAssignedDay === "auto" ? null : editAssignedDay;
+
       if (editAssignmentType === "permanent") {
         updates.permanentRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
         updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
+        updates.permanentDay = selectedDayVal;
+        updates.assignedDay = selectedDayVal;
       } else if (editAssignmentType === "temporal") {
         updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
         updates.permanentRouteId = null;
+        updates.assignedDay = selectedDayVal;
+        updates.permanentDay = null;
       } else {
         updates.assignedRouteId = null;
         updates.permanentRouteId = null;
+        updates.assignedDay = selectedDayVal;
+        updates.permanentDay = null;
       }
 
       try {
@@ -367,6 +397,20 @@ export default function ClientsView({
                 <option value="temporal">⏱️ Solo Temporales</option>
                 <option value="auto">⚡ Solo Automáticos</option>
               </select>
+              <select
+                value={dayFilter}
+                onChange={(e) => setDayFilter(e.target.value)}
+                className="bg-white border border-slate-200 text-slate-700 text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              >
+                <option value="all">Todos los días</option>
+                <option value="Lunes">📅 Lunes</option>
+                <option value="Martes">📅 Martes</option>
+                <option value="Miércoles">📅 Miércoles</option>
+                <option value="Jueves">📅 Jueves</option>
+                <option value="Viernes">📅 Viernes</option>
+                <option value="Sábado">📅 Sábado</option>
+                <option value="auto">⚡ Sin día fijo (Histórico)</option>
+              </select>
             </div>
           </div>
 
@@ -390,7 +434,7 @@ export default function ClientsView({
                     Visitas
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Asignación Ruta
+                    Ruta y Día Asignado
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Estado GPS
@@ -402,6 +446,9 @@ export default function ClientsView({
                   const hasLocation = client.lat !== 0 && client.lng !== 0;
                   const permRouteId = state.clientOverrides?.[client.id]?.permanentRouteId ?? client.permanentRouteId;
                   const tempRouteId = state.clientOverrides?.[client.id]?.assignedRouteId ?? client.assignedRouteId;
+                  const permDay = state.clientOverrides?.[client.id]?.permanentDay ?? client.permanentDay;
+                  const tempDay = state.clientOverrides?.[client.id]?.assignedDay ?? client.assignedDay;
+                  const assignedDay = permDay || tempDay;
                   const permRoute = permRouteId ? state.routes.find((r) => r.id === permRouteId) : null;
                   const tempRoute = tempRouteId ? state.routes.find((r) => r.id === tempRouteId) : null;
 
@@ -447,19 +494,29 @@ export default function ClientsView({
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        {permRoute ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200" title="Fidelizado permanentemente a esta ruta">
-                            <Lock className="w-3 h-3 text-purple-600" /> {permRoute.name}
-                          </span>
-                        ) : tempRoute ? (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200" title="Asignación temporal para esta semana">
-                            <Clock className="w-3 h-3 text-sky-600" /> Temp: {tempRoute.name}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium" title="Balanceo dinámico automático">
-                            <Zap className="w-3 h-3 text-slate-400" /> Auto
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1">
+                          {permRoute ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200 w-fit" title="Fidelizado permanentemente a esta ruta">
+                              <Lock className="w-3 h-3 text-purple-600" /> {permRoute.name}
+                            </span>
+                          ) : tempRoute ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200 w-fit" title="Asignación temporal para esta semana">
+                              <Clock className="w-3 h-3 text-sky-600" /> Temp: {tempRoute.name}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium w-fit" title="Balanceo dinámico automático">
+                              <Zap className="w-3 h-3 text-slate-400" /> Auto
+                            </span>
+                          )}
+
+                          {assignedDay ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 w-fit" title="Día fijo programado">
+                              <Calendar className="w-3 h-3 text-indigo-500" /> {assignedDay}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">Día: Histórico</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         {hasLocation ? (
@@ -800,6 +857,32 @@ export default function ClientsView({
                     </select>
                   </div>
                 )}
+              </div>
+
+              {/* Selección de Día Específico */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  Día Específico de Visita (Opcional)
+                </label>
+                <select
+                  value={editAssignedDay}
+                  onChange={(e) => setEditAssignedDay(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
+                >
+                  <option value="auto">⚡ Automático (Según histórico de ventas en Odoo)</option>
+                  <option value="Lunes">Lunes</option>
+                  <option value="Martes">Martes</option>
+                  <option value="Miércoles">Miércoles</option>
+                  <option value="Jueves">Jueves</option>
+                  <option value="Viernes">Viernes</option>
+                  <option value="Sábado">Sábado</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  {editAssignedDay === "auto"
+                    ? "Si no se especifica un día, se respetará el patrón histórico de ventas de Odoo."
+                    : `El cliente se programará obligatoriamente el día ${editAssignedDay}.`}
+                </p>
               </div>
 
               <div>

@@ -582,7 +582,28 @@ console.log('TSP MacroCities:', macroCities.map(m => m.city));
 
     orderedClients.forEach((c) => {
         const freq = Math.min(6, Math.max(1, c.freq));
-        const availablePatterns = patterns[freq] || patterns[1];
+        let availablePatterns = patterns[freq] || patterns[1];
+        
+        const targetDayName = c.permanentDay || c.assignedDay;
+        if (targetDayName) {
+            const targetDayIdx = DAYS.indexOf(targetDayName);
+            if (targetDayIdx !== -1) {
+                const matchingPatterns = availablePatterns.filter(p => p.includes(targetDayIdx));
+                if (matchingPatterns.length > 0) {
+                    availablePatterns = matchingPatterns;
+                } else {
+                    const customPattern = [targetDayIdx];
+                    for (let step = 1; step < freq; step++) {
+                        const nextDay = (targetDayIdx + Math.round((6 / freq) * step)) % 6;
+                        if (!customPattern.includes(nextDay)) customPattern.push(nextDay);
+                    }
+                    for (let i = 0; i < 6 && customPattern.length < freq; i++) {
+                        if (!customPattern.includes(i)) customPattern.push(i);
+                    }
+                    availablePatterns = [customPattern.sort((a, b) => a - b)];
+                }
+            }
+        }
         
         let bestPattern = availablePatterns[0];
         let bestScore = Infinity;
