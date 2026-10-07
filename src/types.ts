@@ -50,9 +50,15 @@ export interface TrackingLog {
   timestamp: string; // ISO string
   lat: number;
   lng: number;
-  type: 'movimiento' | 'parada' | 'evasion';
+  type: 'movimiento' | 'parada' | 'evasion' | 'omision';
   duration?: number; // duration in seconds if it's a stop
   notes?: string; // e.g. "Visita a cliente X" or "Desayuno"
+  reason?: string; // Motivo de omisión (CERRADO, NO ESTABA, etc.)
+  clientId?: number;
+  clientName?: string;
+  clientLat?: number;
+  clientLng?: number;
+  distanceToClient?: number; // en metros al momento de omitir
 }
 
 export interface AppState {

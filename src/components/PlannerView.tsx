@@ -303,8 +303,8 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
       const dist = getDistance(userLocation[0], userLocation[1], activeVisit.lat, activeVisit.lng);
       setDistanceToNext(dist);
       
-      // Auto check-in by proximity
-      if (dist < 0.15 && !processedVisits.has(activeVisit.id) && (!reachedVisit || reachedVisit.id !== activeVisit.id)) {
+      // Auto check-in by proximity (within 50 meters)
+      if (dist <= 50 && !processedVisits.has(activeVisit.id) && (!reachedVisit || reachedVisit.id !== activeVisit.id)) {
         setReachedVisit(activeVisit);
       }
     } else {
@@ -326,9 +326,53 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
           visits: prev.visits.map(v => v.id === visit.id ? { ...v, status } : v)
         }));
       }
-    } catch (e) {
+    } catch (e: any) {
       if (e.message !== 'Failed to fetch') console.error(e);
     }
+  };
+
+  const handleSkipVisit = (visit: PlannedVisit, reason: string) => {
+    // 1. Silent GPS capture
+    const driverLat = userLocation ? userLocation[0] : (lastLocationRef.current?.lat || 0);
+    const driverLng = userLocation ? userLocation[1] : (lastLocationRef.current?.lng || 0);
+    
+    let distMeters: number | undefined = undefined;
+    if (driverLat !== 0 && driverLng !== 0 && visit.lat && visit.lng) {
+      distMeters = Math.round(getDistance(driverLat, driverLng, visit.lat, visit.lng));
+    }
+
+    const log = {
+      id: Math.random().toString(36).substr(2, 9),
+      routeId: visit.routeId || selectedRoute || 0,
+      timestamp: new Date().toISOString(),
+      lat: driverLat,
+      lng: driverLng,
+      type: 'omision' as const,
+      duration: 0,
+      notes: `Cliente omitido (${reason}): ${visit.clientName}`,
+      reason: reason,
+      clientId: visit.clientId,
+      clientName: visit.clientName,
+      clientLat: visit.lat,
+      clientLng: visit.lng,
+      distanceToClient: distMeters
+    };
+
+    // Send silently to tracking endpoint
+    apiFetch('/api/tracking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(log)
+    }).catch(() => {});
+
+    setState((prev: AppState) => ({
+      ...prev,
+      trackingLogs: [...(prev.trackingLogs || []), log]
+    }));
+
+    // 2. Perform status change and close modal
+    handleStatusChange(visit, reason);
+    setSkipVisitModal(null);
   };
 
   const moveVisit = (visitId: string, direction: 'up' | 'down') => {
@@ -581,10 +625,7 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
             {skipReasons.map(r => (
                <button 
                  key={r}
-                 onClick={() => {
-                   handleStatusChange(skipVisitModal, r);
-                   setSkipVisitModal(null);
-                 }}
+                 onClick={() => handleSkipVisit(skipVisitModal, r)}
                  className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-colors shadow-sm"
                >
                  {r}
@@ -681,28 +722,20 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
                     {getClientData(activeVisit.clientId)?.street || 'Sin dirección'}, {getClientData(activeVisit.clientId)?.city || ''}
                   </p>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <a
                     href={getPosUrl(activeVisit.routeId, activeVisit.clientId)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
+                    className="bg-slate-900 hover:bg-black text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm text-sm text-center"
                     title={`Abrir ticket de POS para ${activeVisit.clientName} en Odoo`}
                   >
                     <ShoppingCart className="w-4 h-4 shrink-0" />
                     <span>POS / Surtir</span>
                   </a>
-                  <button
-                    onClick={() => handleStatusChange(activeVisit, 'VISITADO')}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
-                    title="Marcar como Visitado"
-                  >
-                    <CheckCircle className="w-4 h-4 shrink-0" />
-                    <span>Visitado</span>
-                  </button>
                   <button 
                     onClick={() => setSkipVisitModal(activeVisit)}
-                    className="bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm text-xs sm:text-sm text-center"
+                    className="bg-amber-500 hover:bg-amber-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors shadow-sm text-sm text-center"
                     title="Reportar Incidencia o Cerrado"
                   >
                     <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -715,7 +748,7 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
         </div>
       </div>
     );
-  }
+  };
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -959,13 +992,6 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
                             <Navigation className="w-4 h-4" />
                           </button>
                         )}
-                        <button 
-                          onClick={() => handleStatusChange(v, 'VISITADO')}
-                          className="p-1 rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-colors"
-                          title="Marcar como Visitado"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </button>
                         <button 
                           onClick={() => setSkipVisitModal(v)}
                           className="p-1 rounded-md bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 transition-colors"

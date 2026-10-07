@@ -60,8 +60,9 @@ export default function ReportsView({ state }: { state: AppState }) {
   );
   const [selectedPeriod, setSelectedPeriod] = useState<string>('Toda la semana');
   const [selectedWeek, setSelectedWeek] = useState<string>('Semana ' + getWeekNumber(new Date()));
-  const [activeTab, setActiveTab] = useState<'map' | 'bitacora'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'bitacora' | 'omisiones'>('map');
   const [eventFilter, setEventFilter] = useState<'all' | 'paradas' | 'anomalous' | 'evasions'>('all');
+  const [omissionReasonFilter, setOmissionReasonFilter] = useState<string>('all');
 
   const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
@@ -99,6 +100,46 @@ export default function ReportsView({ state }: { state: AppState }) {
       }) || []
     );
   }, [state.trackingLogs, selectedRoute, selectedWeek, selectedPeriod]);
+
+  // Filter omission logs (can be for selectedRoute or all routes in the period)
+  const omissionLogs = useMemo(() => {
+    return (
+      state.trackingLogs?.filter((l) => {
+        if (l.type !== 'omision') return false;
+        if (selectedRoute && l.routeId !== selectedRoute) return false;
+
+        const logWeekStr = 'Semana ' + getWeekNumber(l.timestamp);
+        if (selectedWeek !== logWeekStr) return false;
+
+        if (selectedPeriod !== 'Toda la semana') {
+          const logDay = days[new Date(l.timestamp).getDay()];
+          if (logDay !== selectedPeriod) return false;
+        }
+        return true;
+      }) || []
+    );
+  }, [state.trackingLogs, selectedRoute, selectedWeek, selectedPeriod]);
+
+  const filteredOmissionLogs = useMemo(() => {
+    if (omissionReasonFilter === 'all') return omissionLogs;
+    return omissionLogs.filter((o) => (o.reason || '').toUpperCase() === omissionReasonFilter.toUpperCase());
+  }, [omissionLogs, omissionReasonFilter]);
+
+  const omissionStats = useMemo(() => {
+    let onSite = 0; // < 50m
+    let nearby = 0; // 50m - 200m
+    let faraway = 0; // > 200m or no coords
+    omissionLogs.forEach((o) => {
+      if (typeof o.distanceToClient === 'number' && o.distanceToClient >= 0) {
+        if (o.distanceToClient <= 50) onSite++;
+        else if (o.distanceToClient <= 200) nearby++;
+        else faraway++;
+      } else {
+        faraway++;
+      }
+    });
+    return { total: omissionLogs.length, onSite, nearby, faraway };
+  }, [omissionLogs]);
 
   // Filter visits by route and day
   const routeVisits = state.visits.filter((v) => v.routeId === selectedRoute);
@@ -311,7 +352,7 @@ export default function ReportsView({ state }: { state: AppState }) {
       {/* Tabs & Map / Log View */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex-1 flex flex-col">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 mb-4 border-b border-slate-100 gap-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setActiveTab('map')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
@@ -332,21 +373,49 @@ export default function ReportsView({ state }: { state: AppState }) {
             >
               <ListFilter className="w-4 h-4" /> Bitácora Detallada ({logs.length})
             </button>
+            <button
+              onClick={() => setActiveTab('omisiones')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                activeTab === 'omisiones'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-500" /> Auditoría de Omisiones ({omissionLogs.length})
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-medium">Filtrar Eventos:</span>
-            <select
-              value={eventFilter}
-              onChange={(e) => setEventFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-            >
-              <option value="all">Todos los registros ({logs.length})</option>
-              <option value="paradas">Solo Paradas ({normalStops.length + anomalousStops.length})</option>
-              <option value="anomalous">⚠️ Paradas &gt; 15 min ({anomalousStops.length})</option>
-              <option value="evasions">🚨 Evasiones ({evasions.length})</option>
-            </select>
-          </div>
+          {activeTab !== 'omisiones' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Filtrar Eventos:</span>
+              <select
+                value={eventFilter}
+                onChange={(e) => setEventFilter(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+              >
+                <option value="all">Todos los registros ({logs.length})</option>
+                <option value="paradas">Solo Paradas ({normalStops.length + anomalousStops.length})</option>
+                <option value="anomalous">⚠️ Paradas &gt; 15 min ({anomalousStops.length})</option>
+                <option value="evasions">🚨 Evasiones ({evasions.length})</option>
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 font-medium">Motivo:</span>
+              <select
+                value={omissionReasonFilter}
+                onChange={(e) => setOmissionReasonFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+              >
+                <option value="all">Todos los motivos ({omissionLogs.length})</option>
+                <option value="CERRADO">CERRADO</option>
+                <option value="NO ESTABA">NO ESTABA</option>
+                <option value="PEDIDO POR TELÉFONO">PEDIDO POR TELÉFONO</option>
+                <option value="PROBLEMA VIAL">PROBLEMA VIAL</option>
+                <option value="OTRO">OTRO</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {activeTab === 'map' ? (
@@ -375,7 +444,7 @@ export default function ReportsView({ state }: { state: AppState }) {
             </div>
             <GPSHistoryMap logs={logs} selectedFilter={eventFilter} />
           </div>
-        ) : (
+        ) : activeTab === 'bitacora' ? (
           <div className="flex-1 overflow-y-auto space-y-3 max-h-[500px] pr-2">
             {filteredLogsList.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center text-slate-400">
@@ -463,6 +532,150 @@ export default function ReportsView({ state }: { state: AppState }) {
                 });
               })()
             )}
+          </div>
+        ) : (
+          /* AUDITORÍA DE OMISIONES GPS */
+          <div className="flex-1 flex flex-col space-y-5">
+            {/* Omission KPI summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex flex-col justify-between">
+                <span className="text-amber-700 font-bold text-xs uppercase tracking-wider">Total Omitidos</span>
+                <span className="text-2xl font-black text-amber-900 mt-1">{omissionStats.total}</span>
+                <span className="text-[11px] text-amber-600">En el periodo seleccionado</span>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex flex-col justify-between">
+                <span className="text-emerald-700 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+                  🟢 En Sitio (&lt; 50m)
+                </span>
+                <span className="text-2xl font-black text-emerald-900 mt-1">{omissionStats.onSite}</span>
+                <span className="text-[11px] text-emerald-600">Chofer en el local (verificado)</span>
+              </div>
+              <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 flex flex-col justify-between">
+                <span className="text-amber-700 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+                  🟡 Cercano (50m - 200m)
+                </span>
+                <span className="text-2xl font-black text-amber-900 mt-1">{omissionStats.nearby}</span>
+                <span className="text-[11px] text-amber-600">En la misma cuadra / zona</span>
+              </div>
+              <div className="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex flex-col justify-between">
+                <span className="text-rose-700 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+                  🔴 A Distancia (&gt; 200m)
+                </span>
+                <span className="text-2xl font-black text-rose-900 mt-1">{omissionStats.faraway}</span>
+                <span className="text-[11px] text-rose-600">Omitido desde lejos / sin visita</span>
+              </div>
+            </div>
+
+            {/* Omissions Detail Table */}
+            <div className="flex-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+              {filteredOmissionLogs.length === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center text-slate-400 p-6">
+                  <CheckCircle className="w-10 h-10 mb-2 text-emerald-400" />
+                  <p className="font-medium text-slate-600">No hay clientes omitidos registrados con los filtros actuales.</p>
+                  <p className="text-xs text-slate-400 mt-1">Cuando un chofer omita un cliente, sus coordenadas se auditarán automáticamente aquí.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">Fecha y Hora</th>
+                      <th className="px-4 py-3">Ruta</th>
+                      <th className="px-4 py-3">Cliente Omitido</th>
+                      <th className="px-4 py-3">Motivo Declarado</th>
+                      <th className="px-4 py-3 text-right">Distancia al Omitir</th>
+                      <th className="px-4 py-3 text-center">Dictamen GPS</th>
+                      <th className="px-4 py-3 text-center">Auditoría</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {[...filteredOmissionLogs]
+                      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                      .map((log) => {
+                        const routeObj = state.routes.find((r) => r.id === log.routeId);
+                        const routeName = routeObj?.name || `Ruta ${log.routeId}`;
+                        const dist = log.distanceToClient;
+
+                        let badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
+                        let badgeLabel = 'A Distancia (Falsa Omisión)';
+                        let badgeIcon = '🔴';
+
+                        if (typeof dist === 'number') {
+                          if (dist <= 50) {
+                            badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                            badgeLabel = 'En Sitio (<50m)';
+                            badgeIcon = '🟢';
+                          } else if (dist <= 200) {
+                            badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
+                            badgeLabel = 'Cercano (50-200m)';
+                            badgeIcon = '🟡';
+                          }
+                        }
+
+                        const distDisplay = typeof dist === 'number'
+                          ? dist >= 1000 ? `${(dist / 1000).toFixed(2)} km` : `${dist} metros`
+                          : 'Sin GPS';
+
+                        const mapsUrl = log.lat && log.lng 
+                          ? `https://www.google.com/maps?q=${log.lat},${log.lng}` 
+                          : undefined;
+
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                              <span className="font-semibold text-slate-700 block">
+                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <span className="text-xs text-slate-400">
+                                {new Date(log.timestamp).toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                              {routeName}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-bold text-slate-800 block truncate max-w-[220px]" title={log.clientName}>
+                                {log.clientName || `Cliente #${log.clientId}`}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                ID: {log.clientId}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-block bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200">
+                                {log.reason || 'OMITIDO'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-slate-800 whitespace-nowrap">
+                              {distDisplay}
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border ${badgeColor}`}>
+                                <span>{badgeIcon}</span> {badgeLabel}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                              {mapsUrl ? (
+                                <a
+                                  href={mapsUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
+                                  title="Ver posición del chofer al omitir en Google Maps"
+                                >
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  Ver en Mapa
+                                </a>
+                              ) : (
+                                <span className="text-xs text-slate-400">N/D</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
       </div>

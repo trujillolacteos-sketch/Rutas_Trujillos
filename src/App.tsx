@@ -380,15 +380,13 @@ function App() {
           )}
 
 
-          {(isAdmin || isSupervisor) && (
-            <button 
-              onClick={() => setActiveTab('commissions')} 
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'commissions' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              <DollarSign className="w-5 h-5" />
-              <span className="hidden md:inline">Nómina y Comisiones</span>
-            </button>
-          )}
+          <button 
+            onClick={() => setActiveTab('commissions')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'commissions' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <DollarSign className="w-5 h-5" />
+            <span className="hidden md:inline">Nómina y Comisiones</span>
+          </button>
 
           {(isAdmin || isSupervisor) && (
             <button 
@@ -464,7 +462,7 @@ function App() {
                 </>
               )}
               {activeTab === 'sales_reports' && <SalesReportView state={state} />}
-              {activeTab === 'commissions' && <CommissionsView token={token!} state={state} />}
+              {activeTab === 'commissions' && <CommissionsView token={token!} state={state} role={role} user={user} />}
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}

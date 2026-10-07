@@ -563,10 +563,6 @@ async function startServer() {
 
   app.get('/api/commissions', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') {
-         return res.status(403).json({ error: "Forbidden" });
-      }
       try {
         const data = await db.select().from(commissions).orderBy(desc(commissions.dateOrder)).limit(10000);
         if (data && data.length > 0) return res.json(data);

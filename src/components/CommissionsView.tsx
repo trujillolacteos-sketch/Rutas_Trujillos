@@ -25,7 +25,10 @@ const getWeekNumber = (d: string | Date | number) => {
   }
 };
 
-export default function CommissionsView({ token, state }: { token: string; state: AppState }) {
+export default function CommissionsView({ token, state, role, user }: { token: string; state: AppState; role?: string; user?: { username: string; role: string } }) {
+  const isOperator = role === 'operator';
+  const operatorRoute = user?.username || "";
+
   const [commissions, setCommissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -33,7 +36,13 @@ export default function CommissionsView({ token, state }: { token: string; state
 
   const currentWeekStr = "Semana " + getWeekNumber(new Date());
   const [selectedWeek, setSelectedWeek] = useState<string>(currentWeekStr);
-  const [activeTab, setActiveTab] = useState<string>("ALL");
+  const [activeTab, setActiveTab] = useState<string>(isOperator ? (operatorRoute || "Ruta 1") : "ALL");
+
+  useEffect(() => {
+    if (isOperator && operatorRoute) {
+      setActiveTab(operatorRoute);
+    }
+  }, [isOperator, operatorRoute]);
 
   const weeks = useMemo(() => {
     const w = new Set<string>();
@@ -44,8 +53,6 @@ export default function CommissionsView({ token, state }: { token: string; state
     w.add(currentWeekStr);
     return Array.from(w).sort((a, b) => parseInt(b.split(" ")[1]) - parseInt(a.split(" ")[1]));
   }, [commissions]);
-
-
 
   const [localSalaries, setLocalSalaries] = useState<Record<string, number>>({});
 
@@ -93,22 +100,8 @@ export default function CommissionsView({ token, state }: { token: string; state
     setSyncing(false);
   };
 
-  
-  const handleLiquidate = async (id: number) => {
-    try {
-      const res = await apiFetch(`/api/commissions/${id}/liquidate`, {
-        method: "POST",
-        headers: { Authorization: "Bearer " + token },
-      });
-      if (res.ok) {
-        fetchCommissions();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const toggleClientType = async (id: number, clientId: number, currentType: string) => {
+    if (isOperator) return; // Operators cannot toggle commission client type
     try {
       const newType = currentType === "company" ? "person" : "company";
       setCommissions((prev) =>
@@ -135,6 +128,7 @@ export default function CommissionsView({ token, state }: { token: string; state
   };
 
   const handleSalaryChange = async (routeId: string, val: string) => {
+    if (isOperator) return;
     const num = parseFloat(val) || 0;
     const newSalaries = { ...baseSalaries, [routeId]: num };
     setLocalSalaries(newSalaries);
@@ -156,7 +150,9 @@ export default function CommissionsView({ token, state }: { token: string; state
     (state?.routes || []).forEach(r => {
       if (r.isAuthorized) {
         const routeName = r.name || `Ruta ${r.id}`;
-        stats[routeName] = { total: 0, ind: 0, comp: 0 };
+        if (!isOperator || routeName === operatorRoute) {
+          stats[routeName] = { total: 0, ind: 0, comp: 0 };
+        }
       }
     });
 
@@ -164,6 +160,8 @@ export default function CommissionsView({ token, state }: { token: string; state
       const routeObj = (state?.routes || []).find(r => r.id === c.routeId);
       let rid = routeObj?.name || `Ruta ${c.routeId || "Sin Asignar"}`;
       
+      if (isOperator && rid !== operatorRoute) continue;
+
       // Keep it in stats if not there
       if (!stats[rid]) stats[rid] = { total: 0, ind: 0, comp: 0 };
 
@@ -176,7 +174,7 @@ export default function CommissionsView({ token, state }: { token: string; state
       else stats[rid].ind += c.commissionAmount;
     }
     return stats;
-  }, [commissions, selectedWeek, state?.routes]);
+  }, [commissions, selectedWeek, state?.routes, isOperator, operatorRoute]);
 
   const summary = useMemo(() => {
     let ind = 0;
@@ -199,10 +197,12 @@ export default function CommissionsView({ token, state }: { token: string; state
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
             <DollarSign className="w-6 h-6 text-emerald-600" />
-            Nómina y Comisiones
+            {isOperator ? `Mi Nómina y Comisiones (${operatorRoute})` : 'Nómina y Comisiones'}
           </h2>
           <p className="text-slate-500 mt-1">
-            Calcula el pago final de tus repartidores según comisiones y ajustes de clientes.
+            {isOperator 
+              ? 'Consulta el desglose de tus ventas, avance de comisiones y pago acumulado.' 
+              : 'Calcula el pago final de tus repartidores según comisiones y ajustes de clientes.'}
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3">
@@ -219,14 +219,16 @@ export default function CommissionsView({ token, state }: { token: string; state
             </select>
             <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium shadow-sm transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar Odoo"}
-          </button>
+          {!isOperator && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium shadow-sm transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sincronizando..." : "Sincronizar Odoo"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -262,27 +264,29 @@ export default function CommissionsView({ token, state }: { token: string; state
 
       {/* TABS PARA RUTAS */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="flex border-b border-slate-100 overflow-x-auto">
-           <button 
-             onClick={() => setActiveTab('ALL')}
-             className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'ALL' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
-           >
-             <MapIcon className="w-4 h-4" />
-             Resumen General
-           </button>
-           {Object.keys(routeStats).map(route => (
+        {!isOperator && (
+          <div className="flex border-b border-slate-100 overflow-x-auto">
              <button 
-               key={route}
-               onClick={() => setActiveTab(route)}
-               className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === route ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
+               onClick={() => setActiveTab('ALL')}
+               className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors flex items-center gap-2 ${activeTab === 'ALL' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
              >
-               {route}
+               <MapIcon className="w-4 h-4" />
+               Resumen General
              </button>
-           ))}
-        </div>
+             {Object.keys(routeStats).map(route => (
+               <button 
+                 key={route}
+                 onClick={() => setActiveTab(route)}
+                 className={`px-6 py-4 font-semibold text-sm whitespace-nowrap transition-colors ${activeTab === route ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
+               >
+                 {route}
+               </button>
+             ))}
+          </div>
+        )}
 
         <div className="p-6 bg-slate-50">
-          {activeTab === 'ALL' ? (
+          {activeTab === 'ALL' && !isOperator ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {Object.entries(routeStats).map(([route, stat]) => {
                 const base = baseSalaries[route] || 0;
@@ -327,19 +331,25 @@ export default function CommissionsView({ token, state }: { token: string; state
             </div>
           ) : (
             <div className="max-w-3xl bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-               <h3 className="text-xl font-bold text-slate-800 mb-6">Nómina de {activeTab}</h3>
+               <h3 className="text-xl font-bold text-slate-800 mb-6">Nómina y Comisiones de {activeTab}</h3>
                <div className="space-y-4">
                   <div>
                     <label className="text-sm font-bold text-slate-500 block mb-2">
-                      Sueldo Base Semanal ($)
+                      Sueldo Base Semanal ($) {isOperator && <span className="text-xs font-normal text-slate-400">(Fijo estipulado)</span>}
                     </label>
-                    <input
-                      type="number"
-                      value={baseSalaries[activeTab] || ""}
-                      onChange={(e) => handleSalaryChange(activeTab, e.target.value)}
-                      placeholder="0.00"
-                      className="w-full max-w-sm bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
-                    />
+                    {isOperator ? (
+                      <div className="w-full max-w-sm bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-base font-bold text-slate-700">
+                        ${(baseSalaries[activeTab] || 0).toFixed(2)}
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        value={baseSalaries[activeTab] || ""}
+                        onChange={(e) => handleSalaryChange(activeTab, e.target.value)}
+                        placeholder="0.00"
+                        className="w-full max-w-sm bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-700"
+                      />
+                    )}
                   </div>
                   
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
@@ -435,21 +445,33 @@ export default function CommissionsView({ token, state }: { token: string; state
                             {c.clientName}
                           </td>
                           <td className="px-4 py-3">
-                            <button
-                              onClick={() => toggleClientType(c.id, c.clientId, c.clientType)}
-                              className="hover:opacity-80 transition-opacity"
-                              title="Click para cambiar regla de comisión"
-                            >
-                              {c.clientType === "company" ? (
-                                <span className="inline-flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md text-xs font-bold cursor-pointer">
+                            {isOperator ? (
+                              c.clientType === "company" ? (
+                                <span className="inline-flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md text-xs font-bold">
                                   <Briefcase className="w-3 h-3" /> Empresa ({state.settings?.commissionRateCompany ?? 1.0}%)
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-sky-600 bg-sky-50 px-2 py-1 rounded-md text-xs font-bold cursor-pointer">
+                                <span className="inline-flex items-center gap-1 text-sky-600 bg-sky-50 px-2 py-1 rounded-md text-xs font-bold">
                                   <Users className="w-3 h-3" /> Individual ({state.settings?.commissionRatePerson ?? 2.0}%)
                                 </span>
-                              )}
-                            </button>
+                              )
+                            ) : (
+                              <button
+                                onClick={() => toggleClientType(c.id, c.clientId, c.clientType)}
+                                className="hover:opacity-80 transition-opacity"
+                                title="Click para cambiar regla de comisión"
+                              >
+                                {c.clientType === "company" ? (
+                                  <span className="inline-flex items-center gap-1 text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md text-xs font-bold cursor-pointer">
+                                    <Briefcase className="w-3 h-3" /> Empresa ({state.settings?.commissionRateCompany ?? 1.0}%)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-sky-600 bg-sky-50 px-2 py-1 rounded-md text-xs font-bold cursor-pointer">
+                                    <Users className="w-3 h-3" /> Individual ({state.settings?.commissionRatePerson ?? 2.0}%)
+                                  </span>
+                                )}
+                              </button>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-slate-600">
                             ${c.orderTotal.toFixed(2)}
