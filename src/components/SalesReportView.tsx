@@ -521,7 +521,120 @@ export default function SalesReportView({ state, role, user }: { state: AppState
         </div>
       </div>
 
-      {/* Gráfica Principal: Ticket Promedio con Doble Eje Y */}
+      {/* Gráfica: Venta Total en Monto y Piezas */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-blue-600"></span>
+              <span className="w-3 h-3 rounded-full bg-purple-600"></span>
+              <h3 className="font-bold text-slate-900 text-lg">
+                Venta Total en Monto ($) y Volumen en Piezas (Doble Eje Y)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Eje Azul (Izquierdo): Venta Total ($) • Eje Morado (Derecho): Piezas Totales Vendidas (pzas)
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-semibold flex-wrap">
+            <div className="flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+              <span className="w-3 h-3 bg-blue-600 rounded-sm inline-block"></span>
+              <span>{`Venta Total: $${report?.kpis.current.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}`}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+              <span className="w-3 h-1.5 bg-purple-600 rounded-full inline-block"></span>
+              <span>{`Total Piezas: ${report?.kpis.current.totalPieces.toLocaleString() || 0} pzas`}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-80 w-full">
+          {report && report.dualAxisChart.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={report.dualAxisChart} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="label" stroke="#64748b" fontSize={12} tickLine={false} />
+                {/* Eje Izquierdo: Venta Total ($) */}
+                <YAxis
+                  yAxisId="left"
+                  orientation="left"
+                  stroke="#2563eb"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={val => `$${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}`}
+                />
+                {/* Eje Derecho: Piezas Totales */}
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#8b5cf6"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={val => `${val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val} pz`}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-white p-4 rounded-xl shadow-xl border border-slate-200 text-xs space-y-2">
+                          <p className="font-bold text-slate-800 border-b border-slate-100 pb-1.5 text-sm">{label}</p>
+                          <div className="flex items-center justify-between gap-6 text-blue-700 font-semibold">
+                            <span>Venta Total ($):</span>
+                            <span>${data.totalSales.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-6 text-purple-700 font-semibold">
+                            <span>Piezas Vendidas:</span>
+                            <span>{data.totalPieces.toLocaleString()} pzas</span>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 text-slate-500 space-y-1">
+                            <div className="flex justify-between gap-4">
+                              <span>Pedidos / Tickets:</span>
+                              <span className="font-semibold text-slate-800">{data.orders}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span>Ticket Promedio ($):</span>
+                              <span className="font-semibold text-emerald-600">${data.ticketAvgAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Legend verticalAlign="top" height={36} />
+                <Bar
+                  yAxisId="left"
+                  dataKey="totalSales"
+                  name="Venta Total ($)"
+                  fill="#3b82f6"
+                  radius={[6, 6, 0, 0]}
+                  barSize={32}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="totalPieces"
+                  name="Total Piezas"
+                  stroke="#8b5cf6"
+                  strokeWidth={3}
+                  dot={{ r: 5, fill: '#8b5cf6', strokeWidth: 2, stroke: '#ffffff' }}
+                  activeDot={{ r: 7 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400 text-sm">
+              Sin datos para este periodo
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Gráfica: Ticket Promedio con Doble Eje Y */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-2">
           <div>
