@@ -369,16 +369,16 @@ function App() {
                 <Clock className="w-5 h-5" />
                 <span className="hidden md:inline">Histórico GPS</span>
               </button>
-              <button 
-                onClick={() => setActiveTab('sales_reports')} 
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'sales_reports' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                <BarChart3 className="w-5 h-5" />
-                <span className="hidden md:inline">Reportes</span>
-              </button>
             </>
           )}
 
+          <button 
+            onClick={() => setActiveTab('sales_reports')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'sales_reports' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <BarChart3 className="w-5 h-5" />
+            <span className="hidden md:inline">Reportes</span>
+          </button>
 
           <button 
             onClick={() => setActiveTab('commissions')} 
@@ -461,7 +461,7 @@ function App() {
                   <ReportsView state={state} />
                 </>
               )}
-              {activeTab === 'sales_reports' && <SalesReportView state={state} />}
+              {activeTab === 'sales_reports' && <SalesReportView state={state} role={role} user={user} />}
               {activeTab === 'commissions' && <CommissionsView token={token!} state={state} role={role} user={user} />}
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}

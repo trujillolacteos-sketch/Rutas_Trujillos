@@ -124,10 +124,25 @@ function formatDateStr(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export default function SalesReportView({ state }: { state: AppState }) {
+export default function SalesReportView({ state, role, user }: { state: AppState; role?: string; user?: { username: string; role: string } }) {
+  const isOperator = role === 'operator';
+  const operatorRoute = useMemo(() => {
+    if (!isOperator || !user) return null;
+    return (state.routes || []).find(r => r.name.toLowerCase() === user.username.toLowerCase());
+  }, [isOperator, user, state.routes]);
+
   const [periodType, setPeriodType] = useState<'weekly' | 'monthly' | 'yearly'>('weekly');
   const [targetDate, setTargetDate] = useState<string>(() => formatDateStr(new Date()));
-  const [selectedRoute, setSelectedRoute] = useState<string>('all');
+  const [selectedRoute, setSelectedRoute] = useState<string>(
+    isOperator && operatorRoute ? String(operatorRoute.id) : 'all'
+  );
+
+  useEffect(() => {
+    if (isOperator && operatorRoute) {
+      setSelectedRoute(String(operatorRoute.id));
+    }
+  }, [isOperator, operatorRoute]);
+
   const [report, setReport] = useState<SalesReportData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -144,12 +159,14 @@ export default function SalesReportView({ state }: { state: AppState }) {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = 'Bearer ' + token;
 
+      const effectiveRouteId = isOperator && operatorRoute ? String(operatorRoute.id) : selectedRoute;
+
       const params = new URLSearchParams({
         type: periodType,
         date: targetDate,
       });
-      if (selectedRoute !== 'all') {
-        params.append('routeId', selectedRoute);
+      if (effectiveRouteId !== 'all') {
+        params.append('routeId', effectiveRouteId);
       }
 
       const res = await apiFetch(`/api/reports/sales?${params.toString()}`, { headers });
@@ -169,7 +186,7 @@ export default function SalesReportView({ state }: { state: AppState }) {
 
   useEffect(() => {
     fetchReport();
-  }, [periodType, targetDate, selectedRoute]);
+  }, [periodType, targetDate, selectedRoute, isOperator, operatorRoute]);
 
   // Date navigation handlers
   const handlePrevPeriod = () => {
@@ -253,9 +270,13 @@ export default function SalesReportView({ state }: { state: AppState }) {
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Reportes de Ventas & Analítica</h1>
+              <h1 className="text-xl font-bold text-slate-900">
+                {isOperator ? `Reporte de Ventas (${operatorRoute?.name || user?.username || 'Mi Ruta'})` : 'Reportes de Ventas & Analítica'}
+              </h1>
               <p className="text-xs text-slate-500">
-                Comparativas vs periodo anterior, año pasado y rendimiento por ticket
+                {isOperator 
+                  ? 'Comparativas de tus ventas vs periodo anterior, año pasado y productos más vendidos'
+                  : 'Comparativas vs periodo anterior, año pasado y rendimiento por ticket'}
               </p>
             </div>
           </div>
@@ -331,18 +352,24 @@ export default function SalesReportView({ state }: { state: AppState }) {
           {/* Route Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
             <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
-              value={selectedRoute}
-              onChange={e => setSelectedRoute(e.target.value)}
-              className="bg-transparent text-xs font-medium text-slate-700 outline-none cursor-pointer"
-            >
-              <option value="all">Todas las Rutas</option>
-              {(state.routes || []).map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+            {isOperator ? (
+              <span className="text-xs font-bold text-slate-700">
+                {operatorRoute?.name || user?.username || 'Mi Ruta'}
+              </span>
+            ) : (
+              <select
+                value={selectedRoute}
+                onChange={e => setSelectedRoute(e.target.value)}
+                className="bg-transparent text-xs font-medium text-slate-700 outline-none cursor-pointer"
+              >
+                <option value="all">Todas las Rutas</option>
+                {(state.routes || []).map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Refresh button */}

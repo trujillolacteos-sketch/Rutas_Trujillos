@@ -580,9 +580,6 @@ async function startServer() {
 
   app.get('/api/reports/sales', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
-
       const type = (req.query.type as 'weekly' | 'monthly' | 'yearly') || 'weekly';
       const date = (req.query.date as string) || undefined;
       const routeId = req.query.routeId ? parseInt(req.query.routeId as string) : undefined;
