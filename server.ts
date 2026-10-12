@@ -17,96 +17,127 @@ const STORE_FILE = 'data_store.json';
 let _cachedState: AppState | null = null;
 
 import { AppState } from './src/types.ts';
+import { adminDb } from './src/lib/firebase-admin.ts';
 
 async function initPersistentDatabase() {
-  if (!process.env.DATABASE_URL) {
-    console.log("No DATABASE_URL configured. Running with local JSON persistence.");
-    return;
-  }
-  try {
-    const client = await pool.connect();
+  if (process.env.DATABASE_URL) {
     try {
-      // Auto-create all required tables if they don't exist
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS app_state (
-          key TEXT PRIMARY KEY,
-          data TEXT NOT NULL,
-          updated_at TIMESTAMP DEFAULT NOW()
-        );
+      const client = await pool.connect();
+      try {
+        // Auto-create all required tables if they don't exist
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
 
-        CREATE TABLE IF NOT EXISTS users (
-          id SERIAL PRIMARY KEY,
-          uid TEXT NOT NULL UNIQUE,
-          email TEXT NOT NULL,
-          role VARCHAR(50) DEFAULT 'user',
-          created_at TIMESTAMP DEFAULT NOW()
-        );
+          CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            uid TEXT NOT NULL UNIQUE,
+            email TEXT NOT NULL,
+            role VARCHAR(50) DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT NOW()
+          );
 
-        CREATE TABLE IF NOT EXISTS gps_logs (
-          id SERIAL PRIMARY KEY,
-          route_id INTEGER NOT NULL,
-          lat DOUBLE PRECISION NOT NULL,
-          lng DOUBLE PRECISION NOT NULL,
-          timestamp TIMESTAMP NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
+          CREATE TABLE IF NOT EXISTS gps_logs (
+            id SERIAL PRIMARY KEY,
+            route_id INTEGER NOT NULL,
+            lat DOUBLE PRECISION NOT NULL,
+            lng DOUBLE PRECISION NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
 
-        CREATE TABLE IF NOT EXISTS payrolls (
-          id SERIAL PRIMARY KEY,
-          route_id INTEGER NOT NULL,
-          route_name TEXT NOT NULL,
-          start_date TIMESTAMP NOT NULL,
-          end_date TIMESTAMP NOT NULL,
-          base_salary DOUBLE PRECISION NOT NULL DEFAULT 0,
-          total_commissions DOUBLE PRECISION NOT NULL DEFAULT 0,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
+          CREATE TABLE IF NOT EXISTS payrolls (
+            id SERIAL PRIMARY KEY,
+            route_id INTEGER NOT NULL,
+            route_name TEXT NOT NULL,
+            start_date TIMESTAMP NOT NULL,
+            end_date TIMESTAMP NOT NULL,
+            base_salary DOUBLE PRECISION NOT NULL DEFAULT 0,
+            total_commissions DOUBLE PRECISION NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
 
-        CREATE TABLE IF NOT EXISTS commissions (
-          id SERIAL PRIMARY KEY,
-          order_id INTEGER NOT NULL UNIQUE,
-          order_name TEXT NOT NULL,
-          route_id INTEGER NOT NULL,
-          client_id INTEGER,
-          client_name TEXT,
-          client_type VARCHAR(50),
-          order_total DOUBLE PRECISION NOT NULL,
-          commission_amount DOUBLE PRECISION NOT NULL,
-          commission_rate DOUBLE PRECISION NOT NULL,
-          is_paid BOOLEAN NOT NULL DEFAULT FALSE,
-          is_liquidated BOOLEAN NOT NULL DEFAULT TRUE,
-          date_order TIMESTAMP NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-      `);
+          CREATE TABLE IF NOT EXISTS commissions (
+            id SERIAL PRIMARY KEY,
+            order_id INTEGER NOT NULL UNIQUE,
+            order_name TEXT NOT NULL,
+            route_id INTEGER NOT NULL,
+            client_id INTEGER,
+            client_name TEXT,
+            client_type VARCHAR(50),
+            order_total DOUBLE PRECISION NOT NULL,
+            commission_amount DOUBLE PRECISION NOT NULL,
+            commission_rate DOUBLE PRECISION NOT NULL,
+            is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+            is_liquidated BOOLEAN NOT NULL DEFAULT TRUE,
+            date_order TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
 
-      const res = await client.query(`SELECT data FROM app_state WHERE key = 'master_state' LIMIT 1;`);
-      if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+        const res = await client.query(`SELECT data FROM app_state WHERE key = 'master_state' LIMIT 1;`);
+        if (res.rows && res.rows.length > 0 && res.rows[0].data) {
+          try {
+            const dbState = JSON.parse(res.rows[0].data);
+            if (dbState && typeof dbState === 'object') {
+              _cachedState = dbState;
+              fs.writeFileSync(STORE_FILE, JSON.stringify(dbState, null, 2));
+              console.log("Master state restored from PostgreSQL database.");
+            }
+          } catch (parseErr) {
+            console.error("Error parsing master state from database:", parseErr);
+          }
+        } else {
+          const currentState = loadState();
+          await client.query(`
+            INSERT INTO app_state (key, data, updated_at)
+            VALUES ('master_state', $1, NOW())
+            ON CONFLICT (key) DO UPDATE
+            SET data = EXCLUDED.data, updated_at = NOW();
+          `, [JSON.stringify(currentState)]);
+          console.log("Master state initialized in PostgreSQL database.");
+        }
+      } finally {
+        client.release();
+      }
+    } catch (err: any) {
+      console.warn("PostgreSQL notice (using local storage fallback):", err.message);
+    }
+  } else {
+    console.log("No DATABASE_URL configured. Running with cloud/local persistence.");
+  }
+
+  // Google Cloud Firestore Integration (Automatic Zero-Cost Backup & Restore)
+  try {
+    const docRef = adminDb.collection('app_state').doc('master_state');
+    const docSnap = await docRef.get();
+    if (docSnap.exists) {
+      const dataObj = docSnap.data();
+      if (!_cachedState && dataObj && dataObj.data) {
         try {
-          const dbState = JSON.parse(res.rows[0].data);
-          if (dbState && typeof dbState === 'object') {
-            _cachedState = dbState;
-            fs.writeFileSync(STORE_FILE, JSON.stringify(dbState, null, 2));
-            console.log("Master state restored from PostgreSQL database.");
+          const fsState = JSON.parse(dataObj.data);
+          if (fsState && typeof fsState === 'object' && Array.isArray(fsState.clients) && fsState.clients.length > 0) {
+            _cachedState = fsState;
+            fs.writeFileSync(STORE_FILE, JSON.stringify(fsState, null, 2));
+            console.log("Master state restored from Google Cloud Firestore.");
           }
         } catch (parseErr) {
-          console.error("Error parsing master state from database:", parseErr);
+          console.error("Error parsing master state from Firestore:", parseErr);
         }
-      } else {
-        const currentState = loadState();
-        await client.query(`
-          INSERT INTO app_state (key, data, updated_at)
-          VALUES ('master_state', $1, NOW())
-          ON CONFLICT (key) DO UPDATE
-          SET data = EXCLUDED.data, updated_at = NOW();
-        `, [JSON.stringify(currentState)]);
-        console.log("Master state initialized in PostgreSQL database.");
       }
-    } finally {
-      client.release();
+    } else {
+      const currentState = loadState();
+      await docRef.set({
+        data: JSON.stringify(currentState),
+        updated_at: new Date().toISOString()
+      });
+      console.log("Master state initialized in Google Cloud Firestore.");
     }
-  } catch (err: any) {
-    console.warn("PostgreSQL notice (using local storage fallback):", err.message);
+  } catch (fsErr: any) {
+    console.warn("Google Cloud Firestore notice (continuing with local state):", fsErr.message);
   }
 }
 
@@ -230,6 +261,16 @@ function saveState(state: any) {
   } catch (e) {
     console.error("Error writing data_store.json", e);
   }
+
+  // Google Cloud Firestore persistence
+  try {
+    adminDb.collection('app_state').doc('master_state').set({
+      data: JSON.stringify(state),
+      updated_at: new Date().toISOString()
+    }).catch((fsErr: any) => {
+      // Non-blocking logging
+    });
+  } catch (fsErr: any) {}
 
   if (process.env.DATABASE_URL) {
     pool.query(`
