@@ -26,13 +26,60 @@ async function initPersistentDatabase() {
   try {
     const client = await pool.connect();
     try {
+      // Auto-create all required tables if they don't exist
       await client.query(`
         CREATE TABLE IF NOT EXISTS app_state (
           key TEXT PRIMARY KEY,
           data TEXT NOT NULL,
           updated_at TIMESTAMP DEFAULT NOW()
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+          id SERIAL PRIMARY KEY,
+          uid TEXT NOT NULL UNIQUE,
+          email TEXT NOT NULL,
+          role VARCHAR(50) DEFAULT 'user',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS gps_logs (
+          id SERIAL PRIMARY KEY,
+          route_id INTEGER NOT NULL,
+          lat DOUBLE PRECISION NOT NULL,
+          lng DOUBLE PRECISION NOT NULL,
+          timestamp TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS payrolls (
+          id SERIAL PRIMARY KEY,
+          route_id INTEGER NOT NULL,
+          route_name TEXT NOT NULL,
+          start_date TIMESTAMP NOT NULL,
+          end_date TIMESTAMP NOT NULL,
+          base_salary DOUBLE PRECISION NOT NULL DEFAULT 0,
+          total_commissions DOUBLE PRECISION NOT NULL DEFAULT 0,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS commissions (
+          id SERIAL PRIMARY KEY,
+          order_id INTEGER NOT NULL UNIQUE,
+          order_name TEXT NOT NULL,
+          route_id INTEGER NOT NULL,
+          client_id INTEGER,
+          client_name TEXT,
+          client_type VARCHAR(50),
+          order_total DOUBLE PRECISION NOT NULL,
+          commission_amount DOUBLE PRECISION NOT NULL,
+          commission_rate DOUBLE PRECISION NOT NULL,
+          is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+          is_liquidated BOOLEAN NOT NULL DEFAULT TRUE,
+          date_order TIMESTAMP NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
       `);
+
       const res = await client.query(`SELECT data FROM app_state WHERE key = 'master_state' LIMIT 1;`);
       if (res.rows && res.rows.length > 0 && res.rows[0].data) {
         try {
@@ -134,11 +181,18 @@ function loadState(): AppState {
   let state: any = _cachedState;
   if (!state) {
     state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
-    if (fs.existsSync(STORE_FILE)) {
-      try {
-        state = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8'));
-      } catch (e) {
-        console.error("Error loading state", e);
+    const candidates = [STORE_FILE, 'data_store.backup.json', 'backup_live_state.json'];
+    for (const f of candidates) {
+      if (fs.existsSync(f)) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(f, 'utf8'));
+          if (parsed && Array.isArray(parsed.clients) && parsed.clients.length > 0) {
+            state = parsed;
+            break;
+          }
+        } catch (e) {
+          console.error("Error loading candidate state from", f, e);
+        }
       }
     }
   }
@@ -172,6 +226,7 @@ function saveState(state: any) {
   _cachedState = state;
   try {
     fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2));
+    fs.writeFileSync('data_store.backup.json', JSON.stringify(state, null, 2));
   } catch (e) {
     console.error("Error writing data_store.json", e);
   }
