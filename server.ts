@@ -21,6 +21,27 @@ import { adminDb } from './src/lib/firebase-admin.ts';
 import { encryptPayload, decryptPayload, saveLocalEncryptedBackup } from './server/cryptoBackup.ts';
 import { uploadEncryptedBackupToDrive, startDriveBackupCron } from './server/googleDriveBackup.ts';
 
+const PAYROLLS_FILE = 'payrolls_store.json';
+
+export function loadLocalPayrolls(): any[] {
+  if (fs.existsSync(PAYROLLS_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(PAYROLLS_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Error reading payrolls_store.json:', e);
+    }
+  }
+  return [];
+}
+
+export function saveLocalPayrolls(records: any[]) {
+  try {
+    fs.writeFileSync(PAYROLLS_FILE, JSON.stringify(records, null, 2));
+  } catch (e) {
+    console.error('Error saving payrolls_store.json:', e);
+  }
+}
+
 async function initPersistentDatabase() {
   if (process.env.DATABASE_URL) {
     try {
@@ -305,7 +326,7 @@ async function startServer() {
     }
   });
 
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(String(process.env.PORT || 3000), 10);
 
   // Sync / Calculate Routes
   app.post('/api/sync', async (req, res) => {

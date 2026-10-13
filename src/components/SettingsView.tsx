@@ -17,6 +17,7 @@ import {
   Upload,
   Lock,
   Key,
+  FolderOpen,
 } from "lucide-react";
 import UsersManagement from "./UsersManagement";
 export default function SettingsView({
