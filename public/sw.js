@@ -1,19 +1,20 @@
 // Lácteos Trujillos Service Worker
-const CACHE_NAME = 'trujillos-rutas-v1';
+const CACHE_NAME = 'trujillos-rutas-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => {
+      return Promise.all(keys.map((key) => caches.delete(key)));
+    }).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let network handle dynamic API queries, fallback gracefully
-  if (event.request.url.includes('/api/')) {
-    return;
-  }
+  // Always fetch fresh network first
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
