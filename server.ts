@@ -264,6 +264,7 @@ function saveState(state: any) {
     console.error("Error writing data_store.json", e);
   }
 
+
   // Google Cloud Firestore persistence
   try {
     adminDb.collection('app_state').doc('master_state').set({
@@ -637,7 +638,14 @@ async function startServer() {
   app.get('/api/backup/export-encrypted', (req, res) => {
     const state = loadState();
     const passphrase = (req.query.passphrase as string) || undefined;
-    const encryptedData = encryptPayload(state, passphrase);
+    const bundle = {
+      version: 2,
+      state,
+      commissions: loadLocalCommissions(),
+      payrolls: loadLocalPayrolls(),
+      exportedAt: new Date().toISOString()
+    };
+    const encryptedData = encryptPayload(bundle, passphrase);
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="rutas_trujillos_cifrado_' + new Date().toISOString().slice(0, 10) + '.enc"');
     res.send(encryptedData);
@@ -650,12 +658,22 @@ async function startServer() {
       if (!encryptedData || typeof encryptedData !== 'string') {
         return res.status(400).json({ error: "Datos cifrados inválidos" });
       }
-      const restoredState = decryptPayload(encryptedData, passphrase);
-      if (!restoredState || !Array.isArray(restoredState.clients)) {
+      const restored = decryptPayload(encryptedData, passphrase);
+      let targetState = restored;
+      if (restored && restored.version === 2 && restored.state) {
+        targetState = restored.state;
+        if (Array.isArray(restored.commissions)) {
+          saveLocalCommissions(restored.commissions);
+        }
+        if (Array.isArray(restored.payrolls)) {
+          saveLocalPayrolls(restored.payrolls);
+        }
+      }
+      if (!targetState || !Array.isArray(targetState.clients)) {
         return res.status(400).json({ error: "El archivo no contiene un respaldo válido o la contraseña es incorrecta" });
       }
-      saveState(restoredState);
-      res.json({ success: true, state: restoredState });
+      saveState(targetState);
+      res.json({ success: true, state: targetState });
     } catch (e: any) {
       res.status(400).json({ error: "Error al descifrar: Contraseña incorrecta o archivo dañado" });
     }
@@ -851,10 +869,13 @@ async function startServer() {
     try {
       const role = await getUserRole(req.user!.uid);
       if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
-      const data = await db.select().from(payrolls).orderBy(desc(payrolls.startDate));
-      res.json(data);
+      try {
+        const data = await db.select().from(payrolls).orderBy(desc(payrolls.startDate));
+        if (data && data.length > 0) return res.json(data);
+      } catch (dbErr) {}
+      res.json(loadLocalPayrolls());
     } catch(e) {
-      res.status(500).json({ error: "Failed" });
+      res.json(loadLocalPayrolls());
     }
   });
 
@@ -862,7 +883,13 @@ async function startServer() {
     try {
        const role = await getUserRole(req.user!.uid);
        if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
-       await db.insert(payrolls).values(req.body);
+       try {
+         await db.insert(payrolls).values(req.body);
+       } catch (dbErr) {}
+       const local = loadLocalPayrolls();
+       const newRecord = { id: Date.now(), ...req.body, createdAt: new Date() };
+       local.unshift(newRecord);
+       saveLocalPayrolls(local);
        res.json({ success: true });
     } catch(e) {
        res.status(500).json({ error: "Failed" });
