@@ -40,23 +40,27 @@ export default function SettingsView({
   const [syncingDrive, setSyncingDrive] = useState(false);
   const [driveMsg, setDriveMsg] = useState("");
 
-  const handleSyncDriveNow = async () => {
+  const handleSyncDriveNow = () => {
     try {
       setSyncingDrive(true);
-      setDriveMsg("Subiendo respaldo cifrado a tu carpeta de Google Drive...");
-      const res = await apiFetch("/api/backup/sync-drive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDriveMsg("✅ " + data.message);
-        setTimeout(() => setDriveMsg(""), 6000);
-      } else {
-        setDriveMsg("⚠️ " + (data.message || "Error al conectar con Google Drive"));
-      }
+      setDriveMsg("Generando respaldo cifrado con tus 4 candados de seguridad...");
+      const url = encryptedPass ? `/api/backup/export-encrypted?passphrase=${encodeURIComponent(encryptedPass)}` : '/api/backup/export-encrypted';
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `rutas_trujillos_${new Date().toISOString().slice(0, 10)}.enc`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => {
+        window.open('https://drive.google.com/drive/folders/1mT33WRGF8yEecTOdBwcbApFFmMYJ3gCj', '_blank');
+      }, 700);
+      
+      setDriveMsg("✅ ¡Respaldo cifrado descargado y carpeta de Google Drive abierta! Solo arrastra o suelta el archivo en tu carpeta.");
+      setTimeout(() => setDriveMsg(""), 10000);
     } catch (err: any) {
-      setDriveMsg("Error al sincronizar: " + err.message);
+      setDriveMsg("Error al generar respaldo: " + err.message);
     } finally {
       setSyncingDrive(false);
     }
@@ -636,8 +640,8 @@ export default function SettingsView({
                 disabled={syncingDrive}
                 className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm"
               >
-                <Database className="w-3.5 h-3.5" />
-                {syncingDrive ? 'Subiendo a Drive...' : 'Sincronizar a Google Drive Ahora'}
+                <Download className="w-3.5 h-3.5" />
+                {syncingDrive ? 'Generando...' : 'Generar y Guardar en Google Drive'}
               </button>
 
               <a
