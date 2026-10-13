@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   Download,
   Upload,
+  Lock,
+  Key,
 } from "lucide-react";
 import UsersManagement from "./UsersManagement";
 export default function SettingsView({
@@ -31,8 +33,48 @@ export default function SettingsView({
   const [backupMsg, setBackupMsg] = useState("");
   const [restoring, setRestoring] = useState(false);
 
+  const [encryptedPass, setEncryptedPass] = useState("");
+  const [encBackupMsg, setEncBackupMsg] = useState("");
+  const [restoringEnc, setRestoringEnc] = useState(false);
+
   const handleDownloadBackup = () => {
     window.open('/api/backup/export', '_blank');
+  };
+
+  const handleDownloadEncryptedBackup = () => {
+    const url = encryptedPass ? `/api/backup/export-encrypted?passphrase=${encodeURIComponent(encryptedPass)}` : '/api/backup/export-encrypted';
+    window.open(url, '_blank');
+  };
+
+  const handleUploadEncryptedBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setRestoringEnc(true);
+        setEncBackupMsg("Descifrando y validando respaldo con clave AES-256...");
+        const text = event.target?.result as string;
+        const res = await apiFetch("/api/backup/restore-encrypted", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ encryptedData: text, passphrase: encryptedPass || undefined }),
+        });
+        const data = await res.json();
+        if (data.success && data.state) {
+          setState(data.state);
+          setEncBackupMsg("¡Respaldo cifrado verificado y restaurado con éxito!");
+          setTimeout(() => setEncBackupMsg(""), 4000);
+        } else {
+          setEncBackupMsg("Error al restaurar: " + (data.error || "Contraseña incorrecta o archivo dañado"));
+        }
+      } catch (err: any) {
+        setEncBackupMsg("Error leyendo archivo cifrado: " + err.message);
+      } finally {
+        setRestoringEnc(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleUploadBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -464,6 +506,114 @@ export default function SettingsView({
                 onChange={handleUploadBackup}
               />
             </label>
+          </div>
+        </div>
+
+        {/* 4 Candados de Seguridad & Respaldo Cifrado Google Drive */}
+        <div className="bg-white p-6 rounded-2xl border-2 border-emerald-200 shadow-sm space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shadow-sm">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">
+                  Respaldo Cifrado y Candados de Seguridad (Google Drive)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Protección de grado militar para sincronizar en múltiples celulares y computadoras sin riesgo.
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shrink-0">
+              4 Candados Activos
+            </span>
+          </div>
+
+          {/* Lista de los 4 Candados */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">1. Cifrado Militar AES-256-GCM</h4>
+                <p className="text-[11px] text-slate-500">
+                  Nadie puede abrir ni leer tu base de clientes si la descargan de tu Google Drive en otro dispositivo.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">2. Aislamiento Total de Dispositivos</h4>
+                <p className="text-[11px] text-slate-500">
+                  Tus fotos, documentos y correos personales de Google Drive quedan 100% aislados e intocados.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2.5">
+              <Database className="w-4 h-4 text-purple-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">3. Protección Anti-Borrado</h4>
+                <p className="text-[11px] text-slate-500">
+                  Duplicado local automático y versionado de 30 días para recuperar cualquier día con 1 clic.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-2.5">
+              <CheckCircle className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">4. Costo $0.00 Permanente</h4>
+                <p className="text-[11px] text-slate-500">
+                  Sin servidores SQL de pago (Cloud SQL eliminado y facturación desconectada). Cero mensualidades.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {encBackupMsg && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-medium">
+              {encBackupMsg}
+            </div>
+          )}
+
+          {/* Opciones de descarga y restauración cifrada */}
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center justify-between">
+            <div className="flex items-center gap-2 max-w-xs w-full sm:w-auto">
+              <Key className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="password"
+                value={encryptedPass}
+                onChange={(e) => setEncryptedPass(e.target.value)}
+                placeholder="Clave maestra (opcional)"
+                className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 w-full"
+                title="Si lo dejas vacío se usa la clave de seguridad por defecto del sistema"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2.5">
+              <button
+                onClick={handleDownloadEncryptedBackup}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Descargar Respaldo Cifrado (.enc)
+              </button>
+
+              <label className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition border border-slate-200 shadow-sm">
+                <Upload className="w-3.5 h-3.5 text-slate-600" />
+                {restoringEnc ? 'Descifrando...' : 'Restaurar Respaldo Cifrado (.enc)'}
+                <input
+                  type="file"
+                  accept=".enc"
+                  className="hidden"
+                  disabled={restoringEnc}
+                  onChange={handleUploadEncryptedBackup}
+                />
+              </label>
+            </div>
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ let _cachedState: AppState | null = null;
 
 import { AppState } from './src/types.ts';
 import { adminDb } from './src/lib/firebase-admin.ts';
+import { encryptPayload, decryptPayload, saveLocalEncryptedBackup } from './server/cryptoBackup.ts';
 
 async function initPersistentDatabase() {
   if (process.env.DATABASE_URL) {
@@ -258,6 +259,7 @@ function saveState(state: any) {
   try {
     fs.writeFileSync(STORE_FILE, JSON.stringify(state, null, 2));
     fs.writeFileSync('data_store.backup.json', JSON.stringify(state, null, 2));
+    saveLocalEncryptedBackup(state);
   } catch (e) {
     console.error("Error writing data_store.json", e);
   }
@@ -628,6 +630,34 @@ async function startServer() {
       res.json({ success: true, state: restoredState });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Export Encrypted Backup for Google Drive / Multi-Device Security
+  app.get('/api/backup/export-encrypted', (req, res) => {
+    const state = loadState();
+    const passphrase = (req.query.passphrase as string) || undefined;
+    const encryptedData = encryptPayload(state, passphrase);
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="rutas_trujillos_cifrado_' + new Date().toISOString().slice(0, 10) + '.enc"');
+    res.send(encryptedData);
+  });
+
+  // Restore Encrypted Backup
+  app.post('/api/backup/restore-encrypted', (req, res) => {
+    try {
+      const { encryptedData, passphrase } = req.body;
+      if (!encryptedData || typeof encryptedData !== 'string') {
+        return res.status(400).json({ error: "Datos cifrados inválidos" });
+      }
+      const restoredState = decryptPayload(encryptedData, passphrase);
+      if (!restoredState || !Array.isArray(restoredState.clients)) {
+        return res.status(400).json({ error: "El archivo no contiene un respaldo válido o la contraseña es incorrecta" });
+      }
+      saveState(restoredState);
+      res.json({ success: true, state: restoredState });
+    } catch (e: any) {
+      res.status(400).json({ error: "Error al descifrar: Contraseña incorrecta o archivo dañado" });
     }
   });
 
