@@ -36,6 +36,31 @@ export default function SettingsView({
   const [encryptedPass, setEncryptedPass] = useState("");
   const [encBackupMsg, setEncBackupMsg] = useState("");
   const [restoringEnc, setRestoringEnc] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [driveMsg, setDriveMsg] = useState("");
+
+  const handleSyncDriveNow = async () => {
+    try {
+      setSyncingDrive(true);
+      setDriveMsg("Subiendo respaldo cifrado a tu carpeta de Google Drive...");
+      const res = await apiFetch("/api/backup/sync-drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDriveMsg("✅ " + data.message);
+        setTimeout(() => setDriveMsg(""), 6000);
+      } else {
+        setDriveMsg("⚠️ " + (data.message || "Error al conectar con Google Drive"));
+      }
+    } catch (err: any) {
+      setDriveMsg("Error al sincronizar: " + err.message);
+    } finally {
+      setSyncingDrive(false);
+    }
+  };
+
 
   const handleDownloadBackup = () => {
     window.open('/api/backup/export', '_blank');
@@ -578,6 +603,53 @@ export default function SettingsView({
               {encBackupMsg}
             </div>
           )}
+
+          
+          {/* Carpeta Oficial de Google Drive Conectada */}
+          <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs font-bold text-slate-800">
+                  Carpeta Oficial de Google Drive Vinculada
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Respaldo programado diario a las 23:59 hrs (Rotación de 15 días)
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-600">
+              ID de Carpeta: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-[10px]">1mT33WRGF8yEecTOdBwcbApFFmMYJ3gCj</code>
+            </p>
+
+            {driveMsg && (
+              <div className="p-2.5 bg-white border border-emerald-300 rounded-lg text-xs font-medium text-emerald-800">
+                {driveMsg}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={handleSyncDriveNow}
+                disabled={syncingDrive}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                <Database className="w-3.5 h-3.5" />
+                {syncingDrive ? 'Subiendo a Drive...' : 'Sincronizar a Google Drive Ahora'}
+              </button>
+
+              <a
+                href="https://drive.google.com/drive/folders/1mT33WRGF8yEecTOdBwcbApFFmMYJ3gCj"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition shadow-sm"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                Ver Carpeta en Drive
+              </a>
+            </div>
+          </div>
 
           {/* Opciones de descarga y restauración cifrada */}
           <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-3 items-center justify-between">

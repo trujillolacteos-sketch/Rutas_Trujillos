@@ -19,6 +19,7 @@ let _cachedState: AppState | null = null;
 import { AppState } from './src/types.ts';
 import { adminDb } from './src/lib/firebase-admin.ts';
 import { encryptPayload, decryptPayload, saveLocalEncryptedBackup } from './server/cryptoBackup.ts';
+import { uploadEncryptedBackupToDrive, startDriveBackupCron } from './server/googleDriveBackup.ts';
 
 async function initPersistentDatabase() {
   if (process.env.DATABASE_URL) {
@@ -292,6 +293,7 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   await initPersistentDatabase();
   startOdooSync();
+  startDriveBackupCron(loadState, loadLocalPayrolls);
 
   // Automated Cron for Sunday and Monday 3:00 AM
   cron.schedule('0 3 * * 0,1', async () => {
@@ -652,6 +654,18 @@ async function startServer() {
   });
 
   // Restore Encrypted Backup
+    // Immediate sync to Google Drive
+  app.post('/api/backup/sync-drive', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      const result = await uploadEncryptedBackupToDrive(loadState, loadLocalPayrolls);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
   app.post('/api/backup/restore-encrypted', (req, res) => {
     try {
       const { encryptedData, passphrase } = req.body;
