@@ -297,14 +297,14 @@ function App() {
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-800">
         <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} className="bg-white p-7 rounded-3xl shadow-xl border border-slate-200 max-w-md w-full">
           {/* Logo & Header */}
-          <div className="flex justify-center mb-4">
-            <div className={`w-14 h-14 text-white rounded-2xl flex items-center justify-center shadow-lg transition-all ${
-              loginMode === 'produccion' ? 'bg-emerald-600' : 'bg-blue-600'
-            }`}>
-              {loginMode === 'produccion' ? <Factory className="w-7 h-7" /> : <Route className="w-7 h-7" />}
-            </div>
+          <div className="flex flex-col items-center justify-center mb-3">
+            <img 
+              src="/logo-trujillos.png" 
+              alt="Lácteos Trujillos" 
+              className="h-16 w-auto object-contain drop-shadow-sm mb-1" 
+            />
           </div>
-          <h1 className="text-xl font-bold text-center mb-0.5 tracking-tight text-slate-900">Lácteos Trujillos</h1>
+          <h1 className="text-base font-bold text-center mb-0.5 tracking-tight text-slate-900">Distribución & Planta</h1>
           <p className="text-xs text-slate-500 text-center mb-4">
             {loginMode === 'produccion'
               ? 'Supervisión de Planta, Producción y Compras'
@@ -445,15 +445,17 @@ function App() {
       {/* Sidebar / Topbar */}
       <div className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col z-20 sticky top-0 md:h-screen shadow-sm md:shadow-none">
         {/* Header with App Title & Mobile User Switcher */}
-        <div className="p-4 md:p-6 flex items-center justify-between border-b md:border-b-0 border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 md:w-10 md:h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm">
-              <Route className="w-5 h-5" />
-            </div>
+        <div className="p-3 md:p-5 flex items-center justify-between border-b md:border-b-0 border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <img 
+              src="/logo-trujillos.png" 
+              alt="Lácteos Trujillos" 
+              className="h-10 w-auto object-contain shrink-0" 
+            />
             <div>
-              <h1 className="font-bold text-slate-900 leading-tight text-base md:text-lg">OdooRoute</h1>
+              <h1 className="font-bold text-slate-900 leading-tight text-sm md:text-base">Lácteos Trujillos</h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-[10px] md:text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                <span className="text-[10px] md:text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                   {user?.username || role}
                 </span>
                 <span className="text-[10px] text-slate-400 font-semibold uppercase hidden md:inline">
