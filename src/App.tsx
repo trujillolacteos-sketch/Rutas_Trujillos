@@ -233,19 +233,35 @@ function App() {
   };
 
   const isAdmin = user?.role === 'admin';
-  const isSupervisor = user?.role === 'supervisor';
+  const isGerencia = user?.role === 'gerencia';
+  const isSupervisorRutas = user?.role === 'supervisor_rutas' || user?.role === 'supervisor';
+  const isSupervisorProduccion = user?.role === 'supervisor_produccion';
+  const isProduccion = user?.role === 'produccion';
   const isOperator = user?.role === 'operator';
+
+  const canAccessRoutes = isAdmin || isGerencia || isSupervisorRutas;
+  const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion;
   const role = user?.role || 'user';
+
+  useEffect(() => {
+    if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
+      setActiveTab('production');
+    }
+  }, [user?.role]);
 
   if (!user) {
     const availableUsers = (state?.users && state.users.length > 0) ? state.users : [
       { id: 1, username: 'Administrador', role: 'admin' },
-      { id: 2, username: 'Supervisor', role: 'supervisor' },
-      { id: 3, username: 'Ruta 1', role: 'operator' },
-      { id: 4, username: 'Ruta 2', role: 'operator' },
-      { id: 5, username: 'Ruta 3', role: 'operator' },
-      { id: 6, username: 'Ruta 4', role: 'operator' },
-      { id: 7, username: 'Ruta 5', role: 'operator' }
+      { id: 2, username: 'Gerencia', role: 'gerencia' },
+      { id: 3, username: 'Supervisor Rutas', role: 'supervisor_rutas' },
+      { id: 4, username: 'Supervisor Planta', role: 'supervisor_produccion' },
+      { id: 5, username: 'Operador Planta', role: 'produccion' },
+      { id: 6, username: 'Ruta 1', role: 'operator' },
+      { id: 7, username: 'Ruta 2', role: 'operator' },
+      { id: 8, username: 'Ruta 3', role: 'operator' },
+      { id: 9, username: 'Ruta 4', role: 'operator' },
+      { id: 10, username: 'Ruta 5', role: 'operator' }
     ];
 
     return (
@@ -359,23 +375,27 @@ function App() {
 
         {/* Tab Navigation with Clear Visible Labels on Both Mobile & Desktop */}
         <nav className="flex-1 px-3 md:px-4 py-2.5 md:py-2 flex md:flex-col gap-1.5 md:gap-1 overflow-x-auto md:overflow-visible no-scrollbar">
-          <button 
-            onClick={() => setActiveTab('dashboard')} 
-            className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-          >
-            <LayoutDashboard className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-            <span>Dashboard</span>
-          </button>
+          {canAccessRoutes && (
+            <button 
+              onClick={() => setActiveTab('dashboard')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <LayoutDashboard className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Dashboard</span>
+            </button>
+          )}
           
-          <button 
-            onClick={() => setActiveTab('planner')} 
-            className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'planner' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-          >
-            <Map className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-            <span>Planificador</span>
-          </button>
+          {(canAccessRoutes || isOperator) && (
+            <button 
+              onClick={() => setActiveTab('planner')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'planner' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <Map className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Planificador</span>
+            </button>
+          )}
 
-          {(isAdmin || isSupervisor) && (
+          {canAccessRoutes && (
             <>
               <button 
                 onClick={() => setActiveTab('clientes')} 
@@ -391,33 +411,40 @@ function App() {
                 <Clock className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                 <span>Histórico GPS</span>
               </button>
-              <button 
-                onClick={() => setActiveTab('production')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-              >
-                <Factory className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-                <span>Planta y Empaque</span>
-              </button>
             </>
           )}
 
-          <button 
-            onClick={() => setActiveTab('sales_reports')} 
-            className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sales_reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-          >
-            <BarChart3 className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-            <span>Reportes</span>
-          </button>
+          {canAccessProduction && (
+            <button 
+              onClick={() => setActiveTab('production')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <Factory className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Planta y Empaque</span>
+            </button>
+          )}
 
-          <button 
-            onClick={() => setActiveTab('commissions')} 
-            className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'commissions' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-          >
-            <DollarSign className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-            <span>Nómina y Comisiones</span>
-          </button>
+          {canAccessRoutes && (
+            <button 
+              onClick={() => setActiveTab('sales_reports')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sales_reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <BarChart3 className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Reportes</span>
+            </button>
+          )}
 
-          {(isAdmin || isSupervisor) && (
+          {(canAccessRoutes || isOperator) && (
+            <button 
+              onClick={() => setActiveTab('commissions')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'commissions' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <DollarSign className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Nómina y Comisiones</span>
+            </button>
+          )}
+
+          {canAccessRoutes && (
             <button 
               onClick={() => setActiveTab('alerts')} 
               className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'alerts' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
@@ -485,7 +512,7 @@ function App() {
               {activeTab === 'clientes' && <ClientsView state={state} setState={setState} />}
               {activeTab === 'reports' && (
                 <>
-                  {(isAdmin || isSupervisor) && (
+                  {canAccessRoutes && (
                     <LiveRouteMonitor state={state} setState={setState} />
                   )}
                   <ReportsView state={state} />
@@ -496,7 +523,7 @@ function App() {
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
-              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
+              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} canManageCosts={canManageCosts} />}
             </ErrorBoundary>
           )}
         </div>

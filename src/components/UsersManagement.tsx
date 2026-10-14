@@ -102,9 +102,12 @@ export default function UsersManagement({ state, setState }: { state: AppState, 
               value={editForm.role}
               onChange={e => setEditForm({...editForm, role: e.target.value})}
             >
-              <option value="admin">Administrador</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="operator">Ruta / Operador</option>
+              <option value="admin">Administrador (Total)</option>
+              <option value="gerencia">Gerencia (Rutas y Producción)</option>
+              <option value="supervisor_rutas">Supervisor de Rutas</option>
+              <option value="supervisor_produccion">Supervisor de Producción</option>
+              <option value="produccion">Operador de Producción (Solo Planta)</option>
+              <option value="operator">Ruta / Chofer</option>
             </select>
             <input 
               type="text" 
@@ -120,50 +123,74 @@ export default function UsersManagement({ state, setState }: { state: AppState, 
           </div>
         )}
 
-        {users.map((u: any) => (
-          <div key={u.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-wrap gap-2 items-center justify-between">
-            {editingId === u.id ? (
-              <>
-                <input 
-                  type="text" 
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
-                  value={editForm.username}
-                  onChange={e => setEditForm({...editForm, username: e.target.value})}
-                />
-                <select 
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
-                  value={editForm.role}
-                  onChange={e => setEditForm({...editForm, role: e.target.value})}
-                >
-                  <option value="admin">Administrador</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="operator">Ruta / Operador</option>
-                </select>
-                <input 
-                  type="text" 
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
-                  value={editForm.password}
-                  onChange={e => setEditForm({...editForm, password: e.target.value})}
-                />
-                <div className="flex gap-1">
-                  <button onClick={() => handleUpdate(u.id)} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"><Check className="w-4 h-4" /></button>
-                  <button onClick={() => setEditingId(null)} className="p-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300"><X className="w-4 h-4" /></button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex-1">
-                  <div className="font-semibold text-slate-900 text-sm">{u.username}</div>
-                  <div className="text-xs text-slate-500 capitalize">{u.role} • {u.password ? '••••••••' : 'Sin contraseña'}</div>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => startEdit(u)} className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => handleDelete(u.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg" disabled={u.role === 'admin' && users.filter((x: any) => x.role === 'admin').length === 1} title={u.role === 'admin' && users.filter((x: any) => x.role === 'admin').length === 1 ? 'No puedes eliminar el último administrador' : ''}><Trash2 className="w-4 h-4" /></button>
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+        {users.map((u: any) => {
+          const roleBadge = (r: string) => {
+            switch (r) {
+              case 'admin': return { label: 'Administrador', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+              case 'gerencia': return { label: 'Gerencia', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+              case 'supervisor_rutas':
+              case 'supervisor': return { label: 'Sup. Rutas', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+              case 'supervisor_produccion': return { label: 'Sup. Producción', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+              case 'produccion': return { label: 'Producción', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+              case 'operator': return { label: 'Chofer Ruta', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+              default: return { label: r, color: 'bg-slate-100 text-slate-700 border-slate-200' };
+            }
+          };
+          const badge = roleBadge(u.role);
+
+          return (
+            <div key={u.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex flex-wrap gap-2 items-center justify-between">
+              {editingId === u.id ? (
+                <>
+                  <input 
+                    type="text" 
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
+                    value={editForm.username}
+                    onChange={e => setEditForm({...editForm, username: e.target.value})}
+                  />
+                  <select 
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
+                    value={editForm.role}
+                    onChange={e => setEditForm({...editForm, role: e.target.value})}
+                  >
+                    <option value="admin">Administrador (Total)</option>
+                    <option value="gerencia">Gerencia (Rutas y Producción)</option>
+                    <option value="supervisor_rutas">Supervisor de Rutas</option>
+                    <option value="supervisor_produccion">Supervisor de Producción</option>
+                    <option value="produccion">Operador de Producción (Solo Planta)</option>
+                    <option value="operator">Ruta / Chofer</option>
+                  </select>
+                  <input 
+                    type="text" 
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-sm flex-1 min-w-[120px]"
+                    value={editForm.password}
+                    onChange={e => setEditForm({...editForm, password: e.target.value})}
+                  />
+                  <div className="flex gap-1">
+                    <button onClick={() => handleUpdate(u.id)} className="p-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => setEditingId(null)} className="p-1.5 bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300"><X className="w-4 h-4" /></button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-900 text-sm">{u.username}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.color}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">{u.password ? '••••••••' : 'Sin contraseña'}</div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => startEdit(u)} className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => handleDelete(u.id)} className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg" disabled={u.role === 'admin' && users.filter((x: any) => x.role === 'admin').length === 1} title={u.role === 'admin' && users.filter((x: any) => x.role === 'admin').length === 1 ? 'No puedes eliminar el último administrador' : ''}><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -29,7 +29,8 @@ import {
   loadLocalProduction,
   saveLocalProduction,
   loadLocalPackaging,
-  saveLocalPackaging
+  saveLocalPackaging,
+  updateProductionCosts
 } from './server/productionService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
@@ -749,7 +750,7 @@ async function startServer() {
   app.post('/api/commissions/sync', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
       
       await syncCommissions();
       res.json({ success: true });
@@ -795,7 +796,7 @@ async function startServer() {
   app.post('/api/commissions/:id/toggle-type', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
       
       const { id } = req.params;
       const { clientType, clientId } = req.body;
@@ -866,7 +867,7 @@ async function startServer() {
   app.post('/api/commissions/:id/liquidate', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
 
       const { id } = req.params;
 
@@ -896,7 +897,7 @@ async function startServer() {
   app.post('/api/commissions/:id/pay', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
 
       const { id } = req.params;
       const { isPaid } = req.body;
@@ -922,7 +923,7 @@ async function startServer() {
   app.get('/api/payrolls', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
       try {
         const data = await db.select().from(payrolls).orderBy(desc(payrolls.startDate));
         if (data && data.length > 0) return res.json(data);
@@ -936,7 +937,7 @@ async function startServer() {
   app.post('/api/payrolls', requireAuth, async (req: AuthRequest, res) => {
     try {
        const role = await getUserRole(req.user!.uid);
-       if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+       if (!['admin', 'gerencia', 'supervisor_rutas', 'supervisor'].includes(role)) return res.status(403).json({ error: "Forbidden" });
        try {
          await db.insert(payrolls).values(req.body);
        } catch (dbErr) {}
@@ -976,7 +977,8 @@ async function startServer() {
   app.post('/api/production/batch', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await createProductionBatch(req.body);
       res.json(result);
     } catch (err: any) {
@@ -987,8 +989,21 @@ async function startServer() {
   app.post('/api/production/packaging', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await createPackagingBatch(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/production/config/update-costs', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+      const result = await updateProductionCosts(req.body.ingredients);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

@@ -17,7 +17,12 @@ import {
   ArrowRight,
   TrendingUp,
   FileSpreadsheet,
-  Info
+  Info,
+  DollarSign,
+  Coins,
+  Save,
+  Filter,
+  X
 } from 'lucide-react';
 import { AppState } from '../types';
 
@@ -54,17 +59,20 @@ interface LotOption {
 export default function ProductionView({
   role,
   user,
-  state
+  state,
+  canManageCosts
 }: {
   role?: string;
   user?: { username: string; role: string };
   state: AppState;
+  canManageCosts?: boolean;
 }) {
   const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit?usp=sharing';
   const todayStr = new Date().toISOString().slice(0, 10);
+  const canEditCosts = canManageCosts ?? (role === 'admin' || role === 'gerencia' || role === 'supervisor_produccion');
 
   // Active Sub-Tab
-  const [subTab, setSubTab] = useState<'production' | 'packaging' | 'history' | 'inventory'>('production');
+  const [subTab, setSubTab] = useState<'production' | 'packaging' | 'history' | 'inventory' | 'costs'>('production');
 
   // Master Configuration
   const [config, setConfig] = useState<ProductionConfig>({ categories: [], ingredients: [], skus: [] });
@@ -116,6 +124,22 @@ export default function ProductionView({
   const [historySearch, setHistorySearch] = useState('');
   const [inventorySearch, setInventorySearch] = useState('');
 
+  // ==========================================
+  // TAB 5: COSTS & PACKAGING CATALOG STATE
+  // ==========================================
+  const [editableIngredients, setEditableIngredients] = useState<any[]>([]);
+  const [costSearch, setCostSearch] = useState('');
+  const [costFilter, setCostFilter] = useState<'all' | 'ingredients' | 'packaging'>('all');
+  const [savingCosts, setSavingCosts] = useState(false);
+  const [showAddCostModal, setShowAddCostModal] = useState(false);
+  const [newCostItem, setNewCostItem] = useState({
+    name: '',
+    unitCost: 0,
+    isIngredient: true,
+    provider: 'General',
+    empaquePresentation: '1'
+  });
+
   // Fetch initial master data
   const loadMasterConfig = async () => {
     try {
@@ -123,6 +147,7 @@ export default function ProductionView({
       const res = await apiFetch('/api/production/config');
       const data = await res.json();
       setConfig(data);
+      setEditableIngredients(data.ingredients || []);
       if (data.categories && data.categories.length > 0 && !prodCategory) {
         setProdCategory(data.categories[0]);
       }
@@ -131,6 +156,62 @@ export default function ProductionView({
     } finally {
       setLoadingConfig(false);
     }
+  };
+
+  const handleSaveCosts = async () => {
+    try {
+      setSavingCosts(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      const res = await apiFetch('/api/production/config/update-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredients: editableIngredients })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMessage(`¡Catálogo de ${data.count || editableIngredients.length} costos actualizado con éxito y sincronizado en Google Sheets!`);
+        await loadMasterConfig();
+      } else {
+        setErrorMessage(data.message || 'Error al actualizar catálogo de costos.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error de conexión.');
+    } finally {
+      setSavingCosts(false);
+    }
+  };
+
+  const handleAddNewCostItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCostItem.name.trim()) return;
+    const exists = editableIngredients.some(i => i.name.toLowerCase() === newCostItem.name.trim().toLowerCase());
+    if (exists) {
+      alert('Ya existe un insumo o empaque con este nombre en el catálogo.');
+      return;
+    }
+    const itemToAdd = {
+      name: newCostItem.name.trim(),
+      unitCost: Number(newCostItem.unitCost) || 0,
+      isIngredient: newCostItem.isIngredient,
+      applicableCategories: [],
+      provider: newCostItem.provider || 'General',
+      empaquePresentation: newCostItem.empaquePresentation || '1'
+    };
+    setEditableIngredients(prev => [itemToAdd, ...prev]);
+    setShowAddCostModal(false);
+    setNewCostItem({
+      name: '',
+      unitCost: 0,
+      isIngredient: true,
+      provider: 'General',
+      empaquePresentation: '1'
+    });
+  };
+
+  const handleDeleteCostItem = (name: string) => {
+    if (!window.confirm(`¿Estás seguro de quitar "${name}" del catálogo?`)) return;
+    setEditableIngredients(prev => prev.filter(i => i.name !== name));
   };
 
   const loadLots = async () => {
@@ -669,6 +750,20 @@ export default function ProductionView({
           <Database className="w-4 h-4" />
           <span>4. Inventario Odoo en Vivo</span>
         </button>
+
+        {canEditCosts && (
+          <button
+            onClick={() => setSubTab('costs')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all shrink-0 ${
+              subTab === 'costs'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100 bg-white border border-slate-200'
+            }`}
+          >
+            <Coins className="w-4 h-4" />
+            <span>5. Catálogo de Costos y Empaques</span>
+          </button>
+        )}
       </div>
 
       {/* ========================================================================= */}
@@ -1486,6 +1581,277 @@ export default function ProductionView({
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: CATÁLOGO DE COSTOS DE INSUMOS Y EMPAQUES */}
+      {/* ========================================================================= */}
+      {subTab === 'costs' && canEditCosts && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900">Catálogo de Costos de Insumos y Empaques</h3>
+                <span className="text-[11px] font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200">
+                  {editableIngredients.length} Items Registrados
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+                Modifica los costos unitarios de insumos, materiales de empaque y etiquetas. Al dar clic en <strong>Guardar y Actualizar Hoja Costos</strong>, se actualizará el sistema y se sobrescribirá la pestaña <code>Costos</code> en Google Sheets borrando el listado anterior.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddCostModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl transition-colors border border-blue-200"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Nuevo Insumo / Empaque</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveCosts}
+                disabled={savingCosts}
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md disabled:bg-emerald-400"
+              >
+                <Save className={`w-4 h-4 ${savingCosts ? 'animate-spin' : ''}`} />
+                <span>{savingCosts ? 'Actualizando Sheets...' : 'Guardar y Actualizar en Google Sheets'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter & Search Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-72">
+                <input
+                  type="text"
+                  placeholder="Buscar insumo, empaque o proveedor..."
+                  value={costSearch}
+                  onChange={e => setCostSearch(e.target.value)}
+                  className="w-full px-3 py-1.5 pl-8 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setCostFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  costFilter === 'all'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Todos ({editableIngredients.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCostFilter('ingredients')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  costFilter === 'ingredients'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Insumos Recetas ({editableIngredients.filter(i => i.isIngredient).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCostFilter('packaging')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  costFilter === 'packaging'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Empaques y Etiquetas ({editableIngredients.filter(i => !i.isIngredient).length})
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3.5">Nombre / Descripción</th>
+                    <th className="p-3.5">Tipo</th>
+                    <th className="p-3.5">Presentación Compra</th>
+                    <th className="p-3.5">Proveedor</th>
+                    <th className="p-3.5 text-right w-44">Costo Unitario Base ($)</th>
+                    <th className="p-3.5 text-center w-20">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {editableIngredients
+                    .filter(item => {
+                      if (costFilter === 'ingredients' && !item.isIngredient) return false;
+                      if (costFilter === 'packaging' && item.isIngredient) return false;
+                      if (!costSearch) return true;
+                      const q = costSearch.toLowerCase();
+                      return (
+                        (item.name || '').toLowerCase().includes(q) ||
+                        (item.provider || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((item, idx) => (
+                      <tr key={`${item.name}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="p-3.5 font-bold text-slate-900">{item.name}</td>
+                        <td className="p-3.5">
+                          {item.isIngredient ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              Materia Prima
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Empaque / Etiqueta
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-slate-600">{item.empaquePresentation || item.empaque || '1 unidad'}</td>
+                        <td className="p-3.5 text-slate-500">{item.provider || 'TASSA'}</td>
+                        <td className="p-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-slate-400 font-bold text-xs">$</span>
+                            <input
+                              type="number"
+                              step="0.0001"
+                              min="0"
+                              value={item.unitCost}
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setEditableIngredients(prev =>
+                                  prev.map(i => (i.name === item.name ? { ...i, unitCost: val } : i))
+                                );
+                              }}
+                              className="w-28 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 text-right focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCostItem(item.name)}
+                            className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition-colors"
+                            title="Eliminar de catálogo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modal for adding new item */}
+          {showAddCostModal && (
+            <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-base font-bold text-slate-900">Agregar Nuevo Insumo o Empaque</h4>
+                  <button
+                    onClick={() => setShowAddCostModal(false)}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddNewCostItem} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Nombre o Descripción</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Bolsa Pounch 8 X 10 o Sal Yodada"
+                      value={newCostItem.name}
+                      onChange={e => setNewCostItem({ ...newCostItem, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">Tipo</label>
+                      <select
+                        value={newCostItem.isIngredient ? 'ingredient' : 'packaging'}
+                        onChange={e => setNewCostItem({ ...newCostItem, isIngredient: e.target.value === 'ingredient' })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      >
+                        <option value="ingredient">Materia Prima / Insumo</option>
+                        <option value="packaging">Empaque / Etiqueta</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">Costo Unitario Base ($)</label>
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        required
+                        placeholder="0.00"
+                        value={newCostItem.unitCost || ''}
+                        onChange={e => setNewCostItem({ ...newCostItem, unitCost: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">Proveedor</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. TASSA o General"
+                        value={newCostItem.provider}
+                        onChange={e => setNewCostItem({ ...newCostItem, provider: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-600 block mb-1">Presentación Compra</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. 25 kg o 1000 pz"
+                        value={newCostItem.empaquePresentation}
+                        onChange={e => setNewCostItem({ ...newCostItem, empaquePresentation: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCostModal(false)}
+                      className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm"
+                    >
+                      Agregar al Catálogo
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

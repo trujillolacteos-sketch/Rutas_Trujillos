@@ -140,6 +140,56 @@ export function getProductionConfig(): any {
   return { categories: [], ingredients: [], skus: [] };
 }
 
+// Update Master Costs & Sync to Google Sheet 'Costos' tab
+export async function updateProductionCosts(updatedIngredients: any[]): Promise<{ success: boolean; message: string; count?: number }> {
+  try {
+    const config = getProductionConfig();
+    config.ingredients = updatedIngredients;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+
+    // Sincronizar con Google Sheets pestaña Costos (Borrar anterior y escribir nuevo)
+    const token = await getServiceAccountAccessToken();
+    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Costos!A2:E:clear`;
+    await fetch(clearUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const rows = updatedIngredients.map(ing => [
+      ing.name,
+      ing.empaquePresentation || ing.empaque || '1',
+      ing.empaqueCost ? `$${Number(ing.empaqueCost).toFixed(2)}` : (ing.unitCost ? `$${Number(ing.unitCost).toFixed(2)}` : ''),
+      ing.unitCost ? `$${Number(ing.unitCost).toFixed(2)}` : '$0.00',
+      ing.provider || ''
+    ]);
+
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Costos!A2:E?valueInputOption=USER_ENTERED`;
+    const writeRes = await fetch(writeUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: rows })
+    });
+
+    const writeData = await writeRes.json();
+    console.log('[Google Sheets] Pestaña Costos actualizada exitosamente:', writeData.updatedRows, 'renglones.');
+
+    return {
+      success: true,
+      message: `¡Catálogo de ${rows.length} costos actualizado con éxito y sincronizado en Google Sheets!`,
+      count: rows.length
+    };
+  } catch (err: any) {
+    console.error('Error updating production costs:', err);
+    return { success: false, message: err.message };
+  }
+}
+
 // 2. Local Storage for Production & Packaging
 export function loadLocalProduction(): ProductionBatch[] {
   if (fs.existsSync(PRODUCTION_STORE_FILE)) {
