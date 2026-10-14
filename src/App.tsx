@@ -494,23 +494,24 @@ function App() {
             </button>
           )}
 
+          {(canAccessRoutes || isOperator) && (
+            <button 
+              onClick={() => setActiveTab('clientes')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'clientes' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <Users className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Clientes</span>
+            </button>
+          )}
+
           {canAccessRoutes && (
-            <>
-              <button 
-                onClick={() => setActiveTab('clientes')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'clientes' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-              >
-                <Users className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-                <span>Clientes</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab('reports')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-              >
-                <Clock className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-                <span>Histórico GPS</span>
-              </button>
-            </>
+            <button 
+              onClick={() => setActiveTab('reports')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <Clock className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Histórico GPS</span>
+            </button>
           )}
 
           {canAccessProduction && (
@@ -533,7 +534,7 @@ function App() {
             </button>
           )}
 
-          {canAccessRoutes && (
+          {(canAccessRoutes || isOperator) && (
             <button 
               onClick={() => setActiveTab('sales_reports')} 
               className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sales_reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
@@ -618,7 +619,7 @@ function App() {
             <ErrorBoundary>
               {activeTab === 'dashboard' && <DashboardView state={state} role={role} />}
               {activeTab === 'planner' && <PlannerView state={state} role={role} user={user} setState={setState} />}
-              {activeTab === 'clientes' && <ClientsView state={state} setState={setState} />}
+              {activeTab === 'clientes' && <ClientsView state={state} setState={setState} role={role} user={user} />}
               {activeTab === 'reports' && (
                 <>
                   {canAccessRoutes && (

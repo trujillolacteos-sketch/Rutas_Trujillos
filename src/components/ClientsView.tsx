@@ -29,10 +29,20 @@ import {
 export default function ClientsView({
   state,
   setState,
+  role,
+  user
 }: {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  role?: string;
+  user?: { username: string; role: string };
 }) {
+  const isOperator = role === 'operator';
+  const operatorRoute = useMemo(() => {
+    if (!isOperator || !user) return null;
+    return (state.routes || []).find(r => r.name.toLowerCase() === user.username.toLowerCase());
+  }, [isOperator, user, state.routes]);
+
   const [activeTab, setActiveTab] = useState<
     "directorio" | "missing" | "duplicates" | "isolated"
   >("directorio");
@@ -70,6 +80,13 @@ export default function ClientsView({
 
   const filteredClients = useMemo(() => {
     let list = state.clients;
+
+    if (isOperator && operatorRoute) {
+      list = list.filter((c) => {
+        const rId = state.clientOverrides?.[c.id]?.permanentRouteId ?? state.clientOverrides?.[c.id]?.assignedRouteId ?? c.assignedRouteId;
+        return rId === operatorRoute.id;
+      });
+    }
 
     if (statusFilter === "valid")
       list = list.filter((c) => c.lat !== 0 && c.lng !== 0);
