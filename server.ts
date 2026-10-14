@@ -30,7 +30,10 @@ import {
   saveLocalProduction,
   loadLocalPackaging,
   saveLocalPackaging,
-  updateProductionCosts
+  updateProductionCosts,
+  loadLocalPurchases,
+  saveLocalPurchases,
+  recordPurchase
 } from './server/productionService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
@@ -276,6 +279,29 @@ function loadState(): AppState {
       { id: 6, username: 'Ruta 4', role: 'operator', password: 'Ruta4.1234' },
       { id: 7, username: 'Ruta 5', role: 'operator', password: 'Ruta5.1234' }
     ];
+    saveState(state);
+  }
+
+  // Ensure dedicated supervision and production accounts exist
+  const defaultAccounts = [
+    { username: 'Gerencia', role: 'gerencia', password: 'Gerencia.1234' },
+    { username: 'Supervisor Rutas', role: 'supervisor_rutas', password: 'Rutas.1234' },
+    { username: 'Supervisor Planta', role: 'supervisor_produccion', password: 'Planta.1234' },
+    { username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' }
+  ];
+
+  let usersUpdated = false;
+  defaultAccounts.forEach(acc => {
+    const exists = (state.users || []).some((u: any) =>
+      u.role === acc.role || u.username.toLowerCase() === acc.username.toLowerCase()
+    );
+    if (!exists) {
+      if (!state.users) state.users = [];
+      state.users.push({ id: Date.now() + Math.floor(Math.random() * 1000), ...acc });
+      usersUpdated = true;
+    }
+  });
+  if (usersUpdated) {
     saveState(state);
   }
 
@@ -674,12 +700,13 @@ async function startServer() {
     const state = loadState();
     const passphrase = (req.query.passphrase as string) || undefined;
     const bundle = {
-      version: 3,
+      version: 4,
       state,
       commissions: loadLocalCommissions(),
       payrolls: loadLocalPayrolls(),
       production: loadLocalProduction(),
       packaging: loadLocalPackaging(),
+      purchases: loadLocalPurchases(),
       exportedAt: new Date().toISOString()
     };
     const encryptedData = encryptPayload(bundle, passphrase);
@@ -709,7 +736,7 @@ async function startServer() {
       }
       const restored = decryptPayload(encryptedData, passphrase);
       let targetState = restored;
-      if (restored && (restored.version === 2 || restored.version === 3) && restored.state) {
+      if (restored && (restored.version === 2 || restored.version === 3 || restored.version === 4) && restored.state) {
         targetState = restored.state;
         if (Array.isArray(restored.commissions)) {
           saveLocalCommissions(restored.commissions);
@@ -722,6 +749,9 @@ async function startServer() {
         }
         if (Array.isArray(restored.packaging)) {
           saveLocalPackaging(restored.packaging);
+        }
+        if (Array.isArray(restored.purchases)) {
+          saveLocalPurchases(restored.purchases);
         }
       }
       if (!targetState || !Array.isArray(targetState.clients)) {
@@ -1027,6 +1057,26 @@ async function startServer() {
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/production/purchases', requireAuth, (req, res) => {
+    try {
+      res.json(loadLocalPurchases());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production/purchases', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+      const result = await recordPurchase(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 

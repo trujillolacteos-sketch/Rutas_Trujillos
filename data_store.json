@@ -19410,6 +19410,30 @@
       "role": "supervisor",
       "password": "Estela.1234",
       "id": 1790960667374
+    },
+    {
+      "id": 1791995755350,
+      "username": "Gerencia",
+      "role": "gerencia",
+      "password": "Gerencia.1234"
+    },
+    {
+      "id": 1791995755345,
+      "username": "Supervisor Rutas",
+      "role": "supervisor_rutas",
+      "password": "Rutas.1234"
+    },
+    {
+      "id": 1791995755306,
+      "username": "Supervisor Planta",
+      "role": "supervisor_produccion",
+      "password": "Planta.1234"
+    },
+    {
+      "id": 1791995755687,
+      "username": "Operador Planta",
+      "role": "produccion",
+      "password": "Produccion.1234"
     }
   ],
   "trackingLogs": [
@@ -19948,5 +19972,5 @@
   ],
   "lastWeekReset": "2026-10-12",
   "lastSync": "2026-10-12T00:11:44.183Z",
-  "stateVersion": 1791763904183
+  "stateVersion": 1791995755194
 }

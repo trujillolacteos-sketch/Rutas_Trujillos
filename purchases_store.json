@@ -1,0 +1,21 @@
+[
+  {
+    "id": "PUR-1791995839722",
+    "fechaCompra": "2026-10-14",
+    "fechaCaptura": "2026-10-14T16:37:19.722Z",
+    "folio": "TEST-01",
+    "itemNombre": "Azucar",
+    "isIngredient": true,
+    "proveedor": "TASSA",
+    "empaqueTipo": "Saco",
+    "empaquesCantidad": 2,
+    "contenidoPorEmpaque": 50,
+    "unidadBase": "kg",
+    "totalUnidadesBase": 100,
+    "costoTotal": 1680,
+    "costoPorEmpaque": 840,
+    "costoUnitarioBase": 16.8,
+    "costoAnteriorBase": 16.8,
+    "notas": "Compra de prueba inicial"
+  }
+]

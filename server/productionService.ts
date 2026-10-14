@@ -8,8 +8,28 @@ const KEY_FILE = 'google-drive-key.json';
 const CONFIG_FILE = 'server/productionConfig.json';
 const PRODUCTION_STORE_FILE = 'production_store.json';
 const PACKAGING_STORE_FILE = 'packaging_store.json';
+const PURCHASES_STORE_FILE = 'purchases_store.json';
 
 // Interfaces
+export interface PurchaseRecord {
+  id: string;
+  fechaCompra: string;
+  fechaCaptura: string;
+  folio?: string;
+  itemNombre: string;
+  isIngredient: boolean;
+  proveedor: string;
+  empaqueTipo: string;
+  empaquesCantidad: number;
+  contenidoPorEmpaque: number;
+  unidadBase: 'kg' | 'lt' | 'pz' | 'un' | string;
+  totalUnidadesBase: number;
+  costoTotal: number;
+  costoPorEmpaque: number;
+  costoUnitarioBase: number;
+  costoAnteriorBase?: number;
+  notas?: string;
+}
 export interface ProductionBatch {
   id: string;
   fechaProduccion: string;
@@ -222,6 +242,115 @@ export function saveLocalPackaging(records: PackagingBatch[]) {
     fs.writeFileSync(PACKAGING_STORE_FILE, JSON.stringify(records, null, 2), 'utf8');
   } catch (e) {
     console.error('Error saving packaging_store.json', e);
+  }
+}
+
+export function loadLocalPurchases(): PurchaseRecord[] {
+  if (fs.existsSync(PURCHASES_STORE_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(PURCHASES_STORE_FILE, 'utf8'));
+    } catch (e) {}
+  }
+  return [];
+}
+
+export function saveLocalPurchases(records: PurchaseRecord[]) {
+  try {
+    fs.writeFileSync(PURCHASES_STORE_FILE, JSON.stringify(records, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving purchases_store.json', e);
+  }
+}
+
+// Record Purchase, convert to Base Unit ($/kg, $/lt, $/pz, $/un), update config & Google Sheets
+export async function recordPurchase(data: {
+  fechaCompra: string;
+  folio?: string;
+  itemNombre: string;
+  isIngredient?: boolean;
+  proveedor?: string;
+  empaqueTipo: string;
+  empaquesCantidad: number;
+  contenidoPorEmpaque: number;
+  unidadBase: string;
+  costoTotal: number;
+  notas?: string;
+}): Promise<{ success: boolean; message: string; purchase?: PurchaseRecord }> {
+  try {
+    const empaquesCantidad = Number(data.empaquesCantidad) || 1;
+    const contenidoPorEmpaque = Number(data.contenidoPorEmpaque) || 1;
+    const totalUnidadesBase = empaquesCantidad * contenidoPorEmpaque;
+    const costoTotal = Number(data.costoTotal) || 0;
+    const costoPorEmpaque = empaquesCantidad > 0 ? costoTotal / empaquesCantidad : 0;
+    const costoUnitarioBase = totalUnidadesBase > 0 ? costoTotal / totalUnidadesBase : 0;
+
+    const config = getProductionConfig();
+    if (!config.ingredients) config.ingredients = [];
+
+    let existingItem = config.ingredients.find((i: any) =>
+      i.name.trim().toLowerCase() === data.itemNombre.trim().toLowerCase()
+    );
+
+    const costoAnteriorBase = existingItem ? (existingItem.unitCost || 0) : undefined;
+    const presentationStr = `${contenidoPorEmpaque} ${data.unidadBase} (${data.empaqueTipo})`;
+
+    if (existingItem) {
+      existingItem.unitCost = Number(costoUnitarioBase.toFixed(4));
+      existingItem.empaquePresentation = presentationStr;
+      existingItem.empaqueCost = Number(costoPorEmpaque.toFixed(2));
+      existingItem.baseUnit = data.unidadBase;
+      if (data.proveedor) existingItem.provider = data.proveedor;
+    } else {
+      const newItem = {
+        name: data.itemNombre.trim(),
+        unitCost: Number(costoUnitarioBase.toFixed(4)),
+        isIngredient: data.isIngredient ?? true,
+        applicableCategories: [],
+        provider: data.proveedor || 'General',
+        empaquePresentation: presentationStr,
+        empaqueCost: Number(costoPorEmpaque.toFixed(2)),
+        baseUnit: data.unidadBase
+      };
+      config.ingredients.unshift(newItem);
+    }
+
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+
+    const purchaseRecord: PurchaseRecord = {
+      id: `PUR-${Date.now()}`,
+      fechaCompra: data.fechaCompra,
+      fechaCaptura: new Date().toISOString(),
+      folio: data.folio || '',
+      itemNombre: data.itemNombre.trim(),
+      isIngredient: data.isIngredient ?? true,
+      proveedor: data.proveedor || 'General',
+      empaqueTipo: data.empaqueTipo,
+      empaquesCantidad,
+      contenidoPorEmpaque,
+      unidadBase: data.unidadBase,
+      totalUnidadesBase,
+      costoTotal,
+      costoPorEmpaque: Number(costoPorEmpaque.toFixed(2)),
+      costoUnitarioBase: Number(costoUnitarioBase.toFixed(4)),
+      costoAnteriorBase,
+      notas: data.notas || ''
+    };
+
+    const purchases = loadLocalPurchases();
+    purchases.unshift(purchaseRecord);
+    saveLocalPurchases(purchases);
+
+    // Sync all updated costs to Google Sheets 'Costos' tab (clear and write)
+    await updateProductionCosts(config.ingredients);
+
+    return {
+      success: true,
+      message: `¡Compra de "${data.itemNombre}" registrada con éxito! Desglose: ${totalUnidadesBase} ${data.unidadBase} a $${costoUnitarioBase.toFixed(2)}/${data.unidadBase}. Catálogo de Google Sheets actualizado.`,
+      purchase: purchaseRecord
+    };
+  } catch (err: any) {
+    console.error('Error in recordPurchase:', err);
+    return { success: false, message: err.message };
   }
 }
 

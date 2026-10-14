@@ -9,3 +9,6 @@ coverage/
 .antigravity/
 google-drive-key.json
 *.key.json
+*.enc
+*.backup.json
+

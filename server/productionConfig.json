@@ -47,7 +47,10 @@
       "applicableCategories": [
         "Jocoque"
       ],
-      "provider": "TASSA"
+      "provider": "TASSA",
+      "empaquePresentation": "50 kg (Saco)",
+      "empaqueCost": 840,
+      "baseUnit": "kg"
     },
     {
       "name": "Benzoato",

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory } from 'lucide-react';
+import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -18,6 +18,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { useAuth } from './hooks/useAuth';
 import CommissionsView from './components/CommissionsView';
 import ProductionView from './components/ProductionView';
+import PurchasesView from './components/PurchasesView';
 import { auth } from './lib/firebase';
 
 
@@ -39,7 +40,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'purchases'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -241,17 +242,30 @@ function App() {
 
   const canAccessRoutes = isAdmin || isGerencia || isSupervisorRutas;
   const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion;
   const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion;
   const role = user?.role || 'user';
 
+  const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'all'>('rutas');
+
   useEffect(() => {
+    const preferred = localStorage.getItem('preferred_view');
+    if (preferred === 'production' && canAccessProduction) {
+      setActiveTab('production');
+      localStorage.removeItem('preferred_view');
+      return;
+    }
     if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
       setActiveTab('production');
+    } else if (user?.role === 'supervisor_rutas' || user?.role === 'supervisor') {
+      setActiveTab('dashboard');
+    } else if (user?.role === 'operator') {
+      setActiveTab('planner');
     }
   }, [user?.role]);
 
   if (!user) {
-    const availableUsers = (state?.users && state.users.length > 0) ? state.users : [
+    const rawUsers = (state?.users && state.users.length > 0) ? state.users : [
       { id: 1, username: 'Administrador', role: 'admin' },
       { id: 2, username: 'Gerencia', role: 'gerencia' },
       { id: 3, username: 'Supervisor Rutas', role: 'supervisor_rutas' },
@@ -264,29 +278,95 @@ function App() {
       { id: 10, username: 'Ruta 5', role: 'operator' }
     ];
 
+    const availableUsers = rawUsers.filter((u: any) => {
+      if (loginMode === 'rutas') {
+        return ['supervisor_rutas', 'supervisor', 'operator', 'gerencia', 'admin'].includes(u.role);
+      }
+      if (loginMode === 'produccion') {
+        return ['supervisor_produccion', 'produccion', 'gerencia', 'admin'].includes(u.role);
+      }
+      if (loginMode === 'gerencia') {
+        return ['gerencia', 'admin'].includes(u.role);
+      }
+      return true;
+    });
+
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans text-slate-800">
-        <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 max-w-sm w-full">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg transform rotate-2">
-              <Route className="w-8 h-8" />
+        <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} className="bg-white p-7 rounded-3xl shadow-xl border border-slate-200 max-w-md w-full">
+          {/* Logo & Header */}
+          <div className="flex justify-center mb-4">
+            <div className={`w-14 h-14 text-white rounded-2xl flex items-center justify-center shadow-lg transition-all ${
+              loginMode === 'produccion' ? 'bg-emerald-600' : 'bg-blue-600'
+            }`}>
+              {loginMode === 'produccion' ? <Factory className="w-7 h-7" /> : <Route className="w-7 h-7" />}
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center mb-1 tracking-tight text-slate-900">Lácteos Trujillos</h1>
-          <p className="text-sm text-slate-500 text-center mb-6">Control de Rutas y Distribución</p>
+          <h1 className="text-xl font-bold text-center mb-0.5 tracking-tight text-slate-900">Lácteos Trujillos</h1>
+          <p className="text-xs text-slate-500 text-center mb-4">
+            {loginMode === 'produccion'
+              ? 'Supervisión de Planta, Producción y Compras'
+              : loginMode === 'gerencia'
+              ? 'Panel de Gerencia y Dirección General'
+              : 'Supervisión de Rutas y Choferes'}
+          </p>
+
+          {/* Area Selector Tabs */}
+          <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl mb-4 text-[11px] font-bold">
+            <button
+              type="button"
+              onClick={() => { setLoginMode('rutas'); setLoginForm({ username: '', password: '' }); }}
+              className={`py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                loginMode === 'rutas' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Route className="w-3 h-3 shrink-0" />
+              <span>Rutas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('produccion'); setLoginForm({ username: '', password: '' }); }}
+              className={`py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                loginMode === 'produccion' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Factory className="w-3 h-3 shrink-0" />
+              <span>Planta</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('gerencia'); setLoginForm({ username: '', password: '' }); }}
+              className={`py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                loginMode === 'gerencia' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Gerencia</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('all'); setLoginForm({ username: '', password: '' }); }}
+              className={`py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                loginMode === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Todos</span>
+            </button>
+          </div>
           
-          <form onSubmit={handleLogin} className="space-y-4 mb-6">
+          <form onSubmit={handleLogin} className="space-y-3.5 mb-5">
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Usuario / Ruta</label>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
+                Usuario / Perfil
+              </label>
               <select 
                 value={loginForm.username} 
                 onChange={e => {
                   setLoginForm({...loginForm, username: e.target.value});
                   setLoginError('');
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 text-xs"
               >
-                <option value="">-- Selecciona tu usuario o ruta --</option>
+                <option value="">-- Selecciona tu usuario o rol --</option>
                 {availableUsers.map((u: any) => (
                   <option key={u.id || u.username} value={u.username}>
                     {u.username} ({u.role})
@@ -295,7 +375,7 @@ function App() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Contraseña</label>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Contraseña</label>
               <input 
                 type="password"
                 value={loginForm.password}
@@ -303,35 +383,54 @@ function App() {
                   setLoginForm({...loginForm, password: e.target.value});
                   setLoginError('');
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-700 text-xs"
                 placeholder="Ingresa tu contraseña"
               />
             </div>
             {loginError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-medium text-center">
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs font-medium text-center">
                 {loginError}
               </div>
             )}
             <button 
               type="submit" 
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-xl font-bold transition-all shadow-md hover:shadow-lg"
+              className={`w-full py-3 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-lg active:scale-[0.98] text-xs ${
+                loginMode === 'produccion' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
               Iniciar Sesión
             </button>
           </form>
 
-          <div className="relative mb-6">
+          <div className="relative mb-4">
              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div>
-             <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-slate-400 font-medium uppercase tracking-wider">O con cuenta Google</span></div>
+             <div className="relative flex justify-center text-xs"><span className="bg-white px-3 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Supervisión con Google</span></div>
           </div>
 
-          <div className="space-y-4 text-center">
+          {/* Dual Clear Supervision Buttons */}
+          <div className="space-y-2 text-center">
             <button 
               type="button" 
-              onClick={login} 
-              className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-sm"
+              onClick={() => {
+                localStorage.setItem('preferred_view', 'dashboard');
+                login();
+              }} 
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-xs"
             >
-               Supervisión (Google)
+              <Route className="w-3.5 h-3.5 text-blue-400" />
+              <span>Supervisión de Rutas (Google)</span>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => {
+                localStorage.setItem('preferred_view', 'production');
+                login();
+              }} 
+              className="w-full py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-xs"
+            >
+              <Factory className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Supervisión de Producción (Google)</span>
             </button>
           </div>
         </motion.div>
@@ -421,6 +520,16 @@ function App() {
             >
               <Factory className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
               <span>Planta y Empaque</span>
+            </button>
+          )}
+
+          {canAccessPurchases && (
+            <button 
+              onClick={() => setActiveTab('purchases')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'purchases' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <ShoppingCart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Compras e Insumos</span>
             </button>
           )}
 
@@ -523,7 +632,8 @@ function App() {
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
-              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} canManageCosts={canManageCosts} />}
+              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
+              {activeTab === 'purchases' && canAccessPurchases && <PurchasesView role={role} user={user} state={state} />}
             </ErrorBoundary>
           )}
         </div>
