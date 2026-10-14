@@ -102,8 +102,8 @@ function getServiceAccountAccessToken(): Promise<string> {
   });
 }
 
-// Append Row to Google Sheet
-async function appendRowToSheet(sheetName: string, rowValues: any[]) {
+// Append Rows to Google Sheet
+async function appendRowsToSheet(sheetName: string, rows: any[][]) {
   try {
     const token = await getServiceAccountAccessToken();
     const encodedSheet = encodeURIComponent(sheetName);
@@ -116,12 +116,12 @@ async function appendRowToSheet(sheetName: string, rowValues: any[]) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        values: [rowValues]
+        values: rows
       })
     });
     const data: any = await res.json();
     if (data.updates) {
-      console.log(`[Google Sheets] Renglón insertado con éxito en ${sheetName}.`);
+      console.log(`[Google Sheets] ${rows.length} renglón(es) insertado(s) con éxito en ${sheetName}.`);
     } else {
       console.warn(`[Google Sheets] Advertencia al insertar en ${sheetName}:`, data);
     }
@@ -323,7 +323,7 @@ export async function createProductionBatch(data: {
       costoPorKg,
       ajusteCrema > 0 ? ajusteCrema : ''
     ];
-    appendRowToSheet('Producción', rowForSheet).catch(console.error);
+    await appendRowsToSheet('Producción', [rowForSheet]);
 
     return {
       success: true,
@@ -490,31 +490,29 @@ export async function createPackagingBatch(data: {
     saveLocalPackaging(local);
 
     // 2. Enviar a Google Sheet cada renglón empacado
-    items.forEach(item => {
-      const row = [
-        data.fechaProduccion,
-        data.fechaEmpaque,
-        fechaCaptura,
-        data.categoria,
-        data.lote,
-        item.producto,
-        item.peso,
-        item.piezas,
-        item.kg,
-        infoLote.costoPorKg,
-        item.costoBase,
-        item.costoAdicional,
-        item.costoEmpaque,
-        item.costoEtiqueta,
-        item.costoTotal,
-        item.costoPieza,
-        infoLote.kgTotal,
-        item.kg,
-        `${item.aprovechamientoLinea.toFixed(2)}%`,
-        `${aprovechamientoTotal.toFixed(2)}%`
-      ];
-      appendRowToSheet('Empaque', row).catch(console.error);
-    });
+    const rowsForSheet = items.map(item => [
+      data.fechaProduccion,
+      data.fechaEmpaque,
+      fechaCaptura,
+      data.categoria,
+      data.lote,
+      item.producto,
+      item.peso,
+      item.piezas,
+      item.kg,
+      infoLote.costoPorKg,
+      item.costoBase,
+      item.costoAdicional,
+      item.costoEmpaque,
+      item.costoEtiqueta,
+      item.costoTotal,
+      item.costoPieza,
+      infoLote.kgTotal,
+      item.kg,
+      `${item.aprovechamientoLinea.toFixed(2)}%`,
+      `${aprovechamientoTotal.toFixed(2)}%`
+    ]);
+    await appendRowsToSheet('Empaque', rowsForSheet);
 
     return {
       success: true,

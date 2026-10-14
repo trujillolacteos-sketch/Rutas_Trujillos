@@ -1,0 +1,52 @@
+[
+  {
+    "id": "prod_1791986911923",
+    "fechaProduccion": "2026-10-14",
+    "fechaCaptura": "2026-10-14",
+    "categoria": "All / Quesos / Panela",
+    "lote": "pane141026-02",
+    "kgTotal": 100,
+    "costoTotal": 21.75,
+    "costoPorKg": 0.2175,
+    "ajusteCrema": 0,
+    "registrosInsumos": [
+      {
+        "nombre": "Leche entera",
+        "cantidad": 800,
+        "costoUnitario": 0,
+        "costoTotal": 0
+      },
+      {
+        "nombre": "Sal Refinada",
+        "cantidad": 2.5,
+        "costoUnitario": 8.7,
+        "costoTotal": 21.75
+      }
+    ]
+  },
+  {
+    "id": "prod_1791986461926",
+    "fechaProduccion": "2026-10-14",
+    "fechaCaptura": "2026-10-14",
+    "categoria": "All / Quesos / Panela",
+    "lote": "pane141026-01",
+    "kgTotal": 100,
+    "costoTotal": 21.75,
+    "costoPorKg": 0.2175,
+    "ajusteCrema": 0,
+    "registrosInsumos": [
+      {
+        "nombre": "Leche entera",
+        "cantidad": 800,
+        "costoUnitario": 0,
+        "costoTotal": 0
+      },
+      {
+        "nombre": "Sal Refinada",
+        "cantidad": 2.5,
+        "costoUnitario": 8.7,
+        "costoTotal": 21.75
+      }
+    ]
+  }
+]

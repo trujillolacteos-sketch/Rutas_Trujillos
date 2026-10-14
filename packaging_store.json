@@ -1,0 +1,86 @@
+[
+  {
+    "id": "pack_1791986912936",
+    "fechaProduccion": "2026-10-14",
+    "fechaEmpaque": "2026-10-14",
+    "fechaCaptura": "2026-10-14",
+    "categoria": "All / Quesos / Panela",
+    "lote": "pane141026-02",
+    "loteKgTotal": 100,
+    "kgCapturados": 99,
+    "aprovechamientoTotal": 99,
+    "items": [
+      {
+        "producto": "Queso Panela 1 kg",
+        "display": "Queso Panela 1 kg",
+        "peso": 1,
+        "piezas": 50,
+        "kg": 50,
+        "costoBase": 10.875,
+        "costoAdicional": 0,
+        "costoEmpaque": 176.5,
+        "costoEtiqueta": 0,
+        "costoTotal": 187.375,
+        "costoPieza": 3.7475,
+        "aprovechamientoLinea": 50
+      },
+      {
+        "producto": "Queso Panela 500 g",
+        "display": "Queso Panela 500 g",
+        "peso": 0.5,
+        "piezas": 98,
+        "kg": 49,
+        "costoBase": 10.6575,
+        "costoAdicional": 0,
+        "costoEmpaque": 198.93999999999997,
+        "costoEtiqueta": 0,
+        "costoTotal": 209.59749999999997,
+        "costoPieza": 2.1387499999999995,
+        "aprovechamientoLinea": 49
+      }
+    ],
+    "adicionalesKg": {}
+  },
+  {
+    "id": "pack_1791986461974",
+    "fechaProduccion": "2026-10-14",
+    "fechaEmpaque": "2026-10-14",
+    "fechaCaptura": "2026-10-14",
+    "categoria": "All / Quesos / Panela",
+    "lote": "pane141026-01",
+    "loteKgTotal": 100,
+    "kgCapturados": 99,
+    "aprovechamientoTotal": 99,
+    "items": [
+      {
+        "producto": "Queso Panela 1 kg",
+        "display": "Queso Panela 1 kg",
+        "peso": 1,
+        "piezas": 50,
+        "kg": 50,
+        "costoBase": 10.875,
+        "costoAdicional": 0,
+        "costoEmpaque": 176.5,
+        "costoEtiqueta": 0,
+        "costoTotal": 187.375,
+        "costoPieza": 3.7475,
+        "aprovechamientoLinea": 50
+      },
+      {
+        "producto": "Queso Panela 500 g",
+        "display": "Queso Panela 500 g",
+        "peso": 0.5,
+        "piezas": 98,
+        "kg": 49,
+        "costoBase": 10.6575,
+        "costoAdicional": 0,
+        "costoEmpaque": 198.93999999999997,
+        "costoEtiqueta": 0,
+        "costoTotal": 209.59749999999997,
+        "costoPieza": 2.1387499999999995,
+        "aprovechamientoLinea": 49
+      }
+    ],
+    "adicionalesKg": {}
+  }
+]
