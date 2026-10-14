@@ -16,8 +16,55 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c;
 }
 
-export default function DashboardView({ state, role }: { state: AppState, role: string }) {
+export default function DashboardView({ 
+  state, 
+  role, 
+  user 
+}: { 
+  state: AppState; 
+  role?: string; 
+  user?: { username: string; role: string }; 
+}) {
   const [commissions, setCommissions] = useState<any[]>([]);
+
+  const isOperator = role === 'operator';
+  const operatorRoute = React.useMemo(() => {
+    if (!isOperator || !user) return null;
+    return (state.routes || []).find(r => r.name.toLowerCase() === user.username.toLowerCase());
+  }, [isOperator, user, state.routes]);
+
+  const effectiveVisits = React.useMemo(() => {
+    if (isOperator && operatorRoute) {
+      return (state.visits || []).filter(v => v.routeId === operatorRoute.id);
+    }
+    return state.visits || [];
+  }, [isOperator, operatorRoute, state.visits]);
+
+  const effectiveRoutes = React.useMemo(() => {
+    if (isOperator && operatorRoute) {
+      return (state.routes || []).filter(r => r.id === operatorRoute.id);
+    }
+    return state.routes || [];
+  }, [isOperator, operatorRoute, state.routes]);
+
+  const routeClientIds = React.useMemo(() => {
+    if (isOperator && operatorRoute) {
+      return new Set(effectiveVisits.map(v => v.clientId));
+    }
+    return null;
+  }, [isOperator, operatorRoute, effectiveVisits]);
+
+  const effectiveClients = React.useMemo(() => {
+    if (routeClientIds) {
+      return (state.clients || []).filter(c => 
+        routeClientIds.has(c.id) || 
+        c.assignedRouteId === operatorRoute?.id || 
+        c.permanentRouteId === operatorRoute?.id
+      );
+    }
+    return state.clients || [];
+  }, [routeClientIds, state.clients, operatorRoute]);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const headers: Record<string, string> = {};
@@ -29,10 +76,22 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
       })
       .catch(e => { if (e.message !== 'Failed to fetch') console.error(e) });
   }, []);
+
+  const effectiveCommissions = React.useMemo(() => {
+    if (!Array.isArray(commissions)) return [];
+    if (isOperator && operatorRoute) {
+      return commissions.filter(c => 
+        c.routeId === operatorRoute.id || 
+        (c.routeName && c.routeName.toLowerCase() === operatorRoute.name.toLowerCase())
+      );
+    }
+    return commissions;
+  }, [isOperator, operatorRoute, commissions]);
+
   // Stats calculations
-  const totalVisits = state.visits.length;
-  const completedVisits = state.visits.filter(v => v.status === 'SURTIDO' || v.status === 'VISITADO').length;
-  const pendingVisits = state.visits.filter(v => v.status === 'PENDIENTE').length;
+  const totalVisits = effectiveVisits.length;
+  const completedVisits = effectiveVisits.filter(v => v.status === 'SURTIDO' || v.status === 'VISITADO').length;
+  const pendingVisits = effectiveVisits.filter(v => v.status === 'PENDIENTE').length;
   
   const getWeekNumber = (d: string | Date | number) => {
     if (!d) return 0;
@@ -49,10 +108,10 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
   };
 
   const weeklySalesData = React.useMemo(() => {
-    if (!commissions || commissions.length === 0) return [];
+    if (!effectiveCommissions || effectiveCommissions.length === 0) return [];
     
     const weeklyTotals: Record<string, number> = {};
-    commissions.forEach(c => {
+    effectiveCommissions.forEach(c => {
        const week = `Semana ${getWeekNumber(c.dateOrder)}`;
        if (!weeklyTotals[week]) weeklyTotals[week] = 0;
        weeklyTotals[week] += c.orderTotal;
@@ -65,7 +124,7 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
        name: w,
        Ventas: Math.round(weeklyTotals[w])
     }));
-  }, [commissions]);
+  }, [effectiveCommissions]);
 
   const currentWeekNumber = getWeekNumber(new Date());
 
@@ -76,18 +135,18 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
       const total = sliceWeeks.reduce((acc, w) => acc + w.Ventas, 0);
       return Math.round(total / (sliceWeeks.length || 1));
     }
-    return Math.round(state.clients.reduce((acc, c) => acc + (c.salesVolume || 0), 0) / 14);
-  }, [weeklySalesData, state.clients, currentWeekNumber]);
+    return Math.round(effectiveClients.reduce((acc, c) => acc + (c.salesVolume || 0), 0) / 14);
+  }, [weeklySalesData, effectiveClients, currentWeekNumber]);
 
   const actualSalesThisWeek = React.useMemo(() => {
-    if (commissions && commissions.length > 0) {
-      const thisWeekOrders = commissions.filter(c => getWeekNumber(c.dateOrder) === currentWeekNumber);
+    if (effectiveCommissions && effectiveCommissions.length > 0) {
+      const thisWeekOrders = effectiveCommissions.filter(c => getWeekNumber(c.dateOrder) === currentWeekNumber);
       if (thisWeekOrders.length > 0) {
         return thisWeekOrders.reduce((acc, c) => acc + (c.orderTotal || 0), 0);
       }
     }
-    return state.clients.filter(c => c.boughtThisWeek).reduce((acc, c) => acc + (c.salesVolume || 0) / 14, 0);
-  }, [commissions, state.clients, currentWeekNumber]);
+    return effectiveClients.filter(c => c.boughtThisWeek).reduce((acc, c) => acc + (c.salesVolume || 0) / 14, 0);
+  }, [effectiveCommissions, effectiveClients, currentWeekNumber]);
 
   const salesData = [
     {
@@ -103,7 +162,7 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
   ];
 
   const efficiencyData = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"].map(day => {
-    const dayVisits = state.visits.filter(v => v.day === day);
+    const dayVisits = effectiveVisits.filter(v => v.day === day);
     const scheduled = dayVisits.length;
     const completed = dayVisits.filter(v => v.status === 'SURTIDO' || v.status === 'VISITADO').length;
     return {
@@ -116,9 +175,8 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
 
   const VEHICLE_CAPACITY = 25000;
   
-  
-  const routeDistances = state.routes.map(route => {
-    const visits = state.visits.filter(v => v.routeId === route.id);
+  const routeDistances = effectiveRoutes.map(route => {
+    const visits = effectiveVisits.filter(v => v.routeId === route.id);
     let totalDist = 0;
     if (visits.length > 1) {
       for (let i = 0; i < visits.length - 1; i++) {
@@ -150,8 +208,8 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
     fill: r.ineficiencia > inefficiencyThreshold ? '#ef4444' : '#3b82f6'
   }));
 
-  const routeMetrics = state.routes.map(route => {
-    const visits = state.visits.filter(v => v.routeId === route.id);
+  const routeMetrics = effectiveRoutes.map(route => {
+    const visits = effectiveVisits.filter(v => v.routeId === route.id);
     const pending = visits.filter(v => v.status === 'PENDIENTE').length;
     const load = visits.reduce((acc, visit) => {
       const client = state.clients.find(c => c.id === visit.clientId);
@@ -172,18 +230,16 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
 
   const COLORS = ['#10b981', '#f43f5e'];
 
-
-
   const routeDayDetails = [];
   const routeDayChartData = [];
   const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-  const routeNames = state.routes.map(r => r.name);
+  const routeNames = effectiveRoutes.map(r => r.name);
   const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16'];
   
   DAYS.forEach(day => {
     const dayData = { day };
-    state.routes.forEach(route => {
-      const visits = state.visits.filter(v => v.routeId === route.id && v.day === day);
+    effectiveRoutes.forEach(route => {
+      const visits = effectiveVisits.filter(v => v.routeId === route.id && v.day === day);
       if (visits.length > 0) {
         let totalDist = 0;
         for (let i = 0; i < visits.length - 1; i++) {
@@ -210,12 +266,25 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
   });
 
   return (
-
-
     <div className="space-y-6">
-      <header>
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard de Rendimiento</h2>
-        <p className="text-slate-500 text-sm mt-1">Estadísticas y proyecciones de rutas</p>
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+              {isOperator ? `Dashboard de Rendimiento — ${operatorRoute?.name || user?.username || 'Mi Ruta'}` : 'Dashboard de Rendimiento'}
+            </h2>
+            {isOperator && (
+              <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">
+                {operatorRoute?.name || user?.username || 'Mi Ruta'}
+              </span>
+            )}
+          </div>
+          <p className="text-slate-500 text-sm mt-1">
+            {isOperator 
+              ? `Estadísticas exclusivas de entregas, avance semanal y eficiencia para ${operatorRoute?.name || user?.username || 'tu ruta'}` 
+              : 'Estadísticas globales, avance operativo y proyecciones de rutas'}
+          </p>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -276,8 +345,8 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
           <div className="w-full lg:w-1/3 space-y-4">
             <h3 className="font-bold text-slate-800 text-lg">Resumen Operativo</h3>
             <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <span className="text-slate-600 font-medium text-sm">Rutas Activas</span>
-              <span className="text-xl font-bold text-slate-900">{activeRoutesCount}</span>
+              <span className="text-slate-600 font-medium text-sm">{isOperator ? 'Tu Ruta' : 'Rutas Activas'}</span>
+              <span className="text-xl font-bold text-slate-900">{isOperator ? (operatorRoute?.name || user?.username || 'Asignada') : activeRoutesCount}</span>
             </div>
             <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
               <span className="text-slate-600 font-medium text-sm">Capacidad Media Usada</span>
@@ -308,7 +377,7 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <h3 className="font-bold text-slate-800 mb-4 flex justify-between items-center">
-             <span>Ventas Reales por Semana (Odoo - 100 Días)</span>
+             <span>{isOperator ? `Ventas Reales por Semana (${operatorRoute?.name || user?.username || 'Mi Ruta'})` : 'Ventas Reales por Semana (Odoo - 100 Días)'}</span>
              <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md">Ventas Hechas</span>
           </h3>
           <div className="h-[250px] w-full">
@@ -380,7 +449,7 @@ export default function DashboardView({ state, role }: { state: AppState, role: 
           <h3 className="font-bold text-slate-800 mb-4">Progreso por Día y Ruta</h3>
           <div className="space-y-6">
             {["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"].map(day => {
-              const dayVisits = state.visits.filter(v => v.day === day);
+              const dayVisits = effectiveVisits.filter(v => v.day === day);
               if (dayVisits.length === 0) return null;
               const completed = dayVisits.filter(v => v.status !== 'PENDIENTE').length;
               const pct = Math.round((completed / dayVisits.length) * 100);
