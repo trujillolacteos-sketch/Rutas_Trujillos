@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import cron from 'node-cron';
 import { loadLocalCommissions } from './odooSync.ts';
 import { encryptPayload } from './cryptoBackup.ts';
+import { loadLocalProduction, loadLocalPackaging } from './productionService.ts';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '1mT33WRGF8yEecTOdBwcbApFFmMYJ3gCj';
 const KEY_FILE = 'google-drive-key.json';
@@ -99,10 +100,12 @@ export async function uploadEncryptedBackupToDrive(loadStateFn: () => any, loadP
     const payrolls = loadPayrollsFn();
 
     const bundle = {
-      version: 2,
+      version: 3,
       state,
       commissions,
       payrolls,
+      production: loadLocalProduction(),
+      packaging: loadLocalPackaging(),
       timestamp: new Date().toISOString()
     };
 

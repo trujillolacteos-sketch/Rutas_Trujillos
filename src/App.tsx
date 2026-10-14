@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3 } from 'lucide-react';
+import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -17,6 +17,7 @@ import LiveRouteMonitor from './components/LiveRouteMonitor';
 import ErrorBoundary from './ErrorBoundary';
 import { useAuth } from './hooks/useAuth';
 import CommissionsView from './components/CommissionsView';
+import ProductionView from './components/ProductionView';
 import { auth } from './lib/firebase';
 
 
@@ -38,7 +39,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -390,6 +391,13 @@ function App() {
                 <Clock className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
                 <span>Histórico GPS</span>
               </button>
+              <button 
+                onClick={() => setActiveTab('production')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+              >
+                <Factory className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+                <span>Planta y Empaque</span>
+              </button>
             </>
           )}
 
@@ -488,6 +496,7 @@ function App() {
               {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
+              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
             </ErrorBoundary>
           )}
         </div>

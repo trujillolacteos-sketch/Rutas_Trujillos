@@ -20,6 +20,17 @@ import { AppState } from './src/types.ts';
 import { adminDb } from './src/lib/firebase-admin.ts';
 import { encryptPayload, decryptPayload, saveLocalEncryptedBackup } from './server/cryptoBackup.ts';
 import { uploadEncryptedBackupToDrive, startDriveBackupCron } from './server/googleDriveBackup.ts';
+import {
+  getProductionConfig,
+  getAvailableProductionLots,
+  createProductionBatch,
+  createPackagingBatch,
+  getOdooLiveInventory,
+  loadLocalProduction,
+  saveLocalProduction,
+  loadLocalPackaging,
+  saveLocalPackaging
+} from './server/productionService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
 
@@ -662,10 +673,12 @@ async function startServer() {
     const state = loadState();
     const passphrase = (req.query.passphrase as string) || undefined;
     const bundle = {
-      version: 2,
+      version: 3,
       state,
       commissions: loadLocalCommissions(),
       payrolls: loadLocalPayrolls(),
+      production: loadLocalProduction(),
+      packaging: loadLocalPackaging(),
       exportedAt: new Date().toISOString()
     };
     const encryptedData = encryptPayload(bundle, passphrase);
@@ -695,13 +708,19 @@ async function startServer() {
       }
       const restored = decryptPayload(encryptedData, passphrase);
       let targetState = restored;
-      if (restored && restored.version === 2 && restored.state) {
+      if (restored && (restored.version === 2 || restored.version === 3) && restored.state) {
         targetState = restored.state;
         if (Array.isArray(restored.commissions)) {
           saveLocalCommissions(restored.commissions);
         }
         if (Array.isArray(restored.payrolls)) {
           saveLocalPayrolls(restored.payrolls);
+        }
+        if (Array.isArray(restored.production)) {
+          saveLocalProduction(restored.production);
+        }
+        if (Array.isArray(restored.packaging)) {
+          saveLocalPackaging(restored.packaging);
         }
       }
       if (!targetState || !Array.isArray(targetState.clients)) {
@@ -928,6 +947,71 @@ async function startServer() {
        res.json({ success: true });
     } catch(e) {
        res.status(500).json({ error: "Failed" });
+    }
+  });
+
+  // ==========================================
+  // PRODUCTION & PACKAGING MODULE ROUTES
+  // ==========================================
+
+  app.get('/api/production/config', requireAuth, (req, res) => {
+    try {
+      const cfg = getProductionConfig();
+      res.json(cfg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/production/lots', requireAuth, (req, res) => {
+    try {
+      const categoria = req.query.categoria as string | undefined;
+      const lots = getAvailableProductionLots(categoria);
+      res.json(lots);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production/batch', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      const result = await createProductionBatch(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post('/api/production/packaging', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (role !== 'admin' && role !== 'supervisor') return res.status(403).json({ error: "Forbidden" });
+      const result = await createPackagingBatch(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.get('/api/production/inventory', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const inv = await getOdooLiveInventory();
+      res.json(inv);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/production/history', requireAuth, (req, res) => {
+    try {
+      res.json({
+        production: loadLocalProduction(),
+        packaging: loadLocalPackaging()
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

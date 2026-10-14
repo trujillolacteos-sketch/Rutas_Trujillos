@@ -1,0 +1,1882 @@
+{
+  "categories": [
+    "Crema Natural",
+    "Crema bolsa",
+    "All / Crema",
+    "All / Quesos / Adobera",
+    "All / Quesos / Asadero",
+    "All / Quesos / Cheddar",
+    "All / Quesos / Chihuahua",
+    "All / Quesos / Fresco",
+    "Jocoque",
+    "All / Quesos / Manchego",
+    "Mantequilla",
+    "All / Quesos / Mozzarella",
+    "All / Quesos / Oaxaca",
+    "All / Quesos / Panela",
+    "All/Pizzero",
+    "All / Quesos / Ranchero"
+  ],
+  "ingredients": [
+    {
+      "name": "Ácido Cítrico",
+      "unitCost": 26.5,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Asadero",
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All/Pizzero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "ANTIESPUMANTE MAL C 5003",
+      "unitCost": 250.56,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Azucar",
+      "unitCost": 16.8,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Benzoato",
+      "unitCost": 55.68,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Asadero",
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "bolsa 1 kg",
+      "unitCost": 0.29,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "De todo un poco"
+    },
+    {
+      "name": "bolsa 250 gr",
+      "unitCost": 0.19,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "De todo un poco"
+    },
+    {
+      "name": "bolsa 500 gr",
+      "unitCost": 0.23,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "De todo un poco"
+    },
+    {
+      "name": "Bolsa Pounch 10 X 12 TERMOENCOGIBLE",
+      "unitCost": 2.01,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "Suintar packagin "
+    },
+    {
+      "name": "Bolsa Pounch 6 X 8 TERMOENCOGIBLE",
+      "unitCost": 0.81,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "Suintar packagin "
+    },
+    {
+      "name": "Bolsa Pounch 6.5 X 9 TERMOENCOGIBLE",
+      "unitCost": 1.71,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "Suintar packagin "
+    },
+    {
+      "name": "Chipotle",
+      "unitCost": 150,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Citrato",
+      "unitCost": 32,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Asadero",
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All/Pizzero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Cloruro de Calcio",
+      "unitCost": 24.5,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Color",
+      "unitCost": 537.08,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "Mantequilla"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Crema natural",
+      "unitCost": 55,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "Crema bolsa",
+        "All / Crema",
+        "Jocoque",
+        "Mantequilla"
+      ],
+      "provider": "Producción propia"
+    },
+    {
+      "name": "Crema natural compra",
+      "unitCost": 52,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Cuajo",
+      "unitCost": 232,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Cubeta 4 kg",
+      "unitCost": 13,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "CULTIVO BGP93",
+      "unitCost": 436.16,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Cheddar",
+        "Jocoque",
+        "All / Quesos / Manchego"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO LRB DE 5D",
+      "unitCost": 217.15,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO MOS062E",
+      "unitCost": 4361.6,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO MOT096FE",
+      "unitCost": 405.07,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Cheddar",
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO MOTCO92EE",
+      "unitCost": 4361.6,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Chihuahua",
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO MS064CP",
+      "unitCost": 4050.72,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Manchego"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO MWO32N",
+      "unitCost": 4361.6,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO Y450B",
+      "unitCost": 4361.6,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO Y456B DE 10UC",
+      "unitCost": 25.28,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "CULTIVO Y480F",
+      "unitCost": 87.23,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "Dioxido",
+      "unitCost": 77.72,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "Crema bolsa",
+        "All / Crema",
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Especies Finas Hierbas",
+      "unitCost": 25,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Estabilizador",
+      "unitCost": 262,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Sejuma "
+    },
+    {
+      "name": "Gomas",
+      "unitCost": 160,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Grasa vegetal",
+      "unitCost": 36.85,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Asadero",
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "Sabino"
+    },
+    {
+      "name": "Habanero",
+      "unitCost": 200,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Cheddar",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Jalapeño",
+      "unitCost": 51.28,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "All / Quesos / Cheddar",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Jamón",
+      "unitCost": 120,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Leche descremada",
+      "unitCost": 9.2,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Leche en Polvo",
+      "unitCost": 90.75,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "SEJUMA / TAASA"
+    },
+    {
+      "name": "leche entera",
+      "unitCost": 9.2,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "Crema bolsa",
+        "All / Crema",
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "leche pipa",
+      "unitCost": 7.5,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "Crema bolsa",
+        "All / Crema",
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Mermelada Cereales",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Chabacano",
+      "unitCost": 69,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Ciruela Pasa",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada durazno",
+      "unitCost": 52.75,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Frambuesa",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Fresa",
+      "unitCost": 56.75,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Frutos Rojos",
+      "unitCost": 64.75,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Frutos Tropicales",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Guayaba",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Higo",
+      "unitCost": 370,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Mango",
+      "unitCost": 49.25,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Manzana",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Manzana/canela",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada maracuya",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada mora azul",
+      "unitCost": 67.25,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada natural",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Nuez",
+      "unitCost": 74.75,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Piña Coco",
+      "unitCost": 0,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Mermelada Zarzamora",
+      "unitCost": 60,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Mermeladas"
+    },
+    {
+      "name": "Nitrato",
+      "unitCost": 37,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Panela"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Natamicina",
+      "unitCost": 4837.2,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Núcleo",
+      "unitCost": 50.83,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Panela",
+      "unitCost": 60,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Pasta",
+      "unitCost": 70.81,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Sabino (grasa)",
+      "unitCost": 8.82,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "Crema bolsa",
+        "All / Crema",
+        "Jocoque"
+      ],
+      "provider": "Sabino"
+    },
+    {
+      "name": "Sabor a queso",
+      "unitCost": 225,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All/Pizzero"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Sal Refinada",
+      "unitCost": 8.7,
+      "isIngredient": true,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "All / Quesos / Asadero",
+        "All / Quesos / Cheddar",
+        "All / Quesos / Chihuahua",
+        "All / Quesos / Fresco",
+        "Jocoque",
+        "All / Quesos / Manchego",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero",
+        "All / Quesos / Ranchero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Sorbato",
+      "unitCost": 88,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Crema Natural",
+        "All / Quesos / Asadero",
+        "Jocoque",
+        "All / Quesos / Mozzarella",
+        "All / Quesos / Oaxaca",
+        "All / Quesos / Panela",
+        "All/Pizzero"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "tapa 185 gr",
+      "unitCost": 0.62,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "tapa 465",
+      "unitCost": 1.1,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "tsc dioxi",
+      "unitCost": 25.5,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "vaso 185 gr",
+      "unitCost": 2.03,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "vaso 465",
+      "unitCost": 2.13,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "vitafilm 20 cm",
+      "unitCost": 2.03,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "vitafilm 35 cm",
+      "unitCost": 3.53,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Mix Yog",
+      "unitCost": 160.96,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Mozzarella insumo",
+      "unitCost": 69,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Pizzero insumo",
+      "unitCost": 55.84,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "YogurtMix",
+      "unitCost": 3101.61,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "TSC-Emulsivo TASA",
+      "unitCost": 8961,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "TASSA"
+    },
+    {
+      "name": "Cultivo",
+      "unitCost": 0,
+      "isIngredient": true,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "RAFF"
+    },
+    {
+      "name": "Vaso con tapa 1 ltr",
+      "unitCost": 10.48,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "vaso con tapa 1/2 lt",
+      "unitCost": 4.24,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "vaso con tapa 1/4 lt",
+      "unitCost": 2.47,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "General"
+    },
+    {
+      "name": "Etiqueta Crema Bolsa 1 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Bolsa 500 g",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Bolsa 250 g",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema bolsa",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Natural 185 gr",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Natural 465 gr",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Crema Natural",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Bolsa 5 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Bolsa 18 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Crema Natural 18 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera Natural 2 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera Natural 1 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera De Morral Añejo 1 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera Con Chipotle 500 g",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera Natural 500 g",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera Con Jalapeño Y Jamon 1 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    },
+    {
+      "name": "Etiqueta Queso Adobera De Fundir 1 kg",
+      "unitCost": 0.34,
+      "isIngredient": false,
+      "applicableCategories": [
+        "All / Quesos / Adobera",
+        "Jocoque"
+      ],
+      "provider": "Etiquetas"
+    }
+  ],
+  "skus": [
+    {
+      "product": "Besos de Nuez",
+      "category": "Abarrotes/Dulces",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Besos de Nuez"
+    },
+    {
+      "product": "Campechanas Grande",
+      "category": "Galletas",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Campechanas Grande"
+    },
+    {
+      "product": "Cecina Cuerno Bravo Habanero",
+      "category": "Abarrotes / Cecina",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Cecina Cuerno Bravo Habanero"
+    },
+    {
+      "product": "Chimirica Chipotle 250 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Chimirica Chipotle 250 mL"
+    },
+    {
+      "product": "Chimirica de Arbol 250 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Chimirica de Arbol 250 mL"
+    },
+    {
+      "product": "Clemente Aderezo Cesar 237 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Clemente Aderezo Cesar 237 mL"
+    },
+    {
+      "product": "Crema Bolsa  250 g",
+      "category": "All / Crema",
+      "adicionales": [],
+      "empaques": [
+        "bolsa 250 gr"
+      ],
+      "etiqueta": "Etiqueta Crema Bolsa  250 g"
+    },
+    {
+      "product": "Crema Bolsa 1 kg",
+      "category": "All / Crema",
+      "adicionales": [],
+      "empaques": [
+        "bolsa 1 kg"
+      ],
+      "etiqueta": "Etiqueta Crema Bolsa 1 kg"
+    },
+    {
+      "product": "Crema Bolsa 500 g",
+      "category": "All / Crema",
+      "adicionales": [],
+      "empaques": [
+        "bolsa 500 gr"
+      ],
+      "etiqueta": "Etiqueta Crema Bolsa 500 g"
+    },
+    {
+      "product": "Crema Natural 185 gr",
+      "category": "All / Crema",
+      "adicionales": [],
+      "empaques": [
+        "tapa 185 gr",
+        "vaso 185 gr"
+      ],
+      "etiqueta": "Etiqueta Crema Natural 185 gr"
+    },
+    {
+      "product": "Crema Natural 465 gr",
+      "category": "All / Crema",
+      "adicionales": [],
+      "empaques": [
+        "tapa 465",
+        "vaso 465"
+      ],
+      "etiqueta": "Etiqueta Crema Natural 465 gr"
+    },
+    {
+      "product": "Cuchara N.6 25 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Cuchara N.6 25 pz"
+    },
+    {
+      "product": "Custom Culinary Jugo Sazonador 1 L",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Custom Culinary Jugo Sazonador 1 L"
+    },
+    {
+      "product": "Custom Culinary Salsa Inglesa 1 L",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Custom Culinary Salsa Inglesa 1 L"
+    },
+    {
+      "product": "Doña Tere Cocada Amarilla",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Doña Tere Cocada Amarilla"
+    },
+    {
+      "product": "Doña Tere Jamoncillo Barra Chica Larga",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Doña Tere Jamoncillo Barra Chica Larga"
+    },
+    {
+      "product": "Dulce de Mango 200 g",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Dulce de Mango 200 g"
+    },
+    {
+      "product": "El Yahual Salsa Clásica 370 mL",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta El Yahual Salsa Clásica 370 mL"
+    },
+    {
+      "product": "Estrellas Doradas Dulces típicos",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Estrellas Doradas Dulces típicos"
+    },
+    {
+      "product": "Galletas Bolsa Corico Chica",
+      "category": "Galletas",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Galletas Bolsa Corico Chica"
+    },
+    {
+      "product": "Galletas Caja de Corico Grande",
+      "category": "Galletas",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Galletas Caja de Corico Grande"
+    },
+    {
+      "product": "Halls Menta",
+      "category": "Abarrotes/Dulces",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Halls Menta"
+    },
+    {
+      "product": "Halls Miel",
+      "category": "Abarrotes/Dulces",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Halls Miel"
+    },
+    {
+      "product": "Herdez Chicharo 400 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Herdez Chicharo 400 g"
+    },
+    {
+      "product": "Herdez Ensalda de Verdura 220 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Herdez Ensalda de Verdura 220 g"
+    },
+    {
+      "product": "Herdez Ensalda de Verdura 400 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Herdez Ensalda de Verdura 400 g"
+    },
+    {
+      "product": "Herdez Grano de elote 220 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Herdez Grano de elote 220 g"
+    },
+    {
+      "product": "Huevo",
+      "category": "Abarrotes",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Huevo"
+    },
+    {
+      "product": "Jocoque Líquido Natural 1 L",
+      "category": "All / Jocoque / Jocoque litro",
+      "adicionales": [],
+      "empaques": [
+        "Vaso con tapa 1 ltr"
+      ],
+      "etiqueta": "Etiqueta Jocoque Líquido Natural 1 L"
+    },
+    {
+      "product": "Jocoque Líquido Natural 500 mL",
+      "category": "All / Jocoque / Jocoque medio",
+      "adicionales": [],
+      "empaques": [
+        "vaso con tapa 1/2 lt"
+      ],
+      "etiqueta": "Etiqueta Jocoque Líquido Natural 500 mL"
+    },
+    {
+      "product": "Jocoque Seco Chipotle  250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "adicionales": [
+        "Chipotle"
+      ],
+      "empaques": [
+        "vaso con tapa 1/4 lt"
+      ],
+      "etiqueta": "Etiqueta Jocoque Seco Chipotle  250 g"
+    },
+    {
+      "product": "Jocoque Seco Habanero 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "adicionales": [
+        "Habanero"
+      ],
+      "empaques": [
+        "vaso con tapa 1/4 lt"
+      ],
+      "etiqueta": "Etiqueta Jocoque Seco Habanero 250 g"
+    },
+    {
+      "product": "Jocoque Seco Mango-Habanero 250 Gr",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "adicionales": [
+        "Habanero",
+        "Mango"
+      ],
+      "empaques": [
+        "vaso con tapa 1/4 lt"
+      ],
+      "etiqueta": "Etiqueta Jocoque Seco Mango-Habanero 250 Gr"
+    },
+    {
+      "product": "Jocoque Seco Natural 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "adicionales": [],
+      "empaques": [
+        "vaso con tapa 1/4 lt"
+      ],
+      "etiqueta": "Etiqueta Jocoque Seco Natural 250 g"
+    },
+    {
+      "product": "La Costeña Jalapeños Nachos 380 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta La Costeña Jalapeños Nachos 380 g"
+    },
+    {
+      "product": "La Costeña Jalapeños Rajas 380 g",
+      "category": "Abarrotes/Embazados",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta La Costeña Jalapeños Rajas 380 g"
+    },
+    {
+      "product": "Madalena’s Grandes",
+      "category": "Abarrotes/Dulces",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Madalena’s Grandes"
+    },
+    {
+      "product": "Mexico Lindo Salsa 7 Mares 150 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Mexico Lindo Salsa 7 Mares 150 mL"
+    },
+    {
+      "product": "Mexico Lindo Salsa Habanera Verde 150 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Mexico Lindo Salsa Habanera Verde 150 mL"
+    },
+    {
+      "product": "Mexico Lindo Salsa Xtra Hot 150 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Mexico Lindo Salsa Xtra Hot 150 mL"
+    },
+    {
+      "product": "Mike Salsa picante 350 Ml",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Mike Salsa picante 350 Ml"
+    },
+    {
+      "product": "Obleas Cabadas",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Obleas Cabadas"
+    },
+    {
+      "product": "Pekin Salsa Soya 1 L",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Pekin Salsa Soya 1 L"
+    },
+    {
+      "product": "Pizzero 1/4",
+      "category": "All/Pizzero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6.5 X 9 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Pizzero 1/4"
+    },
+    {
+      "product": "Polvorones Grandes",
+      "category": "Abarrotes/Dulces",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Polvorones Grandes"
+    },
+    {
+      "product": "Porfis Salsa picante 355 mL",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Porfis Salsa picante 355 mL"
+    },
+    {
+      "product": "Producto",
+      "category": "Categoria",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Producto"
+    },
+    {
+      "product": "Queso Adobera De Fundir 1 kg",
+      "category": "All / Quesos / Adobera",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Adobera De Fundir 1 kg"
+    },
+    {
+      "product": "Queso Adobera De Fundir 500 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Adobera De Fundir 500 g"
+    },
+    {
+      "product": "Queso Adobera Natural 1 kg",
+      "category": "All / Quesos / Adobera",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Adobera Natural 1 kg"
+    },
+    {
+      "product": "Queso Adobera Natural 500 g",
+      "category": "All / Quesos / Adobera",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Adobera Natural 500 g"
+    },
+    {
+      "product": "Queso Asadero Barra 250 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Barra 250 g"
+    },
+    {
+      "product": "Queso Asadero Barra 500 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Barra 500 g"
+    },
+    {
+      "product": "Queso Asadero Bola 1 kg",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Bola 1 kg"
+    },
+    {
+      "product": "Queso Asadero Bola 200 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Bola 200 g"
+    },
+    {
+      "product": "Queso Asadero Bola 500 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Bola 500 g"
+    },
+    {
+      "product": "Queso Asadero Rallado 1 kg",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Rallado 1 kg"
+    },
+    {
+      "product": "Queso Asadero Rallado 250 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Rallado 250 g"
+    },
+    {
+      "product": "Queso Asadero Rallado 500 g",
+      "category": "All / Quesos / Asadero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6.5 X 9 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Asadero Rallado 500 g"
+    },
+    {
+      "product": "Queso Cheddar Blanco Barra 1 kg",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Blanco Barra 1 kg"
+    },
+    {
+      "product": "Queso Cheddar Blanco Barra 500 g",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Blanco Barra 500 g"
+    },
+    {
+      "product": "Queso Cheddar Blanco Rallado 1 kg",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Blanco Rallado 1 kg"
+    },
+    {
+      "product": "Queso Cheddar Blanco Rallado 500 g",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Blanco Rallado 500 g"
+    },
+    {
+      "product": "Queso Cheddar Jalapeño Con Habanero 1 kg",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [
+        "Jalapeño",
+        "Habanero"
+      ],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Jalapeño Con Habanero 1 kg"
+    },
+    {
+      "product": "Queso Cheddar Jalapeño Con Habanero 500 g",
+      "category": "All / Quesos / Cheddar",
+      "adicionales": [
+        "Jalapeño",
+        "Habanero"
+      ],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Cheddar Jalapeño Con Habanero 500 g"
+    },
+    {
+      "product": "Queso Chihuahua 1 kg",
+      "category": "All / Quesos / Chihuahua",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Chihuahua 1 kg"
+    },
+    {
+      "product": "Queso Chihuahua 500 g",
+      "category": "All / Quesos / Chihuahua",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Chihuahua 500 g"
+    },
+    {
+      "product": "Queso Cotija 1 Kg",
+      "category": "All / Quesos / Cotija",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Cotija 1 Kg"
+    },
+    {
+      "product": "Queso Cotija 2 Kg",
+      "category": "All / Quesos / Cotija",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Cotija 2 Kg"
+    },
+    {
+      "product": "Queso Cotija 500 Gr",
+      "category": "All / Quesos / Cotija",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Cotija 500 Gr"
+    },
+    {
+      "product": "Queso Fresco 200 g",
+      "category": "All / Quesos / Fresco",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6.5 X 9 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Fresco 200 g"
+    },
+    {
+      "product": "Queso Manchego Barra 1 kg",
+      "category": "All / Quesos / Manchego",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Manchego Barra 1 kg"
+    },
+    {
+      "product": "Queso Manchego Barra 500 g",
+      "category": "All / Quesos / Manchego",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Manchego Barra 500 g"
+    },
+    {
+      "product": "Queso Mozzarella Barra 1 kg",
+      "category": "All / Quesos / Mozzarella",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Mozzarella Barra 1 kg"
+    },
+    {
+      "product": "Queso Mozzarella Barra 500 g",
+      "category": "All / Quesos / Mozzarella",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Mozzarella Barra 500 g"
+    },
+    {
+      "product": "Queso Mozzarella Rallado Blanco 1 kg",
+      "category": "All / Quesos / Mozzarella",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Polietileno 20x30"
+      ],
+      "etiqueta": "Etiqueta Queso Mozzarella Rallado Blanco 1 kg"
+    },
+    {
+      "product": "Queso Mozzarella Rallado Blanco 250 g",
+      "category": "All / Quesos / Mozzarella",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Mozzarella Rallado Blanco 250 g"
+    },
+    {
+      "product": "Queso Oaxaca 1 kg",
+      "category": "All / Quesos / Oaxaca",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 35 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Oaxaca 1 kg"
+    },
+    {
+      "product": "Queso Oaxaca 250 g",
+      "category": "All / Quesos / Oaxaca",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Oaxaca 250 g"
+    },
+    {
+      "product": "Queso Oaxaca 500 g",
+      "category": "All / Quesos / Oaxaca",
+      "adicionales": [],
+      "empaques": [
+        "vitafilm 20 cm"
+      ],
+      "etiqueta": "Etiqueta Queso Oaxaca 500 g"
+    },
+    {
+      "product": "Queso Panela 400 g aprox",
+      "category": "All / Quesos / Panela",
+      "adicionales": [],
+      "empaques": [
+        "Charola RB180"
+      ],
+      "etiqueta": "Etiqueta Queso Panela 400 g aprox"
+    },
+    {
+      "product": "Queso Pizzero 1 kg",
+      "category": "All/Pizzero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Polietileno 20x30"
+      ],
+      "etiqueta": "Etiqueta Queso Pizzero 1 kg"
+    },
+    {
+      "product": "Queso Ranchero 1 Kg",
+      "category": "All / Quesos / Ranchero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 10 X 12 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Ranchero 1 Kg"
+    },
+    {
+      "product": "Queso Ranchero 200 g",
+      "category": "All / Quesos / Ranchero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6.5 X 9 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Ranchero 200 g"
+    },
+    {
+      "product": "Queso Ranchero 500 gr",
+      "category": "All / Quesos / Ranchero",
+      "adicionales": [],
+      "empaques": [
+        "Bolsa Pounch 6 X 8 TERMOENCOGIBLE"
+      ],
+      "etiqueta": "Etiqueta Queso Ranchero 500 gr"
+    },
+    {
+      "product": "Rancheritas Salsa de chile fresco 220 g",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Rancheritas Salsa de chile fresco 220 g"
+    },
+    {
+      "product": "Reyma Charola Termina N.066 50 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Reyma Charola Termina N.066 50 pz"
+    },
+    {
+      "product": "Reyma Charola Termina N.855 50 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Reyma Charola Termina N.855 50 pz"
+    },
+    {
+      "product": "Reyma Vaso 12 oz 50 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Reyma Vaso 12 oz 50 pz"
+    },
+    {
+      "product": "Reyma Vaso 16 oz 25 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Reyma Vaso 16 oz 25 pz"
+    },
+    {
+      "product": "Rollo de Guayaba Relleno de Cajeta y Nuez",
+      "category": "Abarrotes/Dulces/tipicos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Rollo de Guayaba Relleno de Cajeta y Nuez"
+    },
+    {
+      "product": "Salsa Chile de Arbol Osada Delicia 150 ml",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Salsa Chile de Arbol Osada Delicia 150 ml"
+    },
+    {
+      "product": "Salsa El Yahual Especial 370 mL",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Salsa El Yahual Especial 370 mL"
+    },
+    {
+      "product": "Salsa Habanero Cuerno Bravo",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Salsa Habanero Cuerno Bravo"
+    },
+    {
+      "product": "Salsa Macha Osada Delicia 250 gr",
+      "category": "Abarrotes / Salsa",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Salsa Macha Osada Delicia 250 gr"
+    },
+    {
+      "product": "Salsa Tierra Caliente",
+      "category": "Abarrotes / Salsa / Salsas",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Salsa Tierra Caliente"
+    },
+    {
+      "product": "Schweppes Agua Tonica 296 mL",
+      "category": "Bebidas y Refrescos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Schweppes Agua Tonica 296 mL"
+    },
+    {
+      "product": "Servilleta NEZE 500 pz",
+      "category": "Abarrotes/Desechable",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Servilleta NEZE 500 pz"
+    },
+    {
+      "product": "Siracha 266 mL",
+      "category": "Abarrotes / Salsas-Aderezos",
+      "adicionales": [],
+      "empaques": [],
+      "etiqueta": "Etiqueta Siracha 266 mL"
+    }
+  ],
+  "extractedAt": "2026-10-14T13:30:52.444Z"
+}
