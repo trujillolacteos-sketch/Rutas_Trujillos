@@ -1031,7 +1031,7 @@ async function startServer() {
   app.post('/api/production/config/update-costs', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
       if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await updateProductionCosts(req.body.ingredients);
       res.json(result);
@@ -1071,7 +1071,7 @@ async function startServer() {
   app.post('/api/production/purchases', requireAuth, async (req: AuthRequest, res) => {
     try {
       const role = await getUserRole(req.user!.uid);
-      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
       if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await recordPurchase(req.body);
       res.json(result);

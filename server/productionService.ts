@@ -178,13 +178,23 @@ export async function updateProductionCosts(updatedIngredients: any[]): Promise<
       }
     });
 
-    const rows = updatedIngredients.map(ing => [
-      ing.name,
-      ing.empaquePresentation || ing.empaque || '1',
-      ing.empaqueCost ? `$${Number(ing.empaqueCost).toFixed(2)}` : (ing.unitCost ? `$${Number(ing.unitCost).toFixed(2)}` : ''),
-      ing.unitCost ? `$${Number(ing.unitCost).toFixed(2)}` : '$0.00',
-      ing.provider || ''
-    ]);
+    const rows = updatedIngredients.map(ing => {
+      const empaqueCostNum = Number(ing.empaqueCost) || 0;
+      const unitCostNum = Number(ing.unitCost) || 0;
+      const empaqueCostStr = empaqueCostNum > 0 
+        ? `$${empaqueCostNum.toFixed(2)}` 
+        : (unitCostNum > 0 ? `$${unitCostNum.toFixed(2)}` : '$0.00');
+      const unitCostStr = unitCostNum > 0
+        ? (unitCostNum < 1 ? `$${unitCostNum.toFixed(4)}` : `$${unitCostNum.toFixed(2)}`)
+        : '$0.00';
+      return [
+        ing.name,
+        ing.empaquePresentation || ing.empaque || '1',
+        empaqueCostStr,
+        unitCostStr,
+        ing.provider || ''
+      ];
+    });
 
     const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Costos!A2:E?valueInputOption=USER_ENTERED`;
     const writeRes = await fetch(writeUrl, {

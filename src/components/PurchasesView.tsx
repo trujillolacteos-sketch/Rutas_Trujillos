@@ -23,7 +23,9 @@ import {
   Receipt,
   X,
   PlusCircle,
-  HelpCircle
+  HelpCircle,
+  Calculator,
+  Info
 } from 'lucide-react';
 import { AppState } from '../types';
 
@@ -89,6 +91,7 @@ export default function PurchasesView({
   const [empaquesCantidad, setEmpaquesCantidad] = useState<number | ''>(1);
   const [contenidoPorEmpaque, setContenidoPorEmpaque] = useState<number | ''>(50);
   const [unidadBase, setUnidadBase] = useState<string>('kg');
+  // Dedicated expenditure input requested by user: "¿Cuánto va a ser del insumo o cosa que se vaya a gastar?"
   const [costoTotal, setCostoTotal] = useState<number | ''>('');
   const [notas, setNotas] = useState<string>('');
 
@@ -100,16 +103,20 @@ export default function PurchasesView({
   const [newCatalogItem, setNewCatalogItem] = useState<{
     name: string;
     isIngredient: boolean;
-    unitCost: number;
+    costoGastoTotal: number | '';
+    empaquesCantidad: number;
+    contenidoPorEmpaque: number;
     provider: string;
-    empaquePresentation: string;
+    empaqueTipo: string;
     baseUnit: string;
   }>({
     name: '',
     isIngredient: true,
-    unitCost: 0,
+    costoGastoTotal: '',
+    empaquesCantidad: 1,
+    contenidoPorEmpaque: 50,
     provider: 'TASSA',
-    empaquePresentation: '50 kg (Saco)',
+    empaqueTipo: 'Saco',
     baseUnit: 'kg'
   });
 
@@ -138,12 +145,12 @@ export default function PurchasesView({
         setProveedor(items[0].provider || 'TASSA');
         if (items[0].isIngredient) {
           setIsIngredientType(true);
-          setUnidadBase('kg');
+          setUnidadBase(items[0].baseUnit || 'kg');
           setEmpaqueTipo('Saco');
           setContenidoPorEmpaque(50);
         } else {
           setIsIngredientType(false);
-          setUnidadBase('pz');
+          setUnidadBase(items[0].baseUnit || 'pz');
           setEmpaqueTipo('Caja');
           setContenidoPorEmpaque(1000);
         }
@@ -160,7 +167,7 @@ export default function PurchasesView({
     loadData();
   }, []);
 
-  // When selected item changes, adapt defaults
+  // When selected item changes, adapt packaging defaults (without showing/asking for old cost)
   const handleItemSelect = (itemName: string) => {
     setSelectedItemName(itemName);
     const item = ingredients.find(i => i.name.toLowerCase() === itemName.toLowerCase());
@@ -178,6 +185,10 @@ export default function PurchasesView({
         const numMatch = item.empaquePresentation.match(/(\d+(?:\.\d+)?)/);
         if (numMatch) {
           setContenidoPorEmpaque(parseFloat(numMatch[1]));
+        }
+        const tipoMatch = item.empaquePresentation.match(/\((.*?)\)/);
+        if (tipoMatch && tipoMatch[1]) {
+          setEmpaqueTipo(tipoMatch[1]);
         }
       }
     }
@@ -197,32 +208,42 @@ export default function PurchasesView({
     }
   };
 
-  // Calculations for Live Breakdown
+  // Derived Calculations: "A partir de la compra y no al revés"
+  // User inputs:
+  // 1. Gasto total del insumo ($ MXN)
+  // 2. Cantidad de empaques comprados
+  // 3. Contenido de cada empaque
+  // System calculates:
+  // - Costo por empaque = Gasto total / Cantidad empaques
+  // - Costo por unidad base = Gasto total / (Cantidad empaques * Contenido empaque)
   const liveBreakdown = useMemo(() => {
-    const qtyEmpaques = typeof empaquesCantidad === 'number' ? empaquesCantidad : 0;
-    const contEmpaque = typeof contenidoPorEmpaque === 'number' ? contenidoPorEmpaque : 0;
+    const qtyEmpaques = typeof empaquesCantidad === 'number' && empaquesCantidad > 0 ? empaquesCantidad : 0;
+    const contEmpaque = typeof contenidoPorEmpaque === 'number' && contenidoPorEmpaque > 0 ? contenidoPorEmpaque : 0;
     const totalBase = qtyEmpaques * contEmpaque;
-    const totalCostNum = typeof costoTotal === 'number' ? costoTotal : 0;
+    const totalCostNum = typeof costoTotal === 'number' && costoTotal > 0 ? costoTotal : 0;
 
     const unitBaseCost = totalBase > 0 ? totalCostNum / totalBase : 0;
     const commercialEmpaqueCost = qtyEmpaques > 0 ? totalCostNum / qtyEmpaques : 0;
 
     const existingItem = ingredients.find(i => i.name.toLowerCase() === selectedItemName.trim().toLowerCase());
     const prevCost = existingItem ? (existingItem.unitCost || 0) : null;
-    const diff = prevCost !== null && prevCost > 0 ? unitBaseCost - prevCost : null;
-    const percentDiff = prevCost !== null && prevCost > 0 ? ((unitBaseCost - prevCost) / prevCost) * 100 : null;
+    const diff = prevCost !== null && prevCost > 0 && unitBaseCost > 0 ? unitBaseCost - prevCost : null;
+    const percentDiff = prevCost !== null && prevCost > 0 && unitBaseCost > 0 ? ((unitBaseCost - prevCost) / prevCost) * 100 : null;
+
+    const presentationLabel = contEmpaque > 0 ? `${contEmpaque} ${unidadBase} (${empaqueTipo})` : `1 ${unidadBase}`;
 
     return {
       totalBase,
       unitBaseCost,
       commercialEmpaqueCost,
+      presentationLabel,
       prevCost,
       diff,
       percentDiff
     };
-  }, [empaquesCantidad, contenidoPorEmpaque, costoTotal, selectedItemName, ingredients]);
+  }, [empaquesCantidad, contenidoPorEmpaque, costoTotal, empaqueTipo, unidadBase, selectedItemName, ingredients]);
 
-  // Submit Purchase
+  // Submit Purchase: Updates Google Sheets Costos Tab (borrando el anterior y dejando derivado)
   const handleSubmitPurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItemName.trim()) {
@@ -230,7 +251,7 @@ export default function PurchasesView({
       return;
     }
     if (!costoTotal || Number(costoTotal) <= 0) {
-      setErrorMessage('Por favor ingresa el costo total de la compra.');
+      setErrorMessage('Por favor ingresa cuánto se va a gastar en este insumo.');
       return;
     }
     if (!empaquesCantidad || Number(empaquesCantidad) <= 0) {
@@ -269,7 +290,7 @@ export default function PurchasesView({
 
       const data = await res.json();
       if (data.success) {
-        setSuccessMessage(data.message || '¡Compra registrada con éxito y catálogo actualizado!');
+        setSuccessMessage(data.message || '¡Compra registrada con éxito y hoja Costos de Google Sheets actualizada!');
         setCostoTotal('');
         setFolio('');
         setNotas('');
@@ -284,7 +305,7 @@ export default function PurchasesView({
     }
   };
 
-  // Save modified catalog to Google Sheets
+  // Save modified catalog directly to Google Sheets Costos tab
   const handleSaveCatalog = async () => {
     try {
       setSavingCatalog(true);
@@ -299,7 +320,7 @@ export default function PurchasesView({
 
       const data = await res.json();
       if (data.success) {
-        setSuccessMessage(`¡Catálogo de ${data.count || editableCatalog.length} insumos y empaques sincronizado en Google Sheets!`);
+        setSuccessMessage(`¡Catálogo de ${data.count || editableCatalog.length} insumos y empaques sincronizado en Google Sheets (Hoja Costos)!`);
         await loadData();
       } else {
         setErrorMessage(data.message || 'Error al guardar catálogo.');
@@ -311,7 +332,7 @@ export default function PurchasesView({
     }
   };
 
-  // Add new item modal submit
+  // Add new item modal submit (Calculated from expenditure)
   const handleAddNewCatalogItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatalogItem.name.trim()) return;
@@ -324,13 +345,23 @@ export default function PurchasesView({
       return;
     }
 
+    const gastoTotal = Number(newCatalogItem.costoGastoTotal) || 0;
+    const empaques = Number(newCatalogItem.empaquesCantidad) || 1;
+    const cont = Number(newCatalogItem.contenidoPorEmpaque) || 1;
+    const totalUnidades = empaques * cont;
+
+    const empaqueCost = empaques > 0 ? gastoTotal / empaques : 0;
+    const unitCost = totalUnidades > 0 ? gastoTotal / totalUnidades : 0;
+    const presentationStr = `${cont} ${newCatalogItem.baseUnit} (${newCatalogItem.empaqueTipo})`;
+
     const item: IngredientItem = {
       name: newCatalogItem.name.trim(),
-      unitCost: Number(newCatalogItem.unitCost) || 0,
+      unitCost: Number(unitCost.toFixed(4)),
       isIngredient: newCatalogItem.isIngredient,
       applicableCategories: [],
       provider: newCatalogItem.provider.trim() || 'General',
-      empaquePresentation: newCatalogItem.empaquePresentation.trim() || '1 unidad',
+      empaquePresentation: presentationStr,
+      empaqueCost: Number(empaqueCost.toFixed(2)),
       baseUnit: newCatalogItem.baseUnit
     };
 
@@ -340,13 +371,21 @@ export default function PurchasesView({
     setIsIngredientType(item.isIngredient);
     setProveedor(item.provider || 'General');
     setUnidadBase(item.baseUnit || (item.isIngredient ? 'kg' : 'pz'));
+    setEmpaqueTipo(newCatalogItem.empaqueTipo);
+    setContenidoPorEmpaque(cont);
+    setEmpaquesCantidad(empaques);
+    if (gastoTotal > 0) {
+      setCostoTotal(gastoTotal);
+    }
 
     setNewCatalogItem({
       name: '',
       isIngredient: true,
-      unitCost: 0,
+      costoGastoTotal: '',
+      empaquesCantidad: 1,
+      contenidoPorEmpaque: 50,
       provider: 'TASSA',
-      empaquePresentation: '50 kg (Saco)',
+      empaqueTipo: 'Saco',
       baseUnit: 'kg'
     });
   };
@@ -400,7 +439,7 @@ export default function PurchasesView({
               </span>
             </div>
             <p className="text-sm text-slate-500">
-              Desglose automático de compras comerciales a unidades base de producción (kg, lt, pz, un)
+              Cálculo automático del costo por empaque y unidad base a partir del gasto total de compra
             </p>
           </div>
         </div>
@@ -431,7 +470,7 @@ export default function PurchasesView({
 
       {/* Notifications */}
       {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm animate-fade-in">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
             <span>{successMessage}</span>
@@ -443,7 +482,7 @@ export default function PurchasesView({
       )}
 
       {errorMessage && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm">
+        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm font-semibold flex items-center justify-between shadow-sm animate-fade-in">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
             <span>{errorMessage}</span>
@@ -464,8 +503,8 @@ export default function PurchasesView({
               : 'text-slate-600 hover:bg-slate-100 bg-white border border-slate-200'
           }`}
         >
-          <PlusCircle className="w-4 h-4" />
-          <span>1. Registrar Compra y Desglose Base</span>
+          <Coins className="w-4 h-4" />
+          <span>1. Registrar Compra y Gasto</span>
         </button>
 
         <button
@@ -477,7 +516,7 @@ export default function PurchasesView({
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>2. Inventario y Catálogo Base ({ingredients.length})</span>
+          <span>2. Hoja Costos en Google Sheets ({ingredients.length})</span>
         </button>
 
         <button
@@ -494,7 +533,7 @@ export default function PurchasesView({
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: REGISTRAR COMPRA Y DESGLOSE A UNIDAD BASE */}
+      {/* TAB 1: REGISTRAR COMPRA A PARTIR DEL GASTO */}
       {/* ========================================================================= */}
       {activeTab === 'register' && (
         <form onSubmit={handleSubmitPurchase} className="space-y-6">
@@ -504,15 +543,15 @@ export default function PurchasesView({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                   <ShoppingCart className="w-4 h-4 text-emerald-600" />
-                  Datos de la Compra Comercial
+                  Registro de Compra e Insumos
                 </h3>
-                <span className="text-xs text-slate-400 font-medium">Factura o Remisión</span>
+                <span className="text-xs text-slate-400 font-medium">Cálculo derivado del gasto</span>
               </div>
 
               {/* Type Switcher */}
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5 uppercase tracking-wider">
-                  Tipo de Material
+                  Tipo de Insumo o Material
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -543,16 +582,16 @@ export default function PurchasesView({
                 </div>
               </div>
 
-              {/* Item Selection */}
+              {/* Item Selection (Without showing "Costo actual") */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-600">Insumo o Empaque a Actualizar</label>
+                  <label className="text-xs font-bold text-slate-700">Insumo o Empaque que vas a Comprar</label>
                   <button
                     type="button"
                     onClick={() => setShowAddCatalogModal(true)}
                     className="text-xs text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1"
                   >
-                    <Plus className="w-3 h-3" /> Nuevo Insumo
+                    <Plus className="w-3 h-3" /> + Crear Nuevo Insumo
                   </button>
                 </div>
                 <select
@@ -561,13 +600,13 @@ export default function PurchasesView({
                   required
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                 >
-                  <option value="">-- Seleccionar Insumo o Empaque --</option>
-                  <optgroup label="Materias Primas / Recetas">
+                  <option value="">-- Selecciona el insumo o empaque --</option>
+                  <optgroup label="Materias Primas / Ingredientes">
                     {ingredients
                       .filter(i => i.isIngredient)
                       .map(i => (
                         <option key={i.name} value={i.name}>
-                          {i.name} ({i.provider || 'TASSA'}) - Actual: ${Number(i.unitCost || 0).toFixed(2)}/kg
+                          {i.name} {i.empaquePresentation ? `[${i.empaquePresentation}]` : ''} - {i.provider || 'TASSA'}
                         </option>
                       ))}
                   </optgroup>
@@ -576,17 +615,134 @@ export default function PurchasesView({
                       .filter(i => !i.isIngredient)
                       .map(i => (
                         <option key={i.name} value={i.name}>
-                          {i.name} ({i.provider || 'Suintar'}) - Actual: ${Number(i.unitCost || 0).toFixed(3)}/pz
+                          {i.name} {i.empaquePresentation ? `[${i.empaquePresentation}]` : ''} - {i.provider || 'Suintar'}
                         </option>
                       ))}
                   </optgroup>
                 </select>
               </div>
 
-              {/* Date, Provider & Invoice */}
+              {/* DEDICATED PROMINENT EXPENDITURE INPUT: "¿Cuánto va a ser del insumo o cosa que se vaya a gastar?" */}
+              <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-500/40 rounded-2xl shadow-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-black text-emerald-950 flex items-center gap-2">
+                    <Coins className="w-5 h-5 text-emerald-600" />
+                    ¿Cuánto va a ser del insumo o cosa que se vaya a gastar?
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-200/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    Gasto Total ($ MXN)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Ingresa aquí el importe monetario total de la compra (factura, remisión o nota de gasto). Los costos por empaque y por unidad base se calcularán automáticamente a partir de esta cantidad.
+                </p>
+                <div className="relative mt-2">
+                  <span className="absolute left-4 top-3 text-emerald-700 font-black text-2xl">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    placeholder="0.00"
+                    value={costoTotal}
+                    onChange={e => setCostoTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    className="w-full pl-10 pr-4 py-3 bg-white border-2 border-emerald-500 rounded-xl text-2xl font-black text-slate-900 focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-600 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Commercial Packaging Breakdown Fields */}
+              <div className="p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Package className="w-3.5 h-3.5 text-blue-600" />
+                    ¿Cómo viene empacado lo que compraste?
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Presentación de entrega
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">Tipo de Empaque</label>
+                    <select
+                      value={empaqueTipo}
+                      onChange={e => setEmpaqueTipo(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium"
+                    >
+                      <option value="Saco">Saco / Bulto</option>
+                      <option value="Caja">Caja</option>
+                      <option value="Tambo">Tambo / Bidón</option>
+                      <option value="Garrafa">Garrafa / Porrón</option>
+                      <option value="Cubeta">Cubeta</option>
+                      <option value="Rollo">Rollo</option>
+                      <option value="Pieza">Pieza / Paquete</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">
+                      Cant. Empaques Recibidos
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.001"
+                      required
+                      placeholder="Ej. 2"
+                      value={empaquesCantidad}
+                      onChange={e => setEmpaquesCantidad(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-600 block mb-1">
+                      Contenido por Empaque
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0.001"
+                      required
+                      placeholder="Ej. 50"
+                      value={contenidoPorEmpaque}
+                      onChange={e => setContenidoPorEmpaque(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                {/* Base Unit Selector */}
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1.5">
+                    Unidad Base para Recetas y Fórmulas
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {['kg', 'lt', 'pz', 'un'].map(u => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setUnidadBase(u)}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                          unidadBase === u
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {u === 'kg' ? 'Kilogramo (kg)' : u === 'lt' ? 'Litro (lt)' : u === 'pz' ? 'Pieza (pz)' : 'Unidad (un)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Administrative Details: Date, Provider & Folio */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Fecha Compra</label>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Fecha de Compra</label>
                   <input
                     type="date"
                     required
@@ -609,7 +765,7 @@ export default function PurchasesView({
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Folio / Factura</label>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Folio / Factura / Remisión</label>
                   <input
                     type="text"
                     placeholder="Ej. F-10482"
@@ -620,114 +776,11 @@ export default function PurchasesView({
                 </div>
               </div>
 
-              {/* Commercial Packaging Breakdown Fields */}
-              <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                  <Package className="w-3.5 h-3.5 text-blue-600" />
-                  Presentación Comercial de Compra
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">Tipo de Empaque</label>
-                    <select
-                      value={empaqueTipo}
-                      onChange={e => setEmpaqueTipo(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium"
-                    >
-                      <option value="Saco">Saco / Bulto</option>
-                      <option value="Caja">Caja</option>
-                      <option value="Tambo">Tambo / Bidón</option>
-                      <option value="Garrafa">Garrafa / Porrón</option>
-                      <option value="Cubeta">Cubeta</option>
-                      <option value="Rollo">Rollo</option>
-                      <option value="Pieza">Pieza / Unidad</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">
-                      Cant. Empaques Comprados
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0.001"
-                      required
-                      placeholder="Ej. 2"
-                      value={empaquesCantidad}
-                      onChange={e => setEmpaquesCantidad(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-slate-600 block mb-1">
-                      Contenido por Empaque
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0.001"
-                      required
-                      placeholder="Ej. 50"
-                      value={contenidoPorEmpaque}
-                      onChange={e => setContenidoPorEmpaque(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                {/* Base Unit Selector */}
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1.5">
-                    Unidad Base de Producción (Fórmulas y Recetas)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    {['kg', 'lt', 'pz', 'un'].map(u => (
-                      <button
-                        key={u}
-                        type="button"
-                        onClick={() => setUnidadBase(u)}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                          unidadBase === u
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        {u === 'kg' ? 'Kilogramo (kg)' : u === 'lt' ? 'Litro (lt)' : u === 'pz' ? 'Pieza (pz)' : 'Unidad (un)'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Total Purchase Cost */}
               <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Costo Total de la Compra Facturada ($ MXN)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    required
-                    placeholder="Ej. 1680.00"
-                    value={costoTotal}
-                    onChange={e => setCostoTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Notas / Observaciones (Opcional)</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Notas u Observaciones (Opcional)</label>
                 <input
                   type="text"
-                  placeholder="Ej. Compra urgente por pedido especial o variación de precio TASSA"
+                  placeholder="Ej. Compra directa de emergencia o cambio de proveedor"
                   value={notas}
                   onChange={e => setNotas(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -737,105 +790,104 @@ export default function PurchasesView({
 
             {/* Right 5 Columns: Live Converted Breakdown Card */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="bg-gradient-to-br from-emerald-600 to-teal-800 text-white p-6 rounded-2xl shadow-lg space-y-5">
+              <div className="bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900 text-white p-6 rounded-2xl shadow-xl space-y-5 border border-emerald-600/30">
                 <div className="flex items-center justify-between border-b border-white/20 pb-3">
                   <div className="flex items-center gap-2">
-                    <Scale className="w-5 h-5 text-emerald-200" />
-                    <h3 className="font-bold text-sm tracking-wide">Desglose a Unidad Base en Vivo</h3>
+                    <Calculator className="w-5 h-5 text-emerald-300" />
+                    <h3 className="font-bold text-sm tracking-wide">Cálculo Derivado de la Compra</h3>
                   </div>
-                  <span className="text-[10px] uppercase font-bold bg-white/20 px-2 py-0.5 rounded-full">
-                    Automático
+                  <span className="text-[10px] uppercase font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 px-2.5 py-0.5 rounded-full">
+                    A Partir del Gasto
                   </span>
                 </div>
 
-                {/* Main Converted Unit Cost KPI */}
-                <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
-                  <span className="text-xs text-emerald-100 font-medium block mb-1">
-                    Costo Unitario Base Convertido ($ / {unidadBase})
-                  </span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-black tracking-tight">
-                      ${liveBreakdown.unitBaseCost > 0 ? liveBreakdown.unitBaseCost.toFixed(4) : '0.0000'}
+                {/* Primary Calculated KPIs */}
+                <div className="grid grid-cols-1 gap-3">
+                  {/* Costo por Unidad Base */}
+                  <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
+                    <span className="text-xs text-emerald-200 font-bold block mb-1 uppercase tracking-wider">
+                      Costo por Unidad Base Calculado ($ / {unidadBase})
                     </span>
-                    <span className="text-xs text-emerald-200 font-bold uppercase">
-                      MXN por {unidadBase}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-emerald-100/90 mt-1">
-                    Este es el costo que se aplicará en las fórmulas de producción y empaque.
-                  </p>
-                </div>
-
-                {/* Sub Metrics: Total Base Units & Commercial Cost */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                    <span className="text-[11px] text-emerald-200 block mb-0.5">Total Unidades Base</span>
-                    <span className="text-lg font-bold">
-                      {liveBreakdown.totalBase.toLocaleString()} {unidadBase}
-                    </span>
-                    <span className="text-[10px] text-emerald-200/80 block mt-0.5">
-                      ({empaquesCantidad || 0} {empaqueTipo}s × {contenidoPorEmpaque || 0} {unidadBase})
-                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black tracking-tight text-white">
+                        ${liveBreakdown.unitBaseCost > 0 ? liveBreakdown.unitBaseCost.toFixed(4) : '0.0000'}
+                      </span>
+                      <span className="text-xs text-emerald-300 font-bold uppercase">
+                        MXN por {unidadBase}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-100/90 mt-1">
+                      Fórmula: Gasto total ${Number(costoTotal || 0).toFixed(2)} ÷ {liveBreakdown.totalBase.toLocaleString()} {unidadBase} totales
+                    </p>
                   </div>
 
-                  <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                    <span className="text-[11px] text-emerald-200 block mb-0.5">Costo por Empaque</span>
-                    <span className="text-lg font-bold">
-                      ${liveBreakdown.commercialEmpaqueCost.toFixed(2)}
-                    </span>
-                    <span className="text-[10px] text-emerald-200/80 block mt-0.5">
-                      por cada {empaqueTipo}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Cost Comparison vs Previous */}
-                {liveBreakdown.prevCost !== null && liveBreakdown.prevCost > 0 && (
-                  <div className="bg-black/20 p-3.5 rounded-xl border border-white/10 flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-emerald-200 block">Comparativa con Costo Anterior</span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs font-semibold text-slate-300">
-                          Ant: ${liveBreakdown.prevCost.toFixed(4)}
-                        </span>
-                        <ArrowRight className="w-3 h-3 text-white/60" />
-                        <span className="text-xs font-bold text-white">
-                          Nuevo: ${liveBreakdown.unitBaseCost.toFixed(4)}
-                        </span>
-                      </div>
+                  {/* Costo por Empaque y Unidades Totales */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/10 p-3.5 rounded-xl border border-white/15">
+                      <span className="text-[11px] text-emerald-200 font-semibold block mb-0.5">
+                        Costo por Empaque
+                      </span>
+                      <span className="text-xl font-black text-white">
+                        ${liveBreakdown.commercialEmpaqueCost.toFixed(2)}
+                      </span>
+                      <span className="text-[10px] text-emerald-200/80 block mt-0.5">
+                        por cada {empaqueTipo}
+                      </span>
                     </div>
 
-                    {liveBreakdown.percentDiff !== null && (
-                      <div
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
-                          liveBreakdown.percentDiff > 0
-                            ? 'bg-rose-500/80 text-white'
-                            : liveBreakdown.percentDiff < 0
-                            ? 'bg-emerald-400 text-slate-900'
-                            : 'bg-white/20 text-white'
-                        }`}
-                      >
-                        {liveBreakdown.percentDiff > 0 ? (
-                          <TrendingUp className="w-3.5 h-3.5" />
-                        ) : (
-                          <TrendingDown className="w-3.5 h-3.5" />
-                        )}
-                        <span>
-                          {liveBreakdown.percentDiff > 0 ? '+' : ''}
-                          {liveBreakdown.percentDiff.toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
+                    <div className="bg-white/10 p-3.5 rounded-xl border border-white/15">
+                      <span className="text-[11px] text-emerald-200 font-semibold block mb-0.5">
+                        Total Unidades Base
+                      </span>
+                      <span className="text-xl font-black text-white">
+                        {liveBreakdown.totalBase.toLocaleString()} {unidadBase}
+                      </span>
+                      <span className="text-[10px] text-emerald-200/80 block mt-0.5">
+                        ({empaquesCantidad || 0} {empaqueTipo}s × {contenidoPorEmpaque || 0} {unidadBase})
+                      </span>
+                    </div>
                   </div>
-                )}
+                </div>
 
-                {/* Explanation Banner */}
-                <div className="p-3 bg-white/10 rounded-xl text-[11px] text-emerald-50 space-y-1">
-                  <div className="font-bold flex items-center gap-1 text-white">
-                    <HelpCircle className="w-3.5 h-3.5" /> Sincronización Google Sheets
+                {/* Live Preview: How it will overwrite Google Sheets 'Costos' tab */}
+                <div className="bg-black/30 p-4 rounded-xl border border-white/15 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-300 border-b border-white/10 pb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                      Vista Previa Google Sheets (Hoja Costos)
+                    </span>
+                    <span className="text-[10px] text-slate-300">Cols A - E</span>
                   </div>
-                  <p>
-                    Al dar clic en guardar, se actualizará el catálogo maestro y se sobrescribirá la pestaña <code>Costos</code> en Google Sheets borrando el costo anterior y dejando registrado el nuevo costo unitario base.
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[11px] text-left">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-white/10">
+                          <th className="py-1">Col A: Ingrediente</th>
+                          <th className="py-1">Col B: Empaque</th>
+                          <th className="py-1 text-right">Col C: Costo Empaque</th>
+                          <th className="py-1 text-right">Col D: Costo Base</th>
+                          <th className="py-1 text-right">Col E: Prov</th>
+                        </tr>
+                      </thead>
+                      <tbody className="font-semibold text-white">
+                        <tr>
+                          <td className="py-1 text-emerald-200">{selectedItemName || 'Insumo'}</td>
+                          <td className="py-1 text-slate-300">{liveBreakdown.presentationLabel}</td>
+                          <td className="py-1 text-right text-emerald-300 font-bold">
+                            ${liveBreakdown.commercialEmpaqueCost.toFixed(2)}
+                          </td>
+                          <td className="py-1 text-right text-cyan-300 font-black">
+                            ${liveBreakdown.unitBaseCost > 0 ? liveBreakdown.unitBaseCost.toFixed(4) : '0.00'}
+                          </td>
+                          <td className="py-1 text-right text-slate-300">{proveedor || 'TASSA'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className="text-[10px] text-emerald-200/80 pt-1 border-t border-white/10">
+                    ✓ Al guardar, se sobrescribe la fila en Google Sheets borrando el costo anterior y dejando el nuevo cálculo exacto.
                   </p>
                 </div>
 
@@ -843,11 +895,11 @@ export default function PurchasesView({
                 <button
                   type="submit"
                   disabled={submitting || !selectedItemName || !costoTotal}
-                  className="w-full py-3.5 bg-white text-emerald-900 hover:bg-emerald-50 active:scale-[0.99] font-black text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-4 bg-white text-emerald-950 hover:bg-emerald-50 active:scale-[0.99] font-black text-sm rounded-xl transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className={`w-4 h-4 ${submitting ? 'animate-spin' : ''}`} />
                   <span>
-                    {submitting ? 'Actualizando Google Sheets...' : 'Guardar Compra y Actualizar Catálogo'}
+                    {submitting ? 'Actualizando Google Sheets...' : 'Actualizar Hoja Costos a Partir de este Gasto'}
                   </span>
                 </button>
               </div>
@@ -857,7 +909,7 @@ export default function PurchasesView({
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: INVENTARIO Y CATÁLOGO BASE */}
+      {/* TAB 2: INVENTARIO Y CATÁLOGO BASE (HOJA COSTOS) */}
       {/* ========================================================================= */}
       {activeTab === 'catalog' && (
         <div className="space-y-6">
@@ -865,13 +917,13 @@ export default function PurchasesView({
           <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">Catálogo de Insumos y Empaques (Unidades Base)</h3>
+                <h3 className="text-base font-bold text-slate-900">Catálogo Maestro y Hoja "Costos" de Google Sheets</h3>
                 <span className="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200">
                   {editableCatalog.length} Items Registrados
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-                Todos los insumos y materiales convertidos en su unidad base de producción (<strong>kg, lt, pz, un</strong>). Los cambios se sincronizan directamente con la pestaña <code>Costos</code> de Google Sheets.
+                Reflejo directo de la pestaña <code>Costos</code> de Google Sheets. Muestra el Costo por Empaque (Col C) y el Costo por Unidad Base (Col D). Puedes editarlos directamente o a través de compras.
               </p>
             </div>
 
@@ -882,7 +934,7 @@ export default function PurchasesView({
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Nuevo Item</span>
+                <span>+ Nuevo Insumo / Empaque</span>
               </button>
 
               <button
@@ -953,12 +1005,13 @@ export default function PurchasesView({
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider sticky top-0 z-10">
                   <tr>
-                    <th className="p-3.5">Nombre / Descripción</th>
+                    <th className="p-3.5">Col A: Insumo / Empaque</th>
                     <th className="p-3.5">Tipo</th>
                     <th className="p-3.5">Unidad Base</th>
-                    <th className="p-3.5">Presentación Compra</th>
-                    <th className="p-3.5">Proveedor</th>
-                    <th className="p-3.5 text-right w-44">Costo Unitario Base ($)</th>
+                    <th className="p-3.5">Col B: Presentación Empaque</th>
+                    <th className="p-3.5">Col E: Proveedor</th>
+                    <th className="p-3.5 text-right w-40">Col C: Costo Empaque ($)</th>
+                    <th className="p-3.5 text-right w-44">Col D: Costo Unidad Base ($)</th>
                     <th className="p-3.5 text-center w-20">Acción</th>
                   </tr>
                 </thead>
@@ -989,13 +1042,46 @@ export default function PurchasesView({
                           <span className="text-slate-400 font-bold text-xs">$</span>
                           <input
                             type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.empaqueCost || ''}
+                            onChange={e => {
+                              const empaqueVal = parseFloat(e.target.value) || 0;
+                              // Auto calculate unitCost if presentation has numbers
+                              const numMatch = (item.empaquePresentation || '').match(/(\d+(?:\.\d+)?)/);
+                              const cont = numMatch ? parseFloat(numMatch[1]) : 1;
+                              const newUnit = cont > 0 ? empaqueVal / cont : empaqueVal;
+                              setEditableCatalog(prev =>
+                                prev.map(i =>
+                                  i.name === item.name
+                                    ? { ...i, empaqueCost: empaqueVal, unitCost: Number(newUnit.toFixed(4)) }
+                                    : i
+                                )
+                              );
+                            }}
+                            className="w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 text-right focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-slate-400 font-bold text-xs">$</span>
+                          <input
+                            type="number"
                             step="0.0001"
                             min="0"
                             value={item.unitCost}
                             onChange={e => {
                               const val = parseFloat(e.target.value) || 0;
+                              const numMatch = (item.empaquePresentation || '').match(/(\d+(?:\.\d+)?)/);
+                              const cont = numMatch ? parseFloat(numMatch[1]) : 1;
+                              const newEmpaque = val * cont;
                               setEditableCatalog(prev =>
-                                prev.map(i => (i.name === item.name ? { ...i, unitCost: val } : i))
+                                prev.map(i =>
+                                  i.name === item.name
+                                    ? { ...i, unitCost: val, empaqueCost: Number(newEmpaque.toFixed(2)) }
+                                    : i
+                                )
                               );
                             }}
                             className="w-28 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 text-right focus:ring-2 focus:ring-emerald-500"
@@ -1016,7 +1102,7 @@ export default function PurchasesView({
                   ))}
                   {filteredCatalog.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
                         No se encontraron insumos o empaques con el filtro seleccionado.
                       </td>
                     </tr>
@@ -1066,7 +1152,8 @@ export default function PurchasesView({
                     <th className="p-3.5">Proveedor</th>
                     <th className="p-3.5">Presentación Comprada</th>
                     <th className="p-3.5 text-right">Total Unidades Base</th>
-                    <th className="p-3.5 text-right">Costo Total</th>
+                    <th className="p-3.5 text-right">Gasto Total</th>
+                    <th className="p-3.5 text-right">Costo Empaque</th>
                     <th className="p-3.5 text-right">Costo Unit. Base</th>
                     <th className="p-3.5">Notas</th>
                   </tr>
@@ -1087,6 +1174,9 @@ export default function PurchasesView({
                       <td className="p-3.5 text-right font-bold text-emerald-700">
                         ${p.costoTotal.toFixed(2)}
                       </td>
+                      <td className="p-3.5 text-right font-semibold text-slate-800">
+                        ${(p.costoPorEmpaque || (p.costoTotal / (p.empaquesCantidad || 1))).toFixed(2)}
+                      </td>
                       <td className="p-3.5 text-right font-black text-blue-700">
                         ${p.costoUnitarioBase.toFixed(4)} / {p.unidadBase}
                       </td>
@@ -1095,7 +1185,7 @@ export default function PurchasesView({
                   ))}
                   {filteredPurchases.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="p-8 text-center text-slate-400">
+                      <td colSpan={10} className="p-8 text-center text-slate-400">
                         No hay compras registradas en el historial.
                       </td>
                     </tr>
@@ -1107,12 +1197,15 @@ export default function PurchasesView({
         </div>
       )}
 
-      {/* Modal: Add New Item to Master Catalog */}
+      {/* Modal: Add New Item to Master Catalog (Derived from expenditure) */}
       {showAddCatalogModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-base font-bold text-slate-900">Agregar Nuevo Insumo o Empaque</h4>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-600" />
+                Agregar Nuevo Insumo o Empaque
+              </h4>
               <button
                 onClick={() => setShowAddCatalogModal(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
@@ -1144,7 +1237,9 @@ export default function PurchasesView({
                       setNewCatalogItem({
                         ...newCatalogItem,
                         isIngredient: isIng,
-                        baseUnit: isIng ? 'kg' : 'pz'
+                        baseUnit: isIng ? 'kg' : 'pz',
+                        empaqueTipo: isIng ? 'Saco' : 'Caja',
+                        contenidoPorEmpaque: isIng ? 50 : 1000
                       });
                     }}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1169,43 +1264,93 @@ export default function PurchasesView({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Costo Unitario Base ($)</label>
+              {/* Expenditure Input in Modal */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                <label className="text-xs font-bold text-emerald-900 block">
+                  ¿Cuánto se gasta en esta compra o presentación? ($ MXN)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-emerald-700 font-bold">$</span>
                   <input
                     type="number"
-                    step="0.0001"
+                    step="0.01"
                     min="0"
                     required
-                    placeholder="0.00"
-                    value={newCatalogItem.unitCost || ''}
-                    onChange={e => setNewCatalogItem({ ...newCatalogItem, unitCost: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                    placeholder="Ej. 840.00"
+                    value={newCatalogItem.costoGastoTotal}
+                    onChange={e =>
+                      setNewCatalogItem({
+                        ...newCatalogItem,
+                        costoGastoTotal: e.target.value === '' ? '' : parseFloat(e.target.value)
+                      })
+                    }
+                    className="w-full pl-7 pr-3 py-2 bg-white border border-emerald-300 rounded-xl text-sm font-black text-slate-900 focus:ring-2 focus:ring-emerald-500"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Empaque</label>
+                  <select
+                    value={newCatalogItem.empaqueTipo}
+                    onChange={e => setNewCatalogItem({ ...newCatalogItem, empaqueTipo: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                  >
+                    <option value="Saco">Saco</option>
+                    <option value="Caja">Caja</option>
+                    <option value="Tambo">Tambo</option>
+                    <option value="Garrafa">Garrafa</option>
+                    <option value="Cubeta">Cubeta</option>
+                    <option value="Pieza">Pieza</option>
+                    <option value="Rollo">Rollo</option>
+                  </select>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Proveedor</label>
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
+                    Contenido por Empaque ({newCatalogItem.baseUnit})
+                  </label>
                   <input
-                    type="text"
-                    placeholder="Ej. TASSA o Suintar"
-                    value={newCatalogItem.provider}
-                    onChange={e => setNewCatalogItem({ ...newCatalogItem, provider: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                    type="number"
+                    step="any"
+                    min="0.001"
+                    required
+                    value={newCatalogItem.contenidoPorEmpaque}
+                    onChange={e =>
+                      setNewCatalogItem({
+                        ...newCatalogItem,
+                        contenidoPorEmpaque: parseFloat(e.target.value) || 1
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Presentación Comercial Típica</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Proveedor</label>
                 <input
                   type="text"
-                  placeholder="Ej. 50 kg (Saco) o 1000 pz (Caja)"
-                  value={newCatalogItem.empaquePresentation}
-                  onChange={e => setNewCatalogItem({ ...newCatalogItem, empaquePresentation: e.target.value })}
+                  placeholder="Ej. TASSA o Suintar"
+                  value={newCatalogItem.provider}
+                  onChange={e => setNewCatalogItem({ ...newCatalogItem, provider: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
                 />
               </div>
+
+              {/* Live derivation summary in modal */}
+              {Number(newCatalogItem.costoGastoTotal) > 0 && (
+                <div className="p-2.5 bg-slate-100 rounded-xl text-xs text-slate-700 flex justify-between items-center">
+                  <span>Costo derivado por {newCatalogItem.baseUnit}:</span>
+                  <span className="font-black text-emerald-700">
+                    ${(
+                      Number(newCatalogItem.costoGastoTotal) /
+                      ((Number(newCatalogItem.empaquesCantidad) || 1) * (Number(newCatalogItem.contenidoPorEmpaque) || 1))
+                    ).toFixed(4)} / {newCatalogItem.baseUnit}
+                  </span>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button

@@ -242,8 +242,8 @@ function App() {
 
   const canAccessRoutes = isAdmin || isGerencia || isSupervisorRutas;
   const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
-  const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion;
-  const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion;
+  const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const role = user?.role || 'user';
 
   const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'all'>('rutas');
