@@ -272,91 +272,131 @@ export function saveLocalPurchases(records: PurchaseRecord[]) {
   }
 }
 
-// Record Purchase, convert to Base Unit ($/kg, $/lt, $/pz, $/un), update config & Google Sheets
-export async function recordPurchase(data: {
-  fechaCompra: string;
-  folio?: string;
+export interface PurchaseLineInput {
   itemNombre: string;
   isIngredient?: boolean;
-  proveedor?: string;
   empaqueTipo: string;
   empaquesCantidad: number;
   contenidoPorEmpaque: number;
   unidadBase: string;
   costoTotal: number;
   notas?: string;
-}): Promise<{ success: boolean; message: string; purchase?: PurchaseRecord }> {
+}
+
+// Record Purchase (Single or Multi-Line Invoice), convert to Base Unit ($/kg, $/lt, $/pz, $/un), update config & Google Sheets
+export async function recordPurchase(data: {
+  fechaCompra: string;
+  folio?: string;
+  proveedor?: string;
+  notas?: string;
+  itemNombre?: string;
+  isIngredient?: boolean;
+  empaqueTipo?: string;
+  empaquesCantidad?: number;
+  contenidoPorEmpaque?: number;
+  unidadBase?: string;
+  costoTotal?: number;
+  lines?: PurchaseLineInput[];
+}): Promise<{ success: boolean; message: string; purchase?: PurchaseRecord; purchases?: PurchaseRecord[] }> {
   try {
-    const empaquesCantidad = Number(data.empaquesCantidad) || 1;
-    const contenidoPorEmpaque = Number(data.contenidoPorEmpaque) || 1;
-    const totalUnidadesBase = empaquesCantidad * contenidoPorEmpaque;
-    const costoTotal = Number(data.costoTotal) || 0;
-    const costoPorEmpaque = empaquesCantidad > 0 ? costoTotal / empaquesCantidad : 0;
-    const costoUnitarioBase = totalUnidadesBase > 0 ? costoTotal / totalUnidadesBase : 0;
+    const linesToProcess: PurchaseLineInput[] = [];
+    if (data.lines && Array.isArray(data.lines) && data.lines.length > 0) {
+      linesToProcess.push(...data.lines);
+    } else if (data.itemNombre) {
+      linesToProcess.push({
+        itemNombre: data.itemNombre,
+        isIngredient: data.isIngredient ?? true,
+        empaqueTipo: data.empaqueTipo || 'Saco',
+        empaquesCantidad: Number(data.empaquesCantidad) || 1,
+        contenidoPorEmpaque: Number(data.contenidoPorEmpaque) || 1,
+        unidadBase: data.unidadBase || 'kg',
+        costoTotal: Number(data.costoTotal) || 0,
+        notas: data.notas || ''
+      });
+    } else {
+      return { success: false, message: 'No se enviaron líneas de compra para registrar.' };
+    }
 
     const config = getProductionConfig();
     if (!config.ingredients) config.ingredients = [];
 
-    let existingItem = config.ingredients.find((i: any) =>
-      i.name.trim().toLowerCase() === data.itemNombre.trim().toLowerCase()
-    );
+    const newPurchases: PurchaseRecord[] = [];
+    const timestamp = Date.now();
 
-    const costoAnteriorBase = existingItem ? (existingItem.unitCost || 0) : undefined;
-    const presentationStr = `${contenidoPorEmpaque} ${data.unidadBase} (${data.empaqueTipo})`;
+    for (let index = 0; index < linesToProcess.length; index++) {
+      const line = linesToProcess[index];
+      const empaquesCantidad = Number(line.empaquesCantidad) || 1;
+      const contenidoPorEmpaque = Number(line.contenidoPorEmpaque) || 1;
+      const totalUnidadesBase = empaquesCantidad * contenidoPorEmpaque;
+      const costoTotal = Number(line.costoTotal) || 0;
+      const costoPorEmpaque = empaquesCantidad > 0 ? costoTotal / empaquesCantidad : 0;
+      const costoUnitarioBase = totalUnidadesBase > 0 ? costoTotal / totalUnidadesBase : 0;
 
-    if (existingItem) {
-      existingItem.unitCost = Number(costoUnitarioBase.toFixed(4));
-      existingItem.empaquePresentation = presentationStr;
-      existingItem.empaqueCost = Number(costoPorEmpaque.toFixed(2));
-      existingItem.baseUnit = data.unidadBase;
-      if (data.proveedor) existingItem.provider = data.proveedor;
-    } else {
-      const newItem = {
-        name: data.itemNombre.trim(),
-        unitCost: Number(costoUnitarioBase.toFixed(4)),
-        isIngredient: data.isIngredient ?? true,
-        applicableCategories: [],
-        provider: data.proveedor || 'General',
-        empaquePresentation: presentationStr,
-        empaqueCost: Number(costoPorEmpaque.toFixed(2)),
-        baseUnit: data.unidadBase
+      let existingItem = config.ingredients.find((i: any) =>
+        i.name.trim().toLowerCase() === line.itemNombre.trim().toLowerCase()
+      );
+
+      const presentationStr = `${contenidoPorEmpaque} ${line.unidadBase} (${line.empaqueTipo})`;
+
+      if (existingItem) {
+        existingItem.unitCost = Number(costoUnitarioBase.toFixed(4));
+        existingItem.empaquePresentation = presentationStr;
+        existingItem.empaqueCost = Number(costoPorEmpaque.toFixed(2));
+        existingItem.baseUnit = line.unidadBase;
+        if (data.proveedor) existingItem.provider = data.proveedor;
+      } else {
+        const newItem = {
+          name: line.itemNombre.trim(),
+          unitCost: Number(costoUnitarioBase.toFixed(4)),
+          isIngredient: line.isIngredient ?? true,
+          applicableCategories: [],
+          provider: data.proveedor || 'General',
+          empaquePresentation: presentationStr,
+          empaqueCost: Number(costoPorEmpaque.toFixed(2)),
+          baseUnit: line.unidadBase
+        };
+        config.ingredients.unshift(newItem);
+      }
+
+      const purchaseRecord: PurchaseRecord = {
+        id: `PUR-${timestamp}-${index}`,
+        fechaCompra: data.fechaCompra,
+        fechaCaptura: new Date().toISOString(),
+        folio: data.folio || '',
+        itemNombre: line.itemNombre.trim(),
+        isIngredient: line.isIngredient ?? true,
+        proveedor: data.proveedor || 'General',
+        empaqueTipo: line.empaqueTipo,
+        empaquesCantidad,
+        contenidoPorEmpaque,
+        unidadBase: line.unidadBase,
+        totalUnidadesBase,
+        costoTotal,
+        costoPorEmpaque: Number(costoPorEmpaque.toFixed(2)),
+        costoUnitarioBase: Number(costoUnitarioBase.toFixed(4)),
+        costoAnteriorBase: existingItem ? existingItem.unitCost : undefined,
+        notas: line.notas || data.notas || ''
       };
-      config.ingredients.unshift(newItem);
+
+      newPurchases.push(purchaseRecord);
     }
 
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
 
-    const purchaseRecord: PurchaseRecord = {
-      id: `PUR-${Date.now()}`,
-      fechaCompra: data.fechaCompra,
-      fechaCaptura: new Date().toISOString(),
-      folio: data.folio || '',
-      itemNombre: data.itemNombre.trim(),
-      isIngredient: data.isIngredient ?? true,
-      proveedor: data.proveedor || 'General',
-      empaqueTipo: data.empaqueTipo,
-      empaquesCantidad,
-      contenidoPorEmpaque,
-      unidadBase: data.unidadBase,
-      totalUnidadesBase,
-      costoTotal,
-      costoPorEmpaque: Number(costoPorEmpaque.toFixed(2)),
-      costoUnitarioBase: Number(costoUnitarioBase.toFixed(4)),
-      costoAnteriorBase,
-      notas: data.notas || ''
-    };
-
     const purchases = loadLocalPurchases();
-    purchases.unshift(purchaseRecord);
+    purchases.unshift(...newPurchases);
     saveLocalPurchases(purchases);
 
     // Sync all updated costs to Google Sheets 'Costos' tab (clear and write)
     await updateProductionCosts(config.ingredients);
 
+    const totalFactura = linesToProcess.reduce((sum, l) => sum + (Number(l.costoTotal) || 0), 0);
+
     return {
       success: true,
-      message: `¡Compra de "${data.itemNombre}" registrada con éxito! Desglose: ${totalUnidadesBase} ${data.unidadBase} a $${costoUnitarioBase.toFixed(2)}/${data.unidadBase}. Catálogo de Google Sheets actualizado.`,
-      purchase: purchaseRecord
+      message: `¡Factura registrada con éxito (${linesToProcess.length} líneas, Total: $${totalFactura.toFixed(2)} MXN)! Hoja Costos de Google Sheets actualizada.`,
+      purchases: newPurchases,
+      purchase: newPurchases[0]
     };
   } catch (err: any) {
     console.error('Error in recordPurchase:', err);

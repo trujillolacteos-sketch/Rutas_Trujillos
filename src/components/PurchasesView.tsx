@@ -25,7 +25,9 @@ import {
   PlusCircle,
   HelpCircle,
   Calculator,
-  Info
+  Info,
+  ListPlus,
+  ClipboardList
 } from 'lucide-react';
 import { AppState } from '../types';
 
@@ -60,6 +62,22 @@ interface PurchaseRecord {
   notas?: string;
 }
 
+// In-memory line item for an invoice being captured
+interface InvoiceLine {
+  id: string;
+  itemNombre: string;
+  isIngredient: boolean;
+  empaqueTipo: string;
+  empaquesCantidad: number;
+  contenidoPorEmpaque: number;
+  unidadBase: string;
+  totalUnidadesBase: number;
+  costoTotal: number;
+  costoPorEmpaque: number;
+  costoUnitarioBase: number;
+  notas?: string;
+}
+
 export default function PurchasesView({
   role,
   user,
@@ -81,19 +99,25 @@ export default function PurchasesView({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Form State for Purchase Registration
-  const [isIngredientType, setIsIngredientType] = useState<boolean>(true);
-  const [selectedItemName, setSelectedItemName] = useState<string>('');
+  // Invoice Header State (Shared by all accumulated lines in this invoice)
   const [fechaCompra, setFechaCompra] = useState<string>(todayStr);
   const [proveedor, setProveedor] = useState<string>('TASSA');
   const [folio, setFolio] = useState<string>('');
+  const [notasFactura, setNotasFactura] = useState<string>('');
+
+  // Accumulated Lines for the current Invoice
+  const [invoiceLines, setInvoiceLines] = useState<InvoiceLine[]>([]);
+
+  // Current Line Input Fields
+  const [isIngredientType, setIsIngredientType] = useState<boolean>(true);
+  const [selectedItemName, setSelectedItemName] = useState<string>('');
   const [empaqueTipo, setEmpaqueTipo] = useState<string>('Saco');
   const [empaquesCantidad, setEmpaquesCantidad] = useState<number | ''>(1);
   const [contenidoPorEmpaque, setContenidoPorEmpaque] = useState<number | ''>(50);
   const [unidadBase, setUnidadBase] = useState<string>('kg');
   // Dedicated expenditure input requested by user: "¿Cuánto va a ser del insumo o cosa que se vaya a gastar?"
   const [costoTotal, setCostoTotal] = useState<number | ''>('');
-  const [notas, setNotas] = useState<string>('');
+  const [notasLinea, setNotasLinea] = useState<string>('');
 
   // Catalog Table State
   const [catalogSearch, setCatalogSearch] = useState<string>('');
@@ -142,7 +166,7 @@ export default function PurchasesView({
 
       if (items.length > 0 && !selectedItemName) {
         setSelectedItemName(items[0].name);
-        setProveedor(items[0].provider || 'TASSA');
+        if (items[0].provider) setProveedor(items[0].provider);
         if (items[0].isIngredient) {
           setIsIngredientType(true);
           setUnidadBase(items[0].baseUnit || 'kg');
@@ -208,14 +232,7 @@ export default function PurchasesView({
     }
   };
 
-  // Derived Calculations: "A partir de la compra y no al revés"
-  // User inputs:
-  // 1. Gasto total del insumo ($ MXN)
-  // 2. Cantidad de empaques comprados
-  // 3. Contenido de cada empaque
-  // System calculates:
-  // - Costo por empaque = Gasto total / Cantidad empaques
-  // - Costo por unidad base = Gasto total / (Cantidad empaques * Contenido empaque)
+  // Derived Calculations for CURRENT Line: "A partir de la compra y no al revés"
   const liveBreakdown = useMemo(() => {
     const qtyEmpaques = typeof empaquesCantidad === 'number' && empaquesCantidad > 0 ? empaquesCantidad : 0;
     const contEmpaque = typeof contenidoPorEmpaque === 'number' && contenidoPorEmpaque > 0 ? contenidoPorEmpaque : 0;
@@ -243,11 +260,20 @@ export default function PurchasesView({
     };
   }, [empaquesCantidad, contenidoPorEmpaque, costoTotal, empaqueTipo, unidadBase, selectedItemName, ingredients]);
 
-  // Submit Purchase: Updates Google Sheets Costos Tab (borrando el anterior y dejando derivado)
-  const handleSubmitPurchase = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Invoice Summary (Totals across all accumulated lines)
+  const invoiceSummary = useMemo(() => {
+    const totalLines = invoiceLines.length;
+    const totalCost = invoiceLines.reduce((acc, l) => acc + (l.costoTotal || 0), 0);
+    return {
+      totalLines,
+      totalCost
+    };
+  }, [invoiceLines]);
+
+  // Action: Add current product line to the Invoice Accumulator
+  const handleAddLineToInvoice = () => {
     if (!selectedItemName.trim()) {
-      setErrorMessage('Por favor selecciona o escribe el insumo.');
+      setErrorMessage('Por favor selecciona o escribe el insumo para agregarlo a la factura.');
       return;
     }
     if (!costoTotal || Number(costoTotal) <= 0) {
@@ -263,6 +289,84 @@ export default function PurchasesView({
       return;
     }
 
+    const qty = Number(empaquesCantidad);
+    const cont = Number(contenidoPorEmpaque);
+    const totalBase = qty * cont;
+    const gasto = Number(costoTotal);
+    const costEmpaque = qty > 0 ? gasto / qty : 0;
+    const costUnitBase = totalBase > 0 ? gasto / totalBase : 0;
+
+    const newLine: InvoiceLine = {
+      id: `line-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      itemNombre: selectedItemName.trim(),
+      isIngredient: isIngredientType,
+      empaqueTipo,
+      empaquesCantidad: qty,
+      contenidoPorEmpaque: cont,
+      unidadBase,
+      totalUnidadesBase: totalBase,
+      costoTotal: gasto,
+      costoPorEmpaque: Number(costEmpaque.toFixed(2)),
+      costoUnitarioBase: Number(costUnitBase.toFixed(4)),
+      notas: notasLinea.trim()
+    };
+
+    setInvoiceLines(prev => [...prev, newLine]);
+    setCostoTotal('');
+    setNotasLinea('');
+    setErrorMessage(null);
+    setSuccessMessage(`✓ Línea "${newLine.itemNombre}" ($${gasto.toFixed(2)} MXN) agregada a la factura.`);
+  };
+
+  // Action: Remove a line from the Invoice Accumulator
+  const handleRemoveLine = (id: string) => {
+    setInvoiceLines(prev => prev.filter(l => l.id !== id));
+  };
+
+  // Action: Clear all accumulated lines
+  const handleClearInvoice = () => {
+    if (invoiceLines.length > 0 && !window.confirm('¿Deseas vaciar todas las líneas acumuladas de esta factura?')) return;
+    setInvoiceLines([]);
+    setCostoTotal('');
+    setNotasLinea('');
+  };
+
+  // Submit the Entire Invoice with all its accumulated lines to Server and Google Sheets
+  const handleSubmitEntireInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // If there are no lines in the table, check if the user filled in the line form and auto-add it
+    let linesToSubmit = [...invoiceLines];
+    if (selectedItemName.trim() && costoTotal && Number(costoTotal) > 0) {
+      const qty = Number(empaquesCantidad) || 1;
+      const cont = Number(contenidoPorEmpaque) || 1;
+      const totalBase = qty * cont;
+      const gasto = Number(costoTotal);
+      const costEmpaque = qty > 0 ? gasto / qty : 0;
+      const costUnitBase = totalBase > 0 ? gasto / totalBase : 0;
+
+      const currentLine: InvoiceLine = {
+        id: `line-${Date.now()}`,
+        itemNombre: selectedItemName.trim(),
+        isIngredient: isIngredientType,
+        empaqueTipo,
+        empaquesCantidad: qty,
+        contenidoPorEmpaque: cont,
+        unidadBase,
+        totalUnidadesBase: totalBase,
+        costoTotal: gasto,
+        costoPorEmpaque: Number(costEmpaque.toFixed(2)),
+        costoUnitarioBase: Number(costUnitBase.toFixed(4)),
+        notas: notasLinea.trim()
+      };
+      linesToSubmit.push(currentLine);
+    }
+
+    if (linesToSubmit.length === 0) {
+      setErrorMessage('Debes agregar al menos una línea de producto antes de registrar la factura.');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setErrorMessage(null);
@@ -271,15 +375,18 @@ export default function PurchasesView({
       const payload = {
         fechaCompra,
         folio: folio.trim(),
-        itemNombre: selectedItemName.trim(),
-        isIngredient: isIngredientType,
         proveedor: proveedor.trim() || 'General',
-        empaqueTipo,
-        empaquesCantidad: Number(empaquesCantidad),
-        contenidoPorEmpaque: Number(contenidoPorEmpaque),
-        unidadBase,
-        costoTotal: Number(costoTotal),
-        notas: notas.trim()
+        notas: notasFactura.trim(),
+        lines: linesToSubmit.map(l => ({
+          itemNombre: l.itemNombre,
+          isIngredient: l.isIngredient,
+          empaqueTipo: l.empaqueTipo,
+          empaquesCantidad: l.empaquesCantidad,
+          contenidoPorEmpaque: l.contenidoPorEmpaque,
+          unidadBase: l.unidadBase,
+          costoTotal: l.costoTotal,
+          notas: l.notas
+        }))
       };
 
       const res = await apiFetch('/api/production/purchases', {
@@ -290,13 +397,15 @@ export default function PurchasesView({
 
       const data = await res.json();
       if (data.success) {
-        setSuccessMessage(data.message || '¡Compra registrada con éxito y hoja Costos de Google Sheets actualizada!');
+        setSuccessMessage(data.message || `¡Factura registrada con éxito (${linesToSubmit.length} líneas) y Google Sheets actualizado!`);
+        setInvoiceLines([]);
         setCostoTotal('');
         setFolio('');
-        setNotas('');
+        setNotasLinea('');
+        setNotasFactura('');
         await loadData();
       } else {
-        setErrorMessage(data.message || 'Error al registrar la compra.');
+        setErrorMessage(data.message || 'Error al registrar la factura.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Error de conexión con el servidor.');
@@ -439,7 +548,7 @@ export default function PurchasesView({
               </span>
             </div>
             <p className="text-sm text-slate-500">
-              Cálculo automático del costo por empaque y unidad base a partir del gasto total de compra
+              Captura de facturas multi-línea con desglose automático de costo por empaque y unidad base
             </p>
           </div>
         </div>
@@ -503,8 +612,8 @@ export default function PurchasesView({
               : 'text-slate-600 hover:bg-slate-100 bg-white border border-slate-200'
           }`}
         >
-          <Coins className="w-4 h-4" />
-          <span>1. Registrar Compra y Gasto</span>
+          <ListPlus className="w-4 h-4" />
+          <span>1. Factura Multi-Línea ({invoiceLines.length} en proceso)</span>
         </button>
 
         <button
@@ -533,19 +642,87 @@ export default function PurchasesView({
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: REGISTRAR COMPRA A PARTIR DEL GASTO */}
+      {/* TAB 1: REGISTRAR COMPRA MULTI-LÍNEA POR FACTURA */}
       {/* ========================================================================= */}
       {activeTab === 'register' && (
-        <form onSubmit={handleSubmitPurchase} className="space-y-6">
+        <div className="space-y-6">
+          {/* HEADER DE LA FACTURA: Proveedor, Folio y Fecha */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-800">
+                  Encabezado de la Factura / Remisión
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">
+                  {invoiceLines.length} línea{invoiceLines.length === 1 ? '' : 's'} acumulada{invoiceLines.length === 1 ? '' : 's'}
+                </span>
+                <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg">
+                  Total Factura: ${invoiceSummary.totalCost.toFixed(2)} MXN
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Fecha de Factura / Compra</label>
+                <input
+                  type="date"
+                  required
+                  value={fechaCompra}
+                  onChange={e => setFechaCompra(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Proveedor General de la Factura</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. TASSA, Suintar, etc."
+                  value={proveedor}
+                  onChange={e => setProveedor(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Folio / No. Factura o Remisión</label>
+                <input
+                  type="text"
+                  placeholder="Ej. F-10482 o REM-982"
+                  value={folio}
+                  onChange={e => setFolio(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Notas de la Factura (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Compra mensual con descuento"
+                  value={notasFactura}
+                  onChange={e => setNotasFactura(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* FORMULARIO DE CAPTURA DE LÍNEA Y TARJETA EN VIVO */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 7 Columns: Form Input */}
+            {/* Left 7 Columns: Form Input for the current line */}
             <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <ShoppingCart className="w-4 h-4 text-emerald-600" />
-                  Registro de Compra e Insumos
+                  <PlusCircle className="w-4 h-4 text-emerald-600" />
+                  Agregar Producto o Insumo a la Factura
                 </h3>
-                <span className="text-xs text-slate-400 font-medium">Cálculo derivado del gasto</span>
+                <span className="text-xs text-slate-400 font-medium">Captura línea por línea</span>
               </div>
 
               {/* Type Switcher */}
@@ -585,7 +762,7 @@ export default function PurchasesView({
               {/* Item Selection (Without showing "Costo actual") */}
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-700">Insumo o Empaque que vas a Comprar</label>
+                  <label className="text-xs font-bold text-slate-700">Insumo o Empaque de esta Línea</label>
                   <button
                     type="button"
                     onClick={() => setShowAddCatalogModal(true)}
@@ -597,7 +774,6 @@ export default function PurchasesView({
                 <select
                   value={selectedItemName}
                   onChange={e => handleItemSelect(e.target.value)}
-                  required
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                 >
                   <option value="">-- Selecciona el insumo o empaque --</option>
@@ -627,14 +803,14 @@ export default function PurchasesView({
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-black text-emerald-950 flex items-center gap-2">
                     <Coins className="w-5 h-5 text-emerald-600" />
-                    ¿Cuánto va a ser del insumo o cosa que se vaya a gastar?
+                    ¿Cuánto va a ser de esta línea que se vaya a gastar?
                   </label>
                   <span className="text-[11px] font-bold text-emerald-800 bg-emerald-200/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    Gasto Total ($ MXN)
+                    Gasto de la Línea ($ MXN)
                   </span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Ingresa aquí el importe monetario total de la compra (factura, remisión o nota de gasto). Los costos por empaque y por unidad base se calcularán automáticamente a partir de esta cantidad.
+                  Ingresa el importe de esta partida en la factura. El costo por empaque y por unidad base se calcularán automáticamente a partir de este monto.
                 </p>
                 <div className="relative mt-2">
                   <span className="absolute left-4 top-3 text-emerald-700 font-black text-2xl">$</span>
@@ -642,7 +818,6 @@ export default function PurchasesView({
                     type="number"
                     step="0.01"
                     min="0.01"
-                    required
                     placeholder="0.00"
                     value={costoTotal}
                     onChange={e => setCostoTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
@@ -656,10 +831,10 @@ export default function PurchasesView({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
                     <Package className="w-3.5 h-3.5 text-blue-600" />
-                    ¿Cómo viene empacado lo que compraste?
+                    Presentación de esta línea
                   </span>
                   <span className="text-[11px] text-slate-500 font-medium">
-                    Presentación de entrega
+                    Empaque de entrega
                   </span>
                 </div>
 
@@ -690,7 +865,6 @@ export default function PurchasesView({
                       type="number"
                       step="any"
                       min="0.001"
-                      required
                       placeholder="Ej. 2"
                       value={empaquesCantidad}
                       onChange={e => setEmpaquesCantidad(e.target.value === '' ? '' : parseFloat(e.target.value))}
@@ -706,7 +880,6 @@ export default function PurchasesView({
                       type="number"
                       step="any"
                       min="0.001"
-                      required
                       placeholder="Ej. 50"
                       value={contenidoPorEmpaque}
                       onChange={e => setContenidoPorEmpaque(e.target.value === '' ? '' : parseFloat(e.target.value))}
@@ -718,7 +891,7 @@ export default function PurchasesView({
                 {/* Base Unit Selector */}
                 <div>
                   <label className="text-xs font-semibold text-slate-600 block mb-1.5">
-                    Unidad Base para Recetas y Fórmulas
+                    Unidad Base de Producción
                   </label>
                   <div className="flex items-center gap-2">
                     {['kg', 'lt', 'pz', 'un'].map(u => (
@@ -739,62 +912,36 @@ export default function PurchasesView({
                 </div>
               </div>
 
-              {/* Administrative Details: Date, Provider & Folio */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Fecha de Compra</label>
-                  <input
-                    type="date"
-                    required
-                    value={fechaCompra}
-                    onChange={e => setFechaCompra(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Proveedor</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. TASSA, Suintar"
-                    value={proveedor}
-                    onChange={e => setProveedor(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-600 block mb-1">Folio / Factura / Remisión</label>
-                  <input
-                    type="text"
-                    placeholder="Ej. F-10482"
-                    value={folio}
-                    onChange={e => setFolio(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Notas u Observaciones (Opcional)</label>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Notas de esta Línea (Opcional)</label>
                 <input
                   type="text"
-                  placeholder="Ej. Compra directa de emergencia o cambio de proveedor"
-                  value={notas}
-                  onChange={e => setNotas(e.target.value)}
+                  placeholder="Ej. Descuento por volumen o cambio de lote"
+                  value={notasLinea}
+                  onChange={e => setNotasLinea(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
                 />
               </div>
+
+              {/* Botón: Agregar Línea a la Factura */}
+              <button
+                type="button"
+                onClick={handleAddLineToInvoice}
+                disabled={!selectedItemName || !costoTotal || Number(costoTotal) <= 0}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <PlusCircle className="w-5 h-5" />
+                <span>+ Agregar Línea a la Factura</span>
+              </button>
             </div>
 
-            {/* Right 5 Columns: Live Converted Breakdown Card */}
+            {/* Right 5 Columns: Live Converted Breakdown Card for current line */}
             <div className="lg:col-span-5 space-y-4">
               <div className="bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900 text-white p-6 rounded-2xl shadow-xl space-y-5 border border-emerald-600/30">
                 <div className="flex items-center justify-between border-b border-white/20 pb-3">
                   <div className="flex items-center gap-2">
                     <Calculator className="w-5 h-5 text-emerald-300" />
-                    <h3 className="font-bold text-sm tracking-wide">Cálculo Derivado de la Compra</h3>
+                    <h3 className="font-bold text-sm tracking-wide">Cálculo Derivado de la Línea</h3>
                   </div>
                   <span className="text-[10px] uppercase font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 px-2.5 py-0.5 rounded-full">
                     A Partir del Gasto
@@ -806,7 +953,7 @@ export default function PurchasesView({
                   {/* Costo por Unidad Base */}
                   <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
                     <span className="text-xs text-emerald-200 font-bold block mb-1 uppercase tracking-wider">
-                      Costo por Unidad Base Calculado ($ / {unidadBase})
+                      Costo por Unidad Base ($ / {unidadBase})
                     </span>
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-black tracking-tight text-white">
@@ -817,7 +964,7 @@ export default function PurchasesView({
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-100/90 mt-1">
-                      Fórmula: Gasto total ${Number(costoTotal || 0).toFixed(2)} ÷ {liveBreakdown.totalBase.toLocaleString()} {unidadBase} totales
+                      Fórmula: Gasto ${Number(costoTotal || 0).toFixed(2)} ÷ {liveBreakdown.totalBase.toLocaleString()} {unidadBase} totales
                     </p>
                   </div>
 
@@ -843,7 +990,7 @@ export default function PurchasesView({
                         {liveBreakdown.totalBase.toLocaleString()} {unidadBase}
                       </span>
                       <span className="text-[10px] text-emerald-200/80 block mt-0.5">
-                        ({empaquesCantidad || 0} {empaqueTipo}s × {contenidoPorEmpaque || 0} {unidadBase})
+                        ({empaquesCantidad || 0} × {contenidoPorEmpaque || 0} {unidadBase})
                       </span>
                     </div>
                   </div>
@@ -854,9 +1001,9 @@ export default function PurchasesView({
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-300 border-b border-white/10 pb-1.5">
                     <span className="flex items-center gap-1.5">
                       <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-                      Vista Previa Google Sheets (Hoja Costos)
+                      Vista Previa Google Sheets (Fila de esta Línea)
                     </span>
-                    <span className="text-[10px] text-slate-300">Cols A - E</span>
+                    <span className="text-[10px] text-slate-300">Hoja Costos</span>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -887,25 +1034,141 @@ export default function PurchasesView({
                   </div>
 
                   <p className="text-[10px] text-emerald-200/80 pt-1 border-t border-white/10">
-                    ✓ Al guardar, se sobrescribe la fila en Google Sheets borrando el costo anterior y dejando el nuevo cálculo exacto.
+                    ✓ Al guardar la factura completa, se actualizarán todas las líneas en Google Sheets en un solo paso.
                   </p>
                 </div>
-
-                {/* Action Submit Button */}
-                <button
-                  type="submit"
-                  disabled={submitting || !selectedItemName || !costoTotal}
-                  className="w-full py-4 bg-white text-emerald-950 hover:bg-emerald-50 active:scale-[0.99] font-black text-sm rounded-xl transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className={`w-4 h-4 ${submitting ? 'animate-spin' : ''}`} />
-                  <span>
-                    {submitting ? 'Actualizando Google Sheets...' : 'Actualizar Hoja Costos a Partir de este Gasto'}
-                  </span>
-                </button>
               </div>
             </div>
           </div>
-        </form>
+
+          {/* ========================================================================= */}
+          {/* TABLA DE LÍNEAS ACUMULADAS EN ESTA FACTURA */}
+          {/* ========================================================================= */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Líneas Acumuladas en esta Factura ({invoiceLines.length})
+                </h3>
+              </div>
+
+              {invoiceLines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearInvoice}
+                  className="text-xs font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 self-start sm:self-auto"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Vaciar Líneas
+                </button>
+              )}
+            </div>
+
+            {invoiceLines.length === 0 ? (
+              <div className="text-center py-10 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                <ListPlus className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-700">Aún no hay líneas agregadas a esta factura</p>
+                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                  Selecciona un insumo arriba, indica cuánto se va a gastar y la cantidad de empaques, luego presiona <strong>"+ Agregar Línea a la Factura"</strong> para ir acumulándolas.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="p-3">#</th>
+                      <th className="p-3">Insumo / Material</th>
+                      <th className="p-3">Tipo</th>
+                      <th className="p-3">Presentación Comprada</th>
+                      <th className="p-3 text-right">Total Base</th>
+                      <th className="p-3 text-right">Costo x Empaque</th>
+                      <th className="p-3 text-right">Costo Unit. Base</th>
+                      <th className="p-3 text-right">Gasto de la Línea</th>
+                      <th className="p-3 text-center w-16">Quitar</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {invoiceLines.map((line, idx) => (
+                      <tr key={line.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="p-3 font-bold text-slate-400">{idx + 1}</td>
+                        <td className="p-3 font-bold text-slate-900">{line.itemNombre}</td>
+                        <td className="p-3">
+                          {line.isIngredient ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              Materia Prima
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Empaque
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-slate-600">
+                          {line.empaquesCantidad} {line.empaqueTipo}s de {line.contenidoPorEmpaque} {line.unidadBase}
+                        </td>
+                        <td className="p-3 text-right font-semibold text-slate-800">
+                          {line.totalUnidadesBase.toLocaleString()} {line.unidadBase}
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-900">
+                          ${line.costoPorEmpaque.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-right font-black text-blue-700">
+                          ${line.costoUnitarioBase.toFixed(4)} / {line.unidadBase}
+                        </td>
+                        <td className="p-3 text-right font-black text-emerald-700 text-sm">
+                          ${line.costoTotal.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveLine(line.id)}
+                            className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg transition-colors"
+                            title="Quitar esta línea de la factura"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr>
+                      <td colSpan={7} className="p-3.5 text-right font-black text-slate-900 text-sm">
+                        TOTAL DE LA FACTURA ({invoiceLines.length} líneas):
+                      </td>
+                      <td className="p-3.5 text-right font-black text-emerald-800 text-base">
+                        ${invoiceSummary.totalCost.toFixed(2)} MXN
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* BOTÓN DE GUARDADO DEFINITIVO DE LA FACTURA */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-xs text-slate-500">
+                Al guardar, todas las líneas se añadirán al historial de compras y se sobrescribirá la pestaña <code>Costos</code> en Google Sheets.
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSubmitEntireInvoice}
+                disabled={submitting || (invoiceLines.length === 0 && (!selectedItemName || !costoTotal))}
+                className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className={`w-5 h-5 ${submitting ? 'animate-spin' : ''}`} />
+                <span>
+                  {submitting
+                    ? 'Sincronizando Factura con Google Sheets...'
+                    : `Guardar Factura Completa (${invoiceLines.length > 0 ? invoiceLines.length : (selectedItemName && costoTotal ? 1 : 0)} Líneas) en Google Sheets`}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ========================================================================= */}
@@ -923,7 +1186,7 @@ export default function PurchasesView({
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-                Reflejo directo de la pestaña <code>Costos</code> de Google Sheets. Muestra el Costo por Empaque (Col C) y el Costo por Unidad Base (Col D). Puedes editarlos directamente o a través de compras.
+                Reflejo directo de la pestaña <code>Costos</code> de Google Sheets. Muestra el Costo por Empaque (Col C) y el Costo por Unidad Base (Col D). Puedes editarlos directamente o a través de facturas de compra.
               </p>
             </div>
 
@@ -1152,7 +1415,7 @@ export default function PurchasesView({
                     <th className="p-3.5">Proveedor</th>
                     <th className="p-3.5">Presentación Comprada</th>
                     <th className="p-3.5 text-right">Total Unidades Base</th>
-                    <th className="p-3.5 text-right">Gasto Total</th>
+                    <th className="p-3.5 text-right">Gasto de la Línea</th>
                     <th className="p-3.5 text-right">Costo Empaque</th>
                     <th className="p-3.5 text-right">Costo Unit. Base</th>
                     <th className="p-3.5">Notas</th>
