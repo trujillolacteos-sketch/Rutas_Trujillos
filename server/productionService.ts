@@ -25,6 +25,9 @@ export interface PurchaseRecord {
   unidadBase: 'kg' | 'lt' | 'pz' | 'un' | string;
   totalUnidadesBase: number;
   costoTotal: number;
+  subtotal?: number;
+  impuestoTipo?: 'sin_iva' | 'mas_iva' | 'iva_incluido' | string;
+  montoIva?: number;
   costoPorEmpaque: number;
   costoUnitarioBase: number;
   costoAnteriorBase?: number;
@@ -280,6 +283,9 @@ export interface PurchaseLineInput {
   contenidoPorEmpaque: number;
   unidadBase: string;
   costoTotal: number;
+  subtotal?: number;
+  impuestoTipo?: 'sin_iva' | 'mas_iva' | 'iva_incluido' | string;
+  montoIva?: number;
   notas?: string;
 }
 
@@ -372,6 +378,9 @@ export async function recordPurchase(data: {
         unidadBase: line.unidadBase,
         totalUnidadesBase,
         costoTotal,
+        subtotal: line.subtotal,
+        impuestoTipo: line.impuestoTipo,
+        montoIva: line.montoIva,
         costoPorEmpaque: Number(costoPorEmpaque.toFixed(2)),
         costoUnitarioBase: Number(costoUnitarioBase.toFixed(4)),
         costoAnteriorBase: existingItem ? existingItem.unitCost : undefined,

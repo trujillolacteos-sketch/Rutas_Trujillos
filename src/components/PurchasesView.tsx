@@ -56,6 +56,9 @@ interface PurchaseRecord {
   unidadBase: string;
   totalUnidadesBase: number;
   costoTotal: number;
+  subtotal?: number;
+  impuestoTipo?: 'sin_iva' | 'mas_iva' | 'iva_incluido' | string;
+  montoIva?: number;
   costoPorEmpaque: number;
   costoUnitarioBase: number;
   costoAnteriorBase?: number;
@@ -72,6 +75,10 @@ interface InvoiceLine {
   contenidoPorEmpaque: number;
   unidadBase: string;
   totalUnidadesBase: number;
+  costoIngresado: number;
+  impuestoTipo: 'sin_iva' | 'mas_iva' | 'iva_incluido';
+  subtotal: number;
+  montoIva: number;
   costoTotal: number;
   costoPorEmpaque: number;
   costoUnitarioBase: number;
@@ -115,8 +122,9 @@ export default function PurchasesView({
   const [empaquesCantidad, setEmpaquesCantidad] = useState<number | ''>(1);
   const [contenidoPorEmpaque, setContenidoPorEmpaque] = useState<number | ''>(50);
   const [unidadBase, setUnidadBase] = useState<string>('kg');
-  // Dedicated expenditure input requested by user: "¿Cuánto va a ser del insumo o cosa que se vaya a gastar?"
+  // Costo e Impuestos (formato limpio y conciso)
   const [costoTotal, setCostoTotal] = useState<number | ''>('');
+  const [impuestoTipo, setImpuestoTipo] = useState<'sin_iva' | 'mas_iva' | 'iva_incluido'>('sin_iva');
   const [notasLinea, setNotasLinea] = useState<string>('');
 
   // Catalog Table State
@@ -128,6 +136,7 @@ export default function PurchasesView({
     name: string;
     isIngredient: boolean;
     costoGastoTotal: number | '';
+    impuestoTipo: 'sin_iva' | 'mas_iva' | 'iva_incluido';
     empaquesCantidad: number;
     contenidoPorEmpaque: number;
     provider: string;
@@ -137,6 +146,7 @@ export default function PurchasesView({
     name: '',
     isIngredient: true,
     costoGastoTotal: '',
+    impuestoTipo: 'sin_iva',
     empaquesCantidad: 1,
     contenidoPorEmpaque: 50,
     provider: 'TASSA',
@@ -232,12 +242,30 @@ export default function PurchasesView({
     }
   };
 
+  // Tax calculations for CURRENT line
+  const taxDetails = useMemo(() => {
+    const val = typeof costoTotal === 'number' && costoTotal > 0 ? costoTotal : 0;
+    if (impuestoTipo === 'mas_iva') {
+      const subtotal = val;
+      const iva = Number((val * 0.16).toFixed(2));
+      const total = Number((subtotal + iva).toFixed(2));
+      return { subtotal, iva, total };
+    } else if (impuestoTipo === 'iva_incluido') {
+      const total = val;
+      const subtotal = Number((val / 1.16).toFixed(2));
+      const iva = Number((total - subtotal).toFixed(2));
+      return { subtotal, iva, total };
+    } else {
+      return { subtotal: val, iva: 0, total: val };
+    }
+  }, [costoTotal, impuestoTipo]);
+
   // Derived Calculations for CURRENT Line: "A partir de la compra y no al revés"
   const liveBreakdown = useMemo(() => {
     const qtyEmpaques = typeof empaquesCantidad === 'number' && empaquesCantidad > 0 ? empaquesCantidad : 0;
     const contEmpaque = typeof contenidoPorEmpaque === 'number' && contenidoPorEmpaque > 0 ? contenidoPorEmpaque : 0;
     const totalBase = qtyEmpaques * contEmpaque;
-    const totalCostNum = typeof costoTotal === 'number' && costoTotal > 0 ? costoTotal : 0;
+    const totalCostNum = taxDetails.total;
 
     const unitBaseCost = totalBase > 0 ? totalCostNum / totalBase : 0;
     const commercialEmpaqueCost = qtyEmpaques > 0 ? totalCostNum / qtyEmpaques : 0;
@@ -258,14 +286,18 @@ export default function PurchasesView({
       diff,
       percentDiff
     };
-  }, [empaquesCantidad, contenidoPorEmpaque, costoTotal, empaqueTipo, unidadBase, selectedItemName, ingredients]);
+  }, [empaquesCantidad, contenidoPorEmpaque, taxDetails, empaqueTipo, unidadBase, selectedItemName, ingredients]);
 
   // Invoice Summary (Totals across all accumulated lines)
   const invoiceSummary = useMemo(() => {
     const totalLines = invoiceLines.length;
     const totalCost = invoiceLines.reduce((acc, l) => acc + (l.costoTotal || 0), 0);
+    const totalIva = invoiceLines.reduce((acc, l) => acc + (l.montoIva || 0), 0);
+    const totalSubtotal = invoiceLines.reduce((acc, l) => acc + (l.subtotal || 0), 0);
     return {
       totalLines,
+      totalSubtotal,
+      totalIva,
       totalCost
     };
   }, [invoiceLines]);
@@ -277,7 +309,7 @@ export default function PurchasesView({
       return;
     }
     if (!costoTotal || Number(costoTotal) <= 0) {
-      setErrorMessage('Por favor ingresa cuánto se va a gastar en este insumo.');
+      setErrorMessage('Por favor ingresa el costo de este insumo.');
       return;
     }
     if (!empaquesCantidad || Number(empaquesCantidad) <= 0) {
@@ -292,9 +324,9 @@ export default function PurchasesView({
     const qty = Number(empaquesCantidad);
     const cont = Number(contenidoPorEmpaque);
     const totalBase = qty * cont;
-    const gasto = Number(costoTotal);
-    const costEmpaque = qty > 0 ? gasto / qty : 0;
-    const costUnitBase = totalBase > 0 ? gasto / totalBase : 0;
+    const totalLínea = taxDetails.total;
+    const costEmpaque = qty > 0 ? totalLínea / qty : 0;
+    const costUnitBase = totalBase > 0 ? totalLínea / totalBase : 0;
 
     const newLine: InvoiceLine = {
       id: `line-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -305,7 +337,11 @@ export default function PurchasesView({
       contenidoPorEmpaque: cont,
       unidadBase,
       totalUnidadesBase: totalBase,
-      costoTotal: gasto,
+      costoIngresado: Number(costoTotal),
+      impuestoTipo,
+      subtotal: taxDetails.subtotal,
+      montoIva: taxDetails.iva,
+      costoTotal: totalLínea,
       costoPorEmpaque: Number(costEmpaque.toFixed(2)),
       costoUnitarioBase: Number(costUnitBase.toFixed(4)),
       notas: notasLinea.trim()
@@ -315,7 +351,7 @@ export default function PurchasesView({
     setCostoTotal('');
     setNotasLinea('');
     setErrorMessage(null);
-    setSuccessMessage(`✓ Línea "${newLine.itemNombre}" ($${gasto.toFixed(2)} MXN) agregada a la factura.`);
+    setSuccessMessage(`✓ Línea "${newLine.itemNombre}" ($${totalLínea.toFixed(2)} MXN) agregada a la factura.`);
   };
 
   // Action: Remove a line from the Invoice Accumulator
@@ -335,15 +371,14 @@ export default function PurchasesView({
   const handleSubmitEntireInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // If there are no lines in the table, check if the user filled in the line form and auto-add it
     let linesToSubmit = [...invoiceLines];
     if (selectedItemName.trim() && costoTotal && Number(costoTotal) > 0) {
       const qty = Number(empaquesCantidad) || 1;
       const cont = Number(contenidoPorEmpaque) || 1;
       const totalBase = qty * cont;
-      const gasto = Number(costoTotal);
-      const costEmpaque = qty > 0 ? gasto / qty : 0;
-      const costUnitBase = totalBase > 0 ? gasto / totalBase : 0;
+      const totalLínea = taxDetails.total;
+      const costEmpaque = qty > 0 ? totalLínea / qty : 0;
+      const costUnitBase = totalBase > 0 ? totalLínea / totalBase : 0;
 
       const currentLine: InvoiceLine = {
         id: `line-${Date.now()}`,
@@ -354,7 +389,11 @@ export default function PurchasesView({
         contenidoPorEmpaque: cont,
         unidadBase,
         totalUnidadesBase: totalBase,
-        costoTotal: gasto,
+        costoIngresado: Number(costoTotal),
+        impuestoTipo,
+        subtotal: taxDetails.subtotal,
+        montoIva: taxDetails.iva,
+        costoTotal: totalLínea,
         costoPorEmpaque: Number(costEmpaque.toFixed(2)),
         costoUnitarioBase: Number(costUnitBase.toFixed(4)),
         notas: notasLinea.trim()
@@ -385,6 +424,9 @@ export default function PurchasesView({
           contenidoPorEmpaque: l.contenidoPorEmpaque,
           unidadBase: l.unidadBase,
           costoTotal: l.costoTotal,
+          subtotal: l.subtotal,
+          impuestoTipo: l.impuestoTipo,
+          montoIva: l.montoIva,
           notas: l.notas
         }))
       };
@@ -454,13 +496,18 @@ export default function PurchasesView({
       return;
     }
 
-    const gastoTotal = Number(newCatalogItem.costoGastoTotal) || 0;
+    const rawCost = Number(newCatalogItem.costoGastoTotal) || 0;
+    let finalCost = rawCost;
+    if (newCatalogItem.impuestoTipo === 'mas_iva') {
+      finalCost = rawCost * 1.16;
+    }
+
     const empaques = Number(newCatalogItem.empaquesCantidad) || 1;
     const cont = Number(newCatalogItem.contenidoPorEmpaque) || 1;
     const totalUnidades = empaques * cont;
 
-    const empaqueCost = empaques > 0 ? gastoTotal / empaques : 0;
-    const unitCost = totalUnidades > 0 ? gastoTotal / totalUnidades : 0;
+    const empaqueCost = empaques > 0 ? finalCost / empaques : 0;
+    const unitCost = totalUnidades > 0 ? finalCost / totalUnidades : 0;
     const presentationStr = `${cont} ${newCatalogItem.baseUnit} (${newCatalogItem.empaqueTipo})`;
 
     const item: IngredientItem = {
@@ -483,14 +530,16 @@ export default function PurchasesView({
     setEmpaqueTipo(newCatalogItem.empaqueTipo);
     setContenidoPorEmpaque(cont);
     setEmpaquesCantidad(empaques);
-    if (gastoTotal > 0) {
-      setCostoTotal(gastoTotal);
+    if (rawCost > 0) {
+      setCostoTotal(rawCost);
+      setImpuestoTipo(newCatalogItem.impuestoTipo);
     }
 
     setNewCatalogItem({
       name: '',
       isIngredient: true,
       costoGastoTotal: '',
+      impuestoTipo: 'sin_iva',
       empaquesCantidad: 1,
       contenidoPorEmpaque: 50,
       provider: 'TASSA',
@@ -716,13 +765,13 @@ export default function PurchasesView({
           {/* FORMULARIO DE CAPTURA DE LÍNEA Y TARJETA EN VIVO */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left 7 Columns: Form Input for the current line */}
-            <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                   <PlusCircle className="w-4 h-4 text-emerald-600" />
                   Agregar Producto o Insumo a la Factura
                 </h3>
-                <span className="text-xs text-slate-400 font-medium">Captura línea por línea</span>
+                <span className="text-xs text-slate-400 font-medium">Partida por partida</span>
               </div>
 
               {/* Type Switcher */}
@@ -798,36 +847,57 @@ export default function PurchasesView({
                 </select>
               </div>
 
-              {/* DEDICATED PROMINENT EXPENDITURE INPUT: "¿Cuánto va a ser del insumo o cosa que se vaya a gastar?" */}
-              <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-500/40 rounded-2xl shadow-sm space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-black text-emerald-950 flex items-center gap-2">
-                    <Coins className="w-5 h-5 text-emerald-600" />
-                    ¿Cuánto va a ser de esta línea que se vaya a gastar?
-                  </label>
-                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-200/60 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                    Gasto de la Línea ($ MXN)
-                  </span>
+              {/* COSTO Y SI LLEVA IMPUESTOS (Formato compacto y limpio) */}
+              <div className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Costo ($ MXN)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-slate-400 font-bold text-sm">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        placeholder="0.00"
+                        value={costoTotal}
+                        onChange={e => setCostoTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                        className="w-full pl-7 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-base font-black text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      ¿Lleva impuestos?
+                    </label>
+                    <select
+                      value={impuestoTipo}
+                      onChange={e => setImpuestoTipo(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="sin_iva">Sin impuestos (0% / Exento)</option>
+                      <option value="mas_iva">+ 16% IVA (Agregar impuesto)</option>
+                      <option value="iva_incluido">IVA incluido (16%)</option>
+                    </select>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-600">
-                  Ingresa el importe de esta partida en la factura. El costo por empaque y por unidad base se calcularán automáticamente a partir de este monto.
-                </p>
-                <div className="relative mt-2">
-                  <span className="absolute left-4 top-3 text-emerald-700 font-black text-2xl">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="0.00"
-                    value={costoTotal}
-                    onChange={e => setCostoTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    className="w-full pl-10 pr-4 py-3 bg-white border-2 border-emerald-500 rounded-xl text-2xl font-black text-slate-900 focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-600 shadow-sm"
-                  />
-                </div>
+
+                {/* Resumen sutil si aplica impuesto */}
+                {impuestoTipo !== 'sin_iva' && Number(costoTotal) > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-600 border-t border-slate-200/60 font-medium">
+                    <span>Subtotal: <strong>${taxDetails.subtotal.toFixed(2)}</strong></span>
+                    <span>•</span>
+                    <span className="text-emerald-700">IVA (16%): <strong>+${taxDetails.iva.toFixed(2)}</strong></span>
+                    <span>•</span>
+                    <span className="text-slate-900 font-bold">Total línea: <strong>${taxDetails.total.toFixed(2)}</strong></span>
+                  </div>
+                )}
               </div>
 
               {/* Commercial Packaging Breakdown Fields */}
-              <div className="p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
+              <div className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
                     <Package className="w-3.5 h-3.5 text-blue-600" />
@@ -928,9 +998,9 @@ export default function PurchasesView({
                 type="button"
                 onClick={handleAddLineToInvoice}
                 disabled={!selectedItemName || !costoTotal || Number(costoTotal) <= 0}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <PlusCircle className="w-5 h-5" />
+                <PlusCircle className="w-4 h-4" />
                 <span>+ Agregar Línea a la Factura</span>
               </button>
             </div>
@@ -944,7 +1014,7 @@ export default function PurchasesView({
                     <h3 className="font-bold text-sm tracking-wide">Cálculo Derivado de la Línea</h3>
                   </div>
                   <span className="text-[10px] uppercase font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 px-2.5 py-0.5 rounded-full">
-                    A Partir del Gasto
+                    A Partir del Costo
                   </span>
                 </div>
 
@@ -964,7 +1034,7 @@ export default function PurchasesView({
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-100/90 mt-1">
-                      Fórmula: Gasto ${Number(costoTotal || 0).toFixed(2)} ÷ {liveBreakdown.totalBase.toLocaleString()} {unidadBase} totales
+                      Fórmula: Total línea ${taxDetails.total.toFixed(2)} ÷ {liveBreakdown.totalBase.toLocaleString()} {unidadBase} totales
                     </p>
                   </div>
 
@@ -1069,7 +1139,7 @@ export default function PurchasesView({
                 <ListPlus className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                 <p className="text-sm font-bold text-slate-700">Aún no hay líneas agregadas a esta factura</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                  Selecciona un insumo arriba, indica cuánto se va a gastar y la cantidad de empaques, luego presiona <strong>"+ Agregar Línea a la Factura"</strong> para ir acumulándolas.
+                  Selecciona un insumo arriba, ingresa el costo y si lleva impuestos, luego presiona <strong>"+ Agregar Línea a la Factura"</strong>.
                 </p>
               </div>
             ) : (
@@ -1082,9 +1152,11 @@ export default function PurchasesView({
                       <th className="p-3">Tipo</th>
                       <th className="p-3">Presentación Comprada</th>
                       <th className="p-3 text-right">Total Base</th>
+                      <th className="p-3 text-right">Costo Subtotal</th>
+                      <th className="p-3 text-right">Impuesto</th>
+                      <th className="p-3 text-right">Total Línea</th>
                       <th className="p-3 text-right">Costo x Empaque</th>
                       <th className="p-3 text-right">Costo Unit. Base</th>
-                      <th className="p-3 text-right">Gasto de la Línea</th>
                       <th className="p-3 text-center w-16">Quitar</th>
                     </tr>
                   </thead>
@@ -1110,14 +1182,24 @@ export default function PurchasesView({
                         <td className="p-3 text-right font-semibold text-slate-800">
                           {line.totalUnidadesBase.toLocaleString()} {line.unidadBase}
                         </td>
+                        <td className="p-3 text-right text-slate-700">
+                          ${line.subtotal.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-right font-medium text-slate-500">
+                          {line.impuestoTipo === 'sin_iva' ? (
+                            <span className="text-slate-400">0%</span>
+                          ) : (
+                            <span className="text-emerald-700 font-bold">+${line.montoIva.toFixed(2)}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right font-black text-emerald-800 text-sm">
+                          ${line.costoTotal.toFixed(2)}
+                        </td>
                         <td className="p-3 text-right font-bold text-slate-900">
                           ${line.costoPorEmpaque.toFixed(2)}
                         </td>
                         <td className="p-3 text-right font-black text-blue-700">
                           ${line.costoUnitarioBase.toFixed(4)} / {line.unidadBase}
-                        </td>
-                        <td className="p-3 text-right font-black text-emerald-700 text-sm">
-                          ${line.costoTotal.toFixed(2)}
                         </td>
                         <td className="p-3 text-center">
                           <button
@@ -1134,13 +1216,16 @@ export default function PurchasesView({
                   </tbody>
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                     <tr>
-                      <td colSpan={7} className="p-3.5 text-right font-black text-slate-900 text-sm">
-                        TOTAL DE LA FACTURA ({invoiceLines.length} líneas):
+                      <td colSpan={5} className="p-3.5 text-right font-bold text-slate-600">
+                        Subtotal: ${invoiceSummary.totalSubtotal.toFixed(2)} | IVA: ${invoiceSummary.totalIva.toFixed(2)}
+                      </td>
+                      <td colSpan={2} className="p-3.5 text-right font-black text-slate-900 text-sm">
+                        TOTAL FACTURA:
                       </td>
                       <td className="p-3.5 text-right font-black text-emerald-800 text-base">
                         ${invoiceSummary.totalCost.toFixed(2)} MXN
                       </td>
-                      <td></td>
+                      <td colSpan={3}></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1157,9 +1242,9 @@ export default function PurchasesView({
                 type="button"
                 onClick={handleSubmitEntireInvoice}
                 disabled={submitting || (invoiceLines.length === 0 && (!selectedItemName || !costoTotal))}
-                className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Save className={`w-5 h-5 ${submitting ? 'animate-spin' : ''}`} />
+                <Save className={`w-4 h-4 ${submitting ? 'animate-spin' : ''}`} />
                 <span>
                   {submitting
                     ? 'Sincronizando Factura con Google Sheets...'
@@ -1310,7 +1395,6 @@ export default function PurchasesView({
                             value={item.empaqueCost || ''}
                             onChange={e => {
                               const empaqueVal = parseFloat(e.target.value) || 0;
-                              // Auto calculate unitCost if presentation has numbers
                               const numMatch = (item.empaquePresentation || '').match(/(\d+(?:\.\d+)?)/);
                               const cont = numMatch ? parseFloat(numMatch[1]) : 1;
                               const newUnit = cont > 0 ? empaqueVal / cont : empaqueVal;
@@ -1415,7 +1499,8 @@ export default function PurchasesView({
                     <th className="p-3.5">Proveedor</th>
                     <th className="p-3.5">Presentación Comprada</th>
                     <th className="p-3.5 text-right">Total Unidades Base</th>
-                    <th className="p-3.5 text-right">Gasto de la Línea</th>
+                    <th className="p-3.5 text-right">Subtotal</th>
+                    <th className="p-3.5 text-right">Total Línea</th>
                     <th className="p-3.5 text-right">Costo Empaque</th>
                     <th className="p-3.5 text-right">Costo Unit. Base</th>
                     <th className="p-3.5">Notas</th>
@@ -1434,6 +1519,9 @@ export default function PurchasesView({
                       <td className="p-3.5 text-right font-black text-slate-900">
                         {p.totalUnidadesBase.toLocaleString()} {p.unidadBase}
                       </td>
+                      <td className="p-3.5 text-right text-slate-700">
+                        ${(p.subtotal || p.costoTotal).toFixed(2)}
+                      </td>
                       <td className="p-3.5 text-right font-bold text-emerald-700">
                         ${p.costoTotal.toFixed(2)}
                       </td>
@@ -1448,7 +1536,7 @@ export default function PurchasesView({
                   ))}
                   {filteredPurchases.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="p-8 text-center text-slate-400">
+                      <td colSpan={11} className="p-8 text-center text-slate-400">
                         No hay compras registradas en el historial.
                       </td>
                     </tr>
@@ -1527,28 +1615,49 @@ export default function PurchasesView({
                 </div>
               </div>
 
-              {/* Expenditure Input in Modal */}
-              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
-                <label className="text-xs font-bold text-emerald-900 block">
-                  ¿Cuánto se gasta en esta compra o presentación? ($ MXN)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-emerald-700 font-bold">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    placeholder="Ej. 840.00"
-                    value={newCatalogItem.costoGastoTotal}
-                    onChange={e =>
-                      setNewCatalogItem({
-                        ...newCatalogItem,
-                        costoGastoTotal: e.target.value === '' ? '' : parseFloat(e.target.value)
-                      })
-                    }
-                    className="w-full pl-7 pr-3 py-2 bg-white border border-emerald-300 rounded-xl text-sm font-black text-slate-900 focus:ring-2 focus:ring-emerald-500"
-                  />
+              {/* Costo e Impuestos en Modal */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Costo ($ MXN)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      placeholder="0.00"
+                      value={newCatalogItem.costoGastoTotal}
+                      onChange={e =>
+                        setNewCatalogItem({
+                          ...newCatalogItem,
+                          costoGastoTotal: e.target.value === '' ? '' : parseFloat(e.target.value)
+                        })
+                      }
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      ¿Lleva impuestos?
+                    </label>
+                    <select
+                      value={newCatalogItem.impuestoTipo}
+                      onChange={e =>
+                        setNewCatalogItem({
+                          ...newCatalogItem,
+                          impuestoTipo: e.target.value as any
+                        })
+                      }
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="sin_iva">Sin IVA (0%)</option>
+                      <option value="mas_iva">+ 16% IVA</option>
+                      <option value="iva_incluido">IVA incluido</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1608,7 +1717,7 @@ export default function PurchasesView({
                   <span>Costo derivado por {newCatalogItem.baseUnit}:</span>
                   <span className="font-black text-emerald-700">
                     ${(
-                      Number(newCatalogItem.costoGastoTotal) /
+                      (Number(newCatalogItem.costoGastoTotal) * (newCatalogItem.impuestoTipo === 'mas_iva' ? 1.16 : 1)) /
                       ((Number(newCatalogItem.empaquesCantidad) || 1) * (Number(newCatalogItem.contenidoPorEmpaque) || 1))
                     ).toFixed(4)} / {newCatalogItem.baseUnit}
                   </span>
