@@ -50,7 +50,7 @@ export default function UsersManagement({ state, setState }: { state: AppState, 
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("¿Seguro que deseas eliminar este usuario?")) return;
+    if (!window.confirm("¿¿Seguro que deseas eliminar este usuario?")) return;
     try {
       const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
       const data = await res.json();

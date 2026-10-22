@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart } from 'lucide-react';
+import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -18,6 +18,7 @@ import ErrorBoundary from './ErrorBoundary';
 import { useAuth } from './hooks/useAuth';
 import CommissionsView from './components/CommissionsView';
 import ProductionView from './components/ProductionView';
+import ProductionLinesView from './components/ProductionLinesView';
 import PurchasesView from './components/PurchasesView';
 import { auth } from './lib/firebase';
 
@@ -40,7 +41,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'purchases'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -190,7 +191,10 @@ function App() {
       { id: 4, username: 'Ruta 2', role: 'operator', password: 'Ruta2.1234' },
       { id: 5, username: 'Ruta 3', role: 'operator', password: 'Ruta3.1234' },
       { id: 6, username: 'Ruta 4', role: 'operator', password: 'Ruta4.1234' },
-      { id: 7, username: 'Ruta 5', role: 'operator', password: 'Ruta5.1234' }
+      { id: 7, username: 'Ruta 5', role: 'operator', password: 'Ruta5.1234' },
+      { id: 8, username: 'Operador Producción', role: 'produccion', password: 'Produccion.1234' },
+      { id: 9, username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
+      { id: 10, username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' }
     ];
 
     const usersList = (state?.users && state.users.length > 0) ? state.users : fallbackUsers;
@@ -238,10 +242,12 @@ function App() {
   const isSupervisorRutas = user?.role === 'supervisor_rutas' || user?.role === 'supervisor';
   const isSupervisorProduccion = user?.role === 'supervisor_produccion';
   const isProduccion = user?.role === 'produccion';
+  const isProduccionLinea = user?.role === 'produccion_linea';
   const isOperator = user?.role === 'operator';
 
   const canAccessRoutes = isAdmin || isGerencia || isSupervisorRutas;
   const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canAccessProductionLines = isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea;
   const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const role = user?.role || 'user';
@@ -255,7 +261,9 @@ function App() {
       localStorage.removeItem('preferred_view');
       return;
     }
-    if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
+    if (user?.role === 'produccion_linea') {
+      setActiveTab('production_lines');
+    } else if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
       setActiveTab('production');
     } else if (user?.role === 'supervisor_rutas' || user?.role === 'supervisor') {
       setActiveTab('dashboard');
@@ -272,12 +280,13 @@ function App() {
       { id: 2, username: 'Gerencia', role: 'gerencia' },
       { id: 3, username: 'Supervisor Rutas', role: 'supervisor_rutas' },
       { id: 4, username: 'Supervisor Planta', role: 'supervisor_produccion' },
-      { id: 5, username: 'Operador Planta', role: 'produccion' },
-      { id: 6, username: 'Ruta 1', role: 'operator' },
-      { id: 7, username: 'Ruta 2', role: 'operator' },
-      { id: 8, username: 'Ruta 3', role: 'operator' },
-      { id: 9, username: 'Ruta 4', role: 'operator' },
-      { id: 10, username: 'Ruta 5', role: 'operator' }
+      { id: 5, username: 'Operador Producción', role: 'produccion' },
+      { id: 6, username: 'Operador Línea', role: 'produccion_linea' },
+      { id: 7, username: 'Ruta 1', role: 'operator' },
+      { id: 8, username: 'Ruta 2', role: 'operator' },
+      { id: 9, username: 'Ruta 3', role: 'operator' },
+      { id: 10, username: 'Ruta 4', role: 'operator' },
+      { id: 11, username: 'Ruta 5', role: 'operator' }
     ];
 
     const availableUsers = rawUsers.filter((u: any) => {
@@ -285,7 +294,7 @@ function App() {
         return ['supervisor_rutas', 'supervisor', 'operator', 'gerencia', 'admin'].includes(u.role);
       }
       if (loginMode === 'produccion') {
-        return ['supervisor_produccion', 'produccion', 'gerencia', 'admin'].includes(u.role);
+        return ['supervisor_produccion', 'produccion', 'produccion_linea', 'gerencia', 'admin'].includes(u.role);
       }
       if (loginMode === 'gerencia') {
         return ['gerencia', 'admin'].includes(u.role);
@@ -528,6 +537,16 @@ function App() {
             </button>
           )}
 
+          {canAccessProductionLines && (
+            <button 
+              onClick={() => setActiveTab('production_lines')} 
+              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production_lines' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
+            >
+              <Layers className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Líneas de Producción</span>
+            </button>
+          )}
+
           {canAccessPurchases && (
             <button 
               onClick={() => setActiveTab('purchases')} 
@@ -638,6 +657,7 @@ function App() {
               {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
               {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
+              {activeTab === 'production_lines' && canAccessProductionLines && <ProductionLinesView role={role} user={user} state={state} />}
               {activeTab === 'purchases' && canAccessPurchases && <PurchasesView role={role} user={user} state={state} />}
             </ErrorBoundary>
           )}

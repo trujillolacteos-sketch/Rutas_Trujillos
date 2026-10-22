@@ -35,6 +35,11 @@ import {
   saveLocalPurchases,
   recordPurchase
 } from './server/productionService.ts';
+import {
+  loadLocalLineReports,
+  createLineReport,
+  deleteLineReport
+} from './server/productionLinesService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
 
@@ -1074,6 +1079,44 @@ async function startServer() {
       const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
       if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await recordPurchase(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Production Lines Endpoints
+  app.get('/api/production-lines/reports', requireAuth, (req, res) => {
+    try {
+      const line = req.query.line as string | undefined;
+      let reports = loadLocalLineReports();
+      if (line && line !== 'all') {
+        reports = reports.filter(r => r.lineId === line);
+      }
+      res.json(reports);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production-lines/report', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion_linea', 'produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+      const result = await createLineReport(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.delete('/api/production-lines/report/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+      const result = deleteLineReport(req.params.id);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
