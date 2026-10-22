@@ -292,13 +292,14 @@ function loadState(): AppState {
     { username: 'Gerencia', role: 'gerencia', password: 'Gerencia.1234' },
     { username: 'Supervisor Rutas', role: 'supervisor_rutas', password: 'Rutas.1234' },
     { username: 'Supervisor Planta', role: 'supervisor_produccion', password: 'Planta.1234' },
-    { username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' }
+    { username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
+    { username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' }
   ];
 
   let usersUpdated = false;
   defaultAccounts.forEach(acc => {
     const exists = (state.users || []).some((u: any) =>
-      u.role === acc.role || u.username.toLowerCase() === acc.username.toLowerCase()
+      u.username?.toLowerCase() === acc.username.toLowerCase()
     );
     if (!exists) {
       if (!state.users) state.users = [];
