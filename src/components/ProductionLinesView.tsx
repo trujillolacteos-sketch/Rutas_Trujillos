@@ -192,6 +192,7 @@ export default function ProductionLinesView({
   state: AppState;
 }) {
   const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit?usp=sharing';
+  const canAccessSheets = role === 'admin' || role === 'gerencia' || user?.role === 'admin' || user?.role === 'gerencia';
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // Active Line & Active Tab (form vs history)
@@ -551,16 +552,18 @@ export default function ProductionLinesView({
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href={SPREADSHEET_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl font-bold text-xs border border-emerald-200 transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Ver Hoja Google Sheets</span>
-              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-            </a>
+            {canAccessSheets && (
+              <a
+                href={SPREADSHEET_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl font-bold text-xs border border-emerald-200 transition-colors"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Ver Hoja Google Sheets</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
+            )}
 
             <button
               onClick={fetchHistory}

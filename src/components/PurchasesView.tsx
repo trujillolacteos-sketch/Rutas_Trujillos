@@ -95,6 +95,7 @@ export default function PurchasesView({
   state: AppState;
 }) {
   const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit?usp=sharing';
+  const canAccessSheets = role === 'admin' || role === 'gerencia' || user?.role === 'admin' || user?.role === 'gerencia';
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [activeTab, setActiveTab] = useState<'register' | 'catalog' | 'history'>('register');
@@ -613,6 +614,7 @@ export default function PurchasesView({
             <span>Actualizar</span>
           </button>
 
+          {canAccessSheets && (
           <a
             href={SPREADSHEET_URL}
             target="_blank"
@@ -623,6 +625,7 @@ export default function PurchasesView({
             <span>Hoja Oficial Google Sheets</span>
             <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-80" />
           </a>
+          )}
         </div>
       </div>
 
