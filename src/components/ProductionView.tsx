@@ -57,6 +57,40 @@ interface LotOption {
   display: string;
 }
 
+// Pure Utility Helpers (declared outside component to prevent TDZ)
+function cleanCatName(cat: string): string {
+  return (cat || '')
+    .replace(/^All\s*\/\s*Quesos\s*\/\s*/i, '')
+    .replace(/^All\s*\/\s*/i, '')
+    .replace(/^All\//i, '')
+    .trim();
+}
+
+function isCategoryMatch(cat1: string, cat2: string): boolean {
+  if (!cat1 || !cat2) return false;
+  if (cat1.trim().toLowerCase() === cat2.trim().toLowerCase()) return true;
+  const c1 = cleanCatName(cat1).toLowerCase();
+  const c2 = cleanCatName(cat2).toLowerCase();
+  return c1 === c2 || c1.includes(c2) || c2.includes(c1);
+}
+
+function parseWeightFromTitle(title: string): number {
+  const lower = (title || '').toLowerCase();
+  const kgMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilos?)/);
+  if (kgMatch) return parseFloat(kgMatch[1]);
+
+  const gMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|gramos?)/);
+  if (gMatch) return parseFloat(gMatch[1]) / 1000;
+
+  const lMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|litro?s?)/);
+  if (lMatch) return parseFloat(lMatch[1]);
+
+  const mlMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:ml|mililitros?)/);
+  if (mlMatch) return parseFloat(mlMatch[1]) / 1000;
+
+  return 1.0;
+}
+
 export default function ProductionView({
   role,
   user,
@@ -141,21 +175,23 @@ export default function ProductionView({
   // Category & Lot Cascading Selection in Packaging
   const [selectedPackCategory, setSelectedPackCategory] = useState<string>('');
 
-  const cleanCatName = (cat: string) => {
-    return (cat || '')
-      .replace(/^All\s*\/\s*Quesos\s*\/\s*/i, '')
-      .replace(/^All\s*\/\s*/i, '')
-      .replace(/^All\//i, '')
-      .trim();
-  };
+  // SKU Technical Configuration Modal (Gerencia & Supervisión)
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [selectedPendingSku, setSelectedPendingSku] = useState<any | null>(null);
+  const [skuModalForm, setSkuModalForm] = useState({
+    product: '',
+    category: '',
+    peso: 1.0,
+    empaques: [] as string[],
+    etiqueta: '',
+    adicionales: [] as string[]
+  });
+  const [savingSku, setSavingSku] = useState(false);
 
-  const isCategoryMatch = (cat1: string, cat2: string) => {
-    if (!cat1 || !cat2) return false;
-    if (cat1.trim().toLowerCase() === cat2.trim().toLowerCase()) return true;
-    const c1 = cleanCatName(cat1).toLowerCase();
-    const c2 = cleanCatName(cat2).toLowerCase();
-    return c1 === c2 || c1.includes(c2) || c2.includes(c1);
-  };
+  // Selected lot info derived from availableLots and packLote
+  const selectedLotInfo = useMemo(() => {
+    return availableLots.find(l => l.lote === packLote);
+  }, [availableLots, packLote]);
 
   // Active lot categories from availableLots
   const activeLotCategories = useMemo(() => {
@@ -189,7 +225,7 @@ export default function ProductionView({
     if (!selectedPackCategory && activeLotCategories.length > 0) {
       setSelectedPackCategory(activeLotCategories[0].categoria);
     }
-  }, [activeLotCategories]);
+  }, [activeLotCategories, selectedPackCategory]);
 
   // Keep category in sync if a lot is loaded
   useEffect(() => {
@@ -198,7 +234,7 @@ export default function ProductionView({
         setSelectedPackCategory(selectedLotInfo.categoria);
       }
     }
-  }, [selectedLotInfo]);
+  }, [selectedLotInfo, selectedPackCategory]);
 
   const openSkuConfig = (sku: any) => {
     setSelectedPendingSku(sku);
@@ -212,19 +248,6 @@ export default function ProductionView({
     });
     setShowConfigModal(true);
   };
-
-  // SKU Technical Configuration Modal (Gerencia & Supervisión)
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [selectedPendingSku, setSelectedPendingSku] = useState<any | null>(null);
-  const [skuModalForm, setSkuModalForm] = useState({
-    product: '',
-    category: '',
-    peso: 1.0,
-    empaques: [] as string[],
-    etiqueta: '',
-    adicionales: [] as string[]
-  });
-  const [savingSku, setSavingSku] = useState(false);
 
   // Fetch initial master data
   const loadMasterConfig = async () => {
@@ -367,23 +390,7 @@ export default function ProductionView({
     );
   }, [prodCategory, config.ingredients]);
 
-  // Parse default weight from SKU product string (e.g. "1 kg" -> 1.0, "500 g" -> 0.5, "250 gr" -> 0.25)
-  const parseWeightFromTitle = (title: string): number => {
-    const lower = title.toLowerCase();
-    const kgMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilos?)/);
-    if (kgMatch) return parseFloat(kgMatch[1]);
-
-    const gMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|gramos?)/);
-    if (gMatch) return parseFloat(gMatch[1]) / 1000;
-
-    const lMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|litro?s?)/);
-    if (lMatch) return parseFloat(lMatch[1]);
-
-    const mlMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:ml|mililitros?)/);
-    if (mlMatch) return parseFloat(mlMatch[1]) / 1000;
-
-    return 1.0;
-  };
+// parseWeightFromTitle hoisted to module scope
 
   // ==========================================
   // TAB 1: PRODUCTION CALCULATIONS
@@ -517,9 +524,6 @@ export default function ProductionView({
   // ==========================================
   // TAB 2: PACKAGING CALCULATIONS
   // ==========================================
-  const selectedLotInfo = useMemo(() => {
-    return availableLots.find(l => l.lote === packLote);
-  }, [availableLots, packLote]);
 
   // Combine configured SKUs with Odoo dairy catalog & evaluate full recipe elements
   const availablePackagingSkus = useMemo(() => {
