@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -486,124 +486,228 @@ function App() {
         </div>
 
         {/* Tab Navigation with Clear Visible Labels on Both Mobile & Desktop */}
-        <nav className="flex-1 px-3 md:px-4 py-2.5 md:py-2 flex md:flex-col gap-1.5 md:gap-1 overflow-x-auto md:overflow-visible no-scrollbar">
+        <nav className="flex-1 px-3 md:px-4 py-2.5 md:py-2 flex md:flex-col gap-2 md:gap-3 overflow-x-auto md:overflow-y-auto no-scrollbar">
+          {/* GRUPO 1: RUTAS Y DISTRIBUCIÓN */}
           {(canAccessRoutes || isOperator) && (
-            <button 
-              onClick={() => setActiveTab('dashboard')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <LayoutDashboard className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Ventas</span>
-            </button>
+            <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1">
+              <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-blue-600">
+                <Truck className="w-3.5 h-3.5" />
+                <span>Rutas y Distribución</span>
+              </div>
+
+              {/* Ventas */}
+              <button 
+                onClick={() => setActiveTab('dashboard')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'dashboard' 
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <LayoutDashboard className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'dashboard' ? 'text-white' : 'text-blue-600'}`} />
+                <span>Ventas</span>
+              </button>
+
+              {/* Planificador */}
+              <button 
+                onClick={() => setActiveTab('planner')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'planner' 
+                    ? 'bg-blue-600 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <Map className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'planner' ? 'text-white' : 'text-blue-600'}`} />
+                <span>Planificador</span>
+              </button>
+
+              {/* Clientes */}
+              {canAccessRoutes && (
+                <button 
+                  onClick={() => setActiveTab('clientes')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'clientes' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Users className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'clientes' ? 'text-white' : 'text-blue-600'}`} />
+                  <span>Clientes</span>
+                </button>
+              )}
+
+              {/* Histórico GPS */}
+              {canAccessRoutes && (
+                <button 
+                  onClick={() => setActiveTab('reports')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'reports' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Clock className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'reports' ? 'text-white' : 'text-blue-600'}`} />
+                  <span>Histórico GPS</span>
+                </button>
+              )}
+
+              {/* Inteligencia */}
+              {canAccessRoutes && (
+                <button 
+                  onClick={() => setActiveTab('alerts')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'alerts' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Bell className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'alerts' ? 'text-white' : 'text-blue-600'}`} />
+                  <span>Inteligencia</span>
+                </button>
+              )}
+            </div>
           )}
-          
+
+          {/* Separador móvil */}
+          {(canAccessRoutes || isOperator) && (canAccessProductionLines || canAccessProduction || canAccessPurchases) && (
+            <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
+          )}
+
+          {/* GRUPO 2: PLANTA Y PRODUCCIÓN */}
+          {(canAccessProductionLines || canAccessProduction || canAccessPurchases) && (
+            <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
+              <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-indigo-600">
+                <Factory className="w-3.5 h-3.5" />
+                <span>Planta y Producción</span>
+              </div>
+
+              {/* Líneas de Producción */}
+              {canAccessProductionLines && (
+                <button 
+                  onClick={() => setActiveTab('production_lines')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'production_lines' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Layers className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production_lines' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Líneas de Producción</span>
+                </button>
+              )}
+
+              {/* Planta y Empaque */}
+              {canAccessProduction && (
+                <button 
+                  onClick={() => setActiveTab('production')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'production' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Factory className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Planta y Empaque</span>
+                </button>
+              )}
+
+              {/* Compras e Insumos */}
+              {canAccessPurchases && (
+                <button 
+                  onClick={() => setActiveTab('purchases')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'purchases' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <ShoppingCart className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'purchases' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Compras e Insumos</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Separador móvil */}
+          {(canAccessProductionLines || canAccessProduction || canAccessPurchases) && (canAccessRoutes || isOperator) && (
+            <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
+          )}
+
+          {/* GRUPO 3: ADMINISTRACIÓN Y FINANZAS */}
           {(canAccessRoutes || isOperator) && (
-            <button 
-              onClick={() => setActiveTab('planner')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'planner' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Map className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Planificador</span>
-            </button>
+            <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
+              <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Administración y Finanzas</span>
+              </div>
+
+              {/* Reportes de Venta */}
+              <button 
+                onClick={() => setActiveTab('sales_reports')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'sales_reports' 
+                    ? 'bg-emerald-600 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <BarChart3 className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'sales_reports' ? 'text-white' : 'text-emerald-600'}`} />
+                <span>Reportes</span>
+              </button>
+
+              {/* Nómina y Comisiones */}
+              <button 
+                onClick={() => setActiveTab('commissions')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'commissions' 
+                    ? 'bg-emerald-600 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <DollarSign className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'commissions' ? 'text-white' : 'text-emerald-600'}`} />
+                <span>Nómina y Comisiones</span>
+              </button>
+            </div>
           )}
 
-          {canAccessRoutes && (
-            <button 
-              onClick={() => setActiveTab('clientes')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'clientes' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Users className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Clientes</span>
-            </button>
-          )}
-
-          {canAccessRoutes && (
-            <button 
-              onClick={() => setActiveTab('reports')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Clock className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Histórico GPS</span>
-            </button>
-          )}
-
-          {canAccessProduction && (
-            <button 
-              onClick={() => setActiveTab('production')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Factory className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Planta y Empaque</span>
-            </button>
-          )}
-
-          {canAccessProductionLines && (
-            <button 
-              onClick={() => setActiveTab('production_lines')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production_lines' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Layers className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Líneas de Producción</span>
-            </button>
-          )}
-
-          {canAccessPurchases && (
-            <button 
-              onClick={() => setActiveTab('purchases')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'purchases' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <ShoppingCart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Compras e Insumos</span>
-            </button>
-          )}
-
-          {(canAccessRoutes || isOperator) && (
-            <button 
-              onClick={() => setActiveTab('sales_reports')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sales_reports' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <BarChart3 className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Reportes</span>
-            </button>
-          )}
-
-          {(canAccessRoutes || isOperator) && (
-            <button 
-              onClick={() => setActiveTab('commissions')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'commissions' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <DollarSign className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Nómina y Comisiones</span>
-            </button>
-          )}
-
-          {canAccessRoutes && (
-            <button 
-              onClick={() => setActiveTab('alerts')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'alerts' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <Bell className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Inteligencia</span>
-            </button>
-          )}
-
+          {/* Separador móvil */}
           {isAdmin && (
-            <button 
-              onClick={() => setActiveTab('zones')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'zones' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <MapIcon className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Zonas</span>
-            </button>
+            <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
           )}
+
+          {/* GRUPO 4: SISTEMA Y AJUSTES */}
           {isAdmin && (
-            <button 
-              onClick={() => setActiveTab('settings')} 
-              className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'settings' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
-            >
-              <SettingsIcon className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Ajustes</span>
-            </button>
+            <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
+              <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <SettingsIcon className="w-3.5 h-3.5" />
+                <span>Sistema</span>
+              </div>
+
+              {/* Zonas */}
+              <button 
+                onClick={() => setActiveTab('zones')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'zones' 
+                    ? 'bg-slate-800 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <MapIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'zones' ? 'text-white' : 'text-slate-600'}`} />
+                <span>Zonas</span>
+              </button>
+
+              {/* Ajustes */}
+              <button 
+                onClick={() => setActiveTab('settings')} 
+                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                  activeTab === 'settings' 
+                    ? 'bg-slate-800 text-white shadow-sm' 
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                }`}
+              >
+                <SettingsIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'settings' ? 'text-white' : 'text-slate-600'}`} />
+                <span>Ajustes</span>
+              </button>
+            </div>
           )}
         </nav>
 
