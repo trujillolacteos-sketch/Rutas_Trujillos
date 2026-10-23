@@ -208,8 +208,13 @@ export default function ProductionLinesView({
 
   // Milk Reception
   const [lecheEnteraLitros, setLecheEnteraLitros] = useState<number | ''>('');
-  const [ranchoEntera, setRanchoEntera] = useState<string>('');
-  const [pipaEntera, setPipaEntera] = useState<string>('');
+  const [ranchoEntera, setRanchoEntera] = useState<string>('Rancho La Estrella');
+  const [ranchoEnteraModo, setRanchoEnteraModo] = useState<'estrella' | 'otro'>('estrella');
+  const [ranchoEnteraCustom, setRanchoEnteraCustom] = useState<string>('');
+
+  const [pipaEntera, setPipaEntera] = useState<string>('Pipa 1');
+  const [pipaEnteraModo, setPipaEnteraModo] = useState<'pipa1' | 'pipa2' | 'pipa3' | 'otro'>('pipa1');
+  const [pipaEnteraCustom, setPipaEnteraCustom] = useState<string>('');
 
   const [lecheDescremadaLitros, setLecheDescremadaLitros] = useState<number | ''>('');
   const [ranchoDescremada, setRanchoDescremada] = useState<string>('');
@@ -336,8 +341,12 @@ export default function ProductionLinesView({
     setHoraRecepcion('');
     setHoraFinalizacion('');
     setLecheEnteraLitros('');
-    setRanchoEntera('');
-    setPipaEntera('');
+    setRanchoEntera('Rancho La Estrella');
+    setRanchoEnteraModo('estrella');
+    setRanchoEnteraCustom('');
+    setPipaEntera('Pipa 1');
+    setPipaEnteraModo('pipa1');
+    setPipaEnteraCustom('');
     setLecheDescremadaLitros('');
     setRanchoDescremada('');
     setPipaDescremada('');
@@ -368,18 +377,6 @@ export default function ProductionLinesView({
 
     setSubmitting(true);
     try {
-      // Build empaque object
-      const empaqueMap: Record<string, { piezas: number; kgTotal: number }> = {};
-      presentaciones.forEach(p => {
-        const pz = Number(empaquePiezas[p.id]);
-        if (pz > 0) {
-          empaqueMap[p.id] = {
-            piezas: pz,
-            kgTotal: Number((pz * p.unitKg).toFixed(2))
-          };
-        }
-      });
-
       // Build payload
       const payload = {
         lineId: selectedLine,
@@ -406,7 +403,7 @@ export default function ProductionLinesView({
         termoEnviados: termoEnviados !== '' ? Number(termoEnviados) : undefined,
         termoCierre: termoCierre !== '' ? Number(termoCierre) : undefined,
         insumos: insumosValues,
-        empaque: empaqueMap,
+        empaque: {},
         notas
       };
 
@@ -454,6 +451,83 @@ export default function ProductionLinesView({
       alert('Error al comunicarse con el servidor: ' + err.message);
     }
   };
+
+  const renderRanchoEnteraField = () => (
+    <div>
+      <label className="block text-xs font-bold text-slate-700 mb-1">
+        Rancho de Procedencia
+      </label>
+      <select
+        value={ranchoEnteraModo}
+        onChange={e => {
+          const mode = e.target.value as 'estrella' | 'otro';
+          setRanchoEnteraModo(mode);
+          if (mode === 'estrella') {
+            setRanchoEntera('Rancho La Estrella');
+          } else {
+            setRanchoEntera(ranchoEnteraCustom);
+          }
+        }}
+        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 mb-1.5"
+      >
+        <option value="estrella">Rancho La Estrella (Predeterminado)</option>
+        <option value="otro">Otro rancho...</option>
+      </select>
+
+      {ranchoEnteraModo === 'otro' && (
+        <input
+          type="text"
+          value={ranchoEnteraCustom}
+          onChange={e => {
+            setRanchoEnteraCustom(e.target.value);
+            setRanchoEntera(e.target.value);
+          }}
+          placeholder="Nombre del rancho proveedor..."
+          className="w-full bg-white border border-sky-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500"
+          autoFocus
+        />
+      )}
+    </div>
+  );
+
+  const renderPipaEnteraField = () => (
+    <div>
+      <label className="block text-xs font-bold text-slate-700 mb-1">
+        Pipa / Identificador
+      </label>
+      <select
+        value={pipaEnteraModo}
+        onChange={e => {
+          const mode = e.target.value as 'pipa1' | 'pipa2' | 'pipa3' | 'otro';
+          setPipaEnteraModo(mode);
+          if (mode === 'pipa1') setPipaEntera('Pipa 1');
+          else if (mode === 'pipa2') setPipaEntera('Pipa 2');
+          else if (mode === 'pipa3') setPipaEntera('Pipa 3');
+          else setPipaEntera(pipaEnteraCustom);
+        }}
+        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 mb-1.5"
+      >
+        <option value="pipa1">Pipa 1 (Predeterminada)</option>
+        <option value="pipa2">Pipa 2</option>
+        <option value="pipa3">Pipa 3</option>
+        <option value="otro">Otra pipa...</option>
+      </select>
+
+      {pipaEnteraModo === 'otro' && (
+        <input
+          type="text"
+          value={pipaEnteraCustom}
+          onChange={e => {
+            setPipaEnteraCustom(e.target.value);
+            setPipaEntera(e.target.value);
+          }}
+          placeholder="Identificador o placa de la pipa..."
+          className="w-full bg-white border border-sky-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500"
+          autoFocus
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
@@ -675,10 +749,10 @@ export default function ProductionLinesView({
             </h2>
 
             {selectedLine === 'descremado_pasteurizado' ? (
-              /* Descremado layout */
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              /* Descremado layout: Recepción Leche Entera + Rancho + Pipa */
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-sky-50/50 border border-sky-100">
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     Leche Entera Recibida (Litros)
                   </label>
                   <input
@@ -687,12 +761,14 @@ export default function ProductionLinesView({
                     value={lecheEnteraLitros}
                     onChange={e => setLecheEnteraLitros(e.target.value === '' ? '' : Number(e.target.value))}
                     placeholder="0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
                   />
                 </div>
+                {renderRanchoEnteraField()}
+                {renderPipaEnteraField()}
               </div>
             ) : (
-              /* Cheese lines layout (Entera + Descremada con Rancho y Pipa) */
+              /* Cheese lines layout (Entera + Descremada con Rancho y Pipa + Rendimientos Tina) */
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-sky-50/50 border border-sky-100">
                   <div>
@@ -709,31 +785,8 @@ export default function ProductionLinesView({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Rancho de Procedencia
-                    </label>
-                    <input
-                      type="text"
-                      value={ranchoEntera}
-                      onChange={e => setRanchoEntera(e.target.value)}
-                      placeholder="Ej. Rancho San José"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Pipa / Identificador
-                    </label>
-                    <input
-                      type="text"
-                      value={pipaEntera}
-                      onChange={e => setPipaEntera(e.target.value)}
-                      placeholder="Ej. Pipa #03"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
+                  {renderRanchoEnteraField()}
+                  {renderPipaEnteraField()}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-indigo-50/50 border border-indigo-100">
@@ -778,34 +831,67 @@ export default function ProductionLinesView({
                   </div>
                 </div>
 
-                {/* Tina Yields: Kg y Suero */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                    <label className="block text-xs font-bold text-emerald-900 mb-1">
-                      KG Obtenidos en Tina
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={kgObtenidos}
-                      onChange={e => setKgObtenidos(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="0.00"
-                      className="w-full bg-white border border-emerald-300 rounded-xl px-3.5 py-2.5 text-sm font-black text-emerald-800 focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
+                {/* Tina Yields: Kg, Suero, Sobrante y Merma */}
+                <div className="pt-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
+                    Rendimientos de Tina y Proceso
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200">
+                      <label className="block text-xs font-bold text-emerald-900 mb-1">
+                        KG Obtenidos en Tina
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={kgObtenidos}
+                        onChange={e => setKgObtenidos(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 text-sm font-black text-emerald-800 focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
 
-                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                    <label className="block text-xs font-bold text-amber-900 mb-1">
-                      Suero Obtenido (Litros)
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={sueroObtenido}
-                      onChange={e => setSueroObtenido(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="0.00"
-                      className="w-full bg-white border border-amber-300 rounded-xl px-3.5 py-2.5 text-sm font-black text-amber-800 focus:ring-2 focus:ring-amber-500"
-                    />
+                    <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200">
+                      <label className="block text-xs font-bold text-amber-900 mb-1">
+                        Suero Obtenido (Litros)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={sueroObtenido}
+                        onChange={e => setSueroObtenido(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-black text-amber-800 focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Sobrante (Kg)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={sobrante}
+                        onChange={e => setSobrante(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-slate-400"
+                      />
+                    </div>
+
+                    <div className="p-3.5 bg-rose-50/60 rounded-xl border border-rose-200">
+                      <label className="block text-xs font-bold text-rose-800 mb-1">
+                        Merma (Kg)
+                      </label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={merma}
+                        onChange={e => setMerma(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-rose-200 rounded-xl px-3 py-2 text-sm font-bold text-rose-800 focus:ring-2 focus:ring-rose-400"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -992,94 +1078,7 @@ export default function ProductionLinesView({
             </div>
           )}
 
-          {/* Section 5: Empaque Diario y Producto Terminado (Para las 4 líneas de queso) */}
-          {presentaciones.length > 0 && (
-            <div className="bg-white rounded-2xl p-5 md:p-6 shadow-sm border border-slate-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <Scale className="w-4 h-4 text-emerald-600" />
-                  <span>4. Reporte de Empaque y Producto Terminado</span>
-                </h2>
-                <div className="flex items-center gap-2 text-xs font-bold bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-xl border border-emerald-200">
-                  <span>Total Empacado:</span>
-                  <span className="text-sm">{totalKgEmpacados.toFixed(2)} KG</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {presentaciones.map(pres => {
-                  const piezas = Number(empaquePiezas[pres.id]) || 0;
-                  const kgSubtotal = (piezas * pres.unitKg).toFixed(2);
-                  return (
-                    <div
-                      key={pres.id}
-                      className={`p-3 rounded-xl border transition-all ${
-                        piezas > 0
-                          ? 'bg-emerald-50/60 border-emerald-300 shadow-sm'
-                          : 'bg-slate-50/70 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-1 mb-1.5">
-                        <span className="text-xs font-bold text-slate-800 leading-tight">
-                          {pres.name}
-                        </span>
-                        <span className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded font-bold shrink-0">
-                          {pres.unitKg} kg/u
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={empaquePiezas[pres.id] ?? ''}
-                          onChange={e => handleEmpaqueChange(pres.id, e.target.value)}
-                          placeholder="0 pz"
-                          className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-800 focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <span className="text-[11px] font-bold text-slate-500">
-                          = {kgSubtotal} kg
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Merma y Sobrante */}
-              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Sobrante (Kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={sobrante}
-                    onChange={e => setSobrante(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0.00"
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                  />
-                </div>
-
-                <div className="p-3.5 bg-rose-50/60 rounded-xl border border-rose-200">
-                  <label className="block text-xs font-bold text-rose-800 mb-1">
-                    Merma (Kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    value={merma}
-                    onChange={e => setMerma(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0.00"
-                    className="w-full bg-white border border-rose-200 rounded-xl px-3 py-2 text-xs font-bold text-rose-800"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Section 6: Observaciones & Guardar */}
+          {/* Observaciones & Guardar */}
           <div className="bg-white rounded-2xl p-5 md:p-6 shadow-sm border border-slate-200">
             <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-2">
               Observaciones y Notas del Turno

@@ -5,84 +5,19 @@ import cron from 'node-cron';
 import { loadLocalCommissions } from './odooSync.ts';
 import { encryptPayload } from './cryptoBackup.ts';
 import { loadLocalProduction, loadLocalPackaging } from './productionService.ts';
+import { getServiceAccountKey, getGoogleAccessToken } from './googleCredentials.ts';
 
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '1mT33WRGF8yEecTOdBwcbApFFmMYJ3gCj';
-const KEY_FILE = 'google-drive-key.json';
 
-interface ServiceAccountKey {
-  client_email: string;
-  private_key: string;
-}
-
-let _cachedToken: string | null = null;
-let _tokenExpiresAt = 0;
-
-export function getServiceAccountKey(): ServiceAccountKey | null {
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
-    try {
-      return JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
-    } catch (e) {
-      console.warn('Error parsing GOOGLE_SERVICE_ACCOUNT_KEY env var:', e);
-    }
-  }
-
-  if (fs.existsSync(KEY_FILE)) {
-    try {
-      return JSON.parse(fs.readFileSync(KEY_FILE, 'utf8'));
-    } catch (e) {
-      console.warn('Error reading google-drive-key.json:', e);
-    }
-  }
-
-  return null;
-}
+export { getServiceAccountKey };
 
 export async function getDriveAccessToken(): Promise<string | null> {
-  const key = getServiceAccountKey();
-  if (!key) return null;
-
-  if (_cachedToken && Date.now() < _tokenExpiresAt - 60000) {
-    return _cachedToken;
-  }
-
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-    const claim = Buffer.from(JSON.stringify({
-      iss: key.client_email,
-      scope: 'https://www.googleapis.com/auth/drive',
-      aud: 'https://oauth2.googleapis.com/token',
-      exp: now + 3600,
-      iat: now
-    })).toString('base64url');
-
-    const sign = crypto.createSign('RSA-SHA256');
-    sign.update(`${header}.${claim}`);
-    const signature = sign.sign(key.private_key, 'base64url');
-    const jwt = `${header}.${claim}.${signature}`;
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: jwt
-      })
-    });
-
-    const data: any = await res.json();
-    if (data.access_token) {
-      _cachedToken = data.access_token;
-      _tokenExpiresAt = Date.now() + (data.expires_in * 1000);
-      return data.access_token;
-    } else {
-      console.error('Error obtaining Google Drive token:', data);
-    }
+    return await getGoogleAccessToken(['https://www.googleapis.com/auth/drive']);
   } catch (err: any) {
-    console.error('Error signing Service Account JWT for Google Drive:', err.message);
+    console.error('Error obtaining Google Drive token:', err.message);
+    return null;
   }
-
-  return null;
 }
 
 /**

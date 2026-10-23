@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { executeKw } from './odoo.ts';
+import { getGoogleAccessToken } from './googleCredentials.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const KEY_FILE = 'google-drive-key.json';
@@ -81,54 +82,10 @@ export interface PackagingBatch {
   adicionalesKg: Record<string, number>;
 }
 
-// Google Sheets Token Generator
-function getServiceAccountAccessToken(): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      if (!fs.existsSync(KEY_FILE)) {
-        return reject(new Error('No se encontró google-drive-key.json'));
-      }
-      const key = JSON.parse(fs.readFileSync(KEY_FILE, 'utf8'));
-      const now = Math.floor(Date.now() / 1000);
-      const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-      const claim = Buffer.from(JSON.stringify({
-        iss: key.client_email,
-        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive',
-        aud: 'https://oauth2.googleapis.com/token',
-        exp: now + 3600,
-        iat: now
-      })).toString('base64url');
-
-      const sign = crypto.createSign('RSA-SHA256');
-      sign.update(`${header}.${claim}`);
-      const signature = sign.sign(key.private_key, 'base64url');
-      const jwt = `${header}.${claim}.${signature}`;
-
-      const res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-          assertion: jwt
-        })
-      });
-
-      const data: any = await res.json();
-      if (data.access_token) {
-        resolve(data.access_token);
-      } else {
-        reject(new Error('Error token: ' + JSON.stringify(data)));
-      }
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
 // Append Rows to Google Sheet
-async function appendRowsToSheet(sheetName: string, rows: any[][]) {
+async function appendRowsToSheet(sheetName: string, rows: any[][]): Promise<{ success: boolean; updatedRows?: number; error?: string }> {
   try {
-    const token = await getServiceAccountAccessToken();
+    const token = await getGoogleAccessToken();
     const encodedSheet = encodeURIComponent(sheetName);
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/${encodedSheet}!A1:append?valueInputOption=USER_ENTERED`;
 
@@ -145,11 +102,14 @@ async function appendRowsToSheet(sheetName: string, rows: any[][]) {
     const data: any = await res.json();
     if (data.updates) {
       console.log(`[Google Sheets] ${rows.length} renglón(es) insertado(s) con éxito en ${sheetName}.`);
+      return { success: true, updatedRows: data.updates.updatedRows || rows.length };
     } else {
       console.warn(`[Google Sheets] Advertencia al insertar en ${sheetName}:`, data);
+      return { success: false, error: data.error?.message || 'No se registraron actualizaciones en la hoja' };
     }
   } catch (err: any) {
-    console.error(`[Google Sheets] Error conectando con Google Sheets:`, err.message);
+    console.error(`[Google Sheets] Error conectando con Google Sheets (${sheetName}):`, err.message);
+    return { success: false, error: err.message };
   }
 }
 
@@ -171,7 +131,7 @@ export async function updateProductionCosts(updatedIngredients: any[]): Promise<
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
 
     // Sincronizar con Google Sheets pestaña Costos (Borrar anterior y escribir nuevo)
-    const token = await getServiceAccountAccessToken();
+    const token = await getGoogleAccessToken();
     const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Costos!A2:E:clear`;
     await fetch(clearUrl, {
       method: 'POST',
@@ -561,12 +521,15 @@ export async function createProductionBatch(data: {
       costoPorKg,
       ajusteCrema > 0 ? ajusteCrema : ''
     ];
-    await appendRowsToSheet('Producción', [rowForSheet]);
+    const sheetRes = await appendRowsToSheet('Producción', [rowForSheet]);
+    const message = sheetRes.success
+      ? `¡Lote ${lote} registrado con éxito y guardado en Google Sheet!`
+      : `¡Lote ${lote} registrado localmente! (Aviso Google Sheets: ${sheetRes.error || 'pendiente'})`;
 
     return {
       success: true,
       lote,
-      message: `¡Lote ${lote} registrado con éxito y guardado en Google Sheet!`,
+      message,
       batch: newBatch
     };
   } catch (err: any) {
@@ -766,11 +729,14 @@ export async function createPackagingBatch(data: {
       `${item.aprovechamientoLinea.toFixed(2)}%`,
       `${aprovechamientoTotal.toFixed(2)}%`
     ]);
-    await appendRowsToSheet('Empaque', rowsForSheet);
+    const sheetRes = await appendRowsToSheet('Empaque', rowsForSheet);
+    const message = sheetRes.success
+      ? `¡Empaque del lote ${data.lote} guardado con éxito y enviado a Google Sheet!`
+      : `¡Empaque del lote ${data.lote} guardado localmente! (Aviso Google Sheets: ${sheetRes.error || 'pendiente'})`;
 
     return {
       success: true,
-      message: `¡Empaque del lote ${data.lote} guardado con éxito y enviado a Google Sheet!`,
+      message,
       aprovechamiento: aprovechamientoTotal,
       batch: newPackaging
     };
