@@ -493,7 +493,7 @@ function App() {
               className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'}`}
             >
               <LayoutDashboard className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-              <span>Dashboard</span>
+              <span>Ventas</span>
             </button>
           )}
           

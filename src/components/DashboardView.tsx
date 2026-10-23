@@ -110,11 +110,20 @@ export default function DashboardView({
   const weeklySalesData = React.useMemo(() => {
     if (!effectiveCommissions || effectiveCommissions.length === 0) return [];
     
-    const weeklyTotals: Record<string, number> = {};
+    const weeklyTotals: Record<string, { conCliente: number; sinCliente: number; total: number }> = {};
     effectiveCommissions.forEach(c => {
        const week = `Semana ${getWeekNumber(c.dateOrder)}`;
-       if (!weeklyTotals[week]) weeklyTotals[week] = 0;
-       weeklyTotals[week] += c.orderTotal;
+       if (!weeklyTotals[week]) {
+         weeklyTotals[week] = { conCliente: 0, sinCliente: 0, total: 0 };
+       }
+       const amt = Number(c.orderTotal) || 0;
+       const isSinCliente = c.clientType === 'sin_cliente' || !c.clientId;
+       if (isSinCliente) {
+         weeklyTotals[week].sinCliente += amt;
+       } else {
+         weeklyTotals[week].conCliente += amt;
+       }
+       weeklyTotals[week].total += amt;
     });
 
     const sortedWeeks = Object.keys(weeklyTotals).sort((a, b) => parseInt(a.split(" ")[1]) - parseInt(b.split(" ")[1]));
@@ -122,7 +131,9 @@ export default function DashboardView({
     // Get last 10 weeks or so
     return sortedWeeks.slice(-10).map(w => ({
        name: w,
-       Ventas: Math.round(weeklyTotals[w])
+       Ventas: Math.round(weeklyTotals[w].conCliente),
+       sinCliente: Math.round(weeklyTotals[w].sinCliente),
+       total: Math.round(weeklyTotals[w].total),
     }));
   }, [effectiveCommissions]);
 
@@ -142,11 +153,21 @@ export default function DashboardView({
     if (effectiveCommissions && effectiveCommissions.length > 0) {
       const thisWeekOrders = effectiveCommissions.filter(c => getWeekNumber(c.dateOrder) === currentWeekNumber);
       if (thisWeekOrders.length > 0) {
-        return thisWeekOrders.reduce((acc, c) => acc + (c.orderTotal || 0), 0);
+        return thisWeekOrders.filter(c => c.clientType !== 'sin_cliente' && c.clientId).reduce((acc, c) => acc + (c.orderTotal || 0), 0);
       }
     }
     return effectiveClients.filter(c => c.boughtThisWeek).reduce((acc, c) => acc + (c.salesVolume || 0) / 14, 0);
   }, [effectiveCommissions, effectiveClients, currentWeekNumber]);
+
+  const actualSinClienteThisWeek = React.useMemo(() => {
+    if (effectiveCommissions && effectiveCommissions.length > 0) {
+      const thisWeekOrders = effectiveCommissions.filter(c => getWeekNumber(c.dateOrder) === currentWeekNumber);
+      return thisWeekOrders.filter(c => c.clientType === 'sin_cliente' || !c.clientId).reduce((acc, c) => acc + (c.orderTotal || 0), 0);
+    }
+    return 0;
+  }, [effectiveCommissions, currentWeekNumber]);
+
+  const actualTotalThisWeek = actualSalesThisWeek + actualSinClienteThisWeek;
 
   const salesData = [
     {
@@ -271,7 +292,7 @@ export default function DashboardView({
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-              {isOperator ? `Dashboard de Rendimiento — ${operatorRoute?.name || user?.username || 'Mi Ruta'}` : 'Dashboard de Rendimiento'}
+              {isOperator ? `Ventas y Rendimiento — ${operatorRoute?.name || user?.username || 'Mi Ruta'}` : 'Ventas y Rendimiento'}
             </h2>
             {isOperator && (
               <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">
@@ -319,10 +340,20 @@ export default function DashboardView({
             <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
               <DollarSign className="w-5 h-5" />
             </div>
+            {actualSinClienteThisWeek > 0 && (
+              <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-md" title="Ventas POS sin cliente asignado">
+                +${Math.round(actualSinClienteThisWeek).toLocaleString()} Sin Cliente
+              </span>
+            )}
           </div>
           <div>
             <p className="text-sm font-medium text-slate-500 mb-1">Venta Esta Semana</p>
             <h3 className="text-2xl font-bold text-slate-900">${actualSalesThisWeek.toLocaleString(undefined, {maximumFractionDigits: 0})}</h3>
+            {actualSinClienteThisWeek > 0 && (
+              <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                Total con mostrador: <strong className="text-blue-700">${Math.round(actualTotalThisWeek).toLocaleString()}</strong>
+              </p>
+            )}
           </div>
         </div>
 
@@ -380,18 +411,74 @@ export default function DashboardView({
              <span>{isOperator ? `Ventas Reales por Semana (${operatorRoute?.name || user?.username || 'Mi Ruta'})` : 'Ventas Reales por Semana (Odoo - 100 Días)'}</span>
              <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md">Ventas Hechas</span>
           </h3>
-          <div className="h-[250px] w-full">
+          <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
+              <ComposedChart
                 data={weeklySalesData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                margin={{ top: 20, right: 25, left: 10, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} style={{ fontSize: '12px' }} />
-                <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `${value}`} width={80} style={{ fontSize: '12px' }} />
-                <RechartsTooltip cursor={{ fill: 'transparent' }} formatter={(value: number) => [`${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 'Ventas']} />
-                <Bar dataKey="Ventas" fill="#10b981" radius={[4, 4, 0, 0]} barSize={35} />
-              </BarChart>
+                {/* Eje Izquierdo: Barras de Ventas con y sin cliente */}
+                <YAxis
+                  yAxisId="left"
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `$${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                  width={60}
+                  style={{ fontSize: '11px' }}
+                />
+                {/* Eje Derecho (Secundario): Ventas Totales */}
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => `$${value >= 1000 ? (value / 1000).toFixed(0) + 'k' : value}`}
+                  width={60}
+                  style={{ fontSize: '11px' }}
+                />
+                <RechartsTooltip
+                  cursor={{ fill: 'rgba(241, 245, 249, 0.6)' }}
+                  formatter={(value: number, name: string) => [
+                    `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                    name
+                  ]}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+
+                {/* Barra existente e intacta: Ventas (con cliente / ruteros) */}
+                <Bar
+                  yAxisId="left"
+                  dataKey="Ventas"
+                  name="Ventas Rutero (Con Cliente)"
+                  fill="#10b981"
+                  radius={[4, 4, 0, 0]}
+                  barSize={20}
+                />
+
+                {/* Barra adicional: Ventas Sin Cliente */}
+                <Bar
+                  yAxisId="left"
+                  dataKey="sinCliente"
+                  name="Ventas Sin Cliente"
+                  fill="#f59e0b"
+                  radius={[4, 4, 0, 0]}
+                  barSize={20}
+                />
+
+                {/* Eje Secundario: Ventas Totales */}
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="total"
+                  name="Ventas Totales (Eje Der.)"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#3b82f6' }}
+                  activeDot={{ r: 6 }}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>

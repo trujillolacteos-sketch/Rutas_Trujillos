@@ -157,6 +157,7 @@ export default function CommissionsView({ token, state, role, user }: { token: s
     });
 
     for (const c of commissions || []) {
+      if (c.clientType === 'sin_cliente' || !c.clientId) continue;
       const routeObj = (state?.routes || []).find(r => r.id === c.routeId);
       let rid = routeObj?.name || `Ruta ${c.routeId || "Sin Asignar"}`;
       
@@ -383,6 +384,7 @@ export default function CommissionsView({ token, state, role, user }: { token: s
         <div className="overflow-x-auto">
           {(() => {
             const grouped = (commissions || []).reduce((acc, c) => {
+              if (c.clientType === 'sin_cliente' || !c.clientId) return acc;
               const week = `Semana ${getWeekNumber(c.dateOrder)}`;
               if (selectedWeek && selectedWeek !== "ALL" && week !== selectedWeek) return acc;
               

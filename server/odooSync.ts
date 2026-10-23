@@ -181,8 +181,25 @@ export async function syncCommissions() {
   const newRecords: any[] = [];
 
   for (const o of validOrders) {
-    // Venta POS sin cliente = NO genera comisión.
-    if (!o.partner_id) continue;
+    // Venta POS sin cliente = Se registra para análisis de ventas totales y sin cliente (con comisión = 0).
+    if (!o.partner_id) {
+      const previous = existingByOrderId.get(o.id);
+      newRecords.push({
+        orderId: o.id,
+        orderName: o.name,
+        routeId: o.config_id ? o.config_id[0] : 0,
+        clientId: null,
+        clientName: 'Público General (Sin Cliente)',
+        clientType: 'sin_cliente',
+        orderTotal: Number(o.amount_total || 0),
+        commissionAmount: 0,
+        commissionRate: 0,
+        isPaid: previous?.isPaid ?? false,
+        isLiquidated: false,
+        dateOrder: new Date(o.date_order),
+      });
+      continue;
+    }
 
     const pId = o.partner_id[0];
     const partner = partnersMap.get(pId);
