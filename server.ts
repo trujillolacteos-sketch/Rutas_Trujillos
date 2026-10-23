@@ -35,7 +35,10 @@ import {
   saveLocalPurchases,
   recordPurchase,
   fetchOdooDairyCatalog,
-  configureProductSku
+  configureProductSku,
+  getSuppliesInventory,
+  updateSupplyStockConfig,
+  getProductionKPIs
 } from './server/productionService.ts';
 import {
   loadLocalLineReports,
@@ -1107,6 +1110,41 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+// Supplies Inventory Endpoints
+  app.get('/api/production/supplies-inventory', requireAuth, (req, res) => {
+    try {
+      const inv = getSuppliesInventory();
+      res.json(inv);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production/supplies-stock-config', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+      const { item, initialStock, minStock, notes } = req.body;
+      if (!item) return res.status(400).json({ error: "El nombre del insumo es obligatorio" });
+      const result = await updateSupplyStockConfig(item, { initialStock, minStock, notes });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Production KPIs Endpoint
+  app.get('/api/production/kpis', requireAuth, (req, res) => {
+    try {
+      const { startDate, endDate, categoria, lineId } = req.query as Record<string, string>;
+      const kpis = getProductionKPIs({ startDate, endDate, categoria, lineId });
+      res.json(kpis);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 

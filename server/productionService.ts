@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { executeKw } from './odoo.ts';
 import { getGoogleAccessToken } from './googleCredentials.ts';
+import { loadLocalLineReports } from './productionLinesService.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const KEY_FILE = 'google-drive-key.json';
@@ -10,6 +11,7 @@ const CONFIG_FILE = 'server/productionConfig.json';
 const PRODUCTION_STORE_FILE = 'production_store.json';
 const PACKAGING_STORE_FILE = 'packaging_store.json';
 const PURCHASES_STORE_FILE = 'purchases_store.json';
+const SUPPLIES_STOCK_FILE = 'supplies_stock_store.json';
 
 // Interfaces
 export interface PurchaseRecord {
@@ -1040,4 +1042,683 @@ export async function configureProductSku(data: {
     console.error('Error configuring product SKU:', err);
     return { success: false, message: err.message };
   }
+}
+
+// ==========================================
+// 10. Supplies Inventory & Stock Management
+// ==========================================
+export interface SupplyMovement {
+  id: string;
+  fecha: string;
+  tipo: 'compra' | 'produccion' | 'empaque' | 'linea' | 'ajuste_inicial';
+  referencia: string;
+  descripcion: string;
+  cantidad: number; // positivo para entradas, negativo para consumos
+  unidad: string;
+  costoUnitario?: number;
+  costoTotal?: number;
+}
+
+export interface SupplyItemSummary {
+  id: string;
+  nombre: string;
+  tipo: 'ingrediente' | 'empaque' | 'etiqueta';
+  tipoLabel: string;
+  unidadBase: string;
+  proveedor: string;
+  costoUnitario: number;
+  stockInicial: number;
+  minStock: number;
+  totalComprado: number;
+  totalConsumido: number;
+  stockActual: number;
+  estado: 'critico' | 'bajo' | 'optimo'; // critico: <= 0, bajo: <= minStock, optimo: > minStock
+  estadoLabel: string;
+  montoInvertidoCompras: number;
+  valorInventarioActual: number;
+  ultimaCompraFecha?: string;
+  ultimaCompraProveedor?: string;
+  movimientos: SupplyMovement[];
+}
+
+export function loadSuppliesStockConfig(): Record<string, { initialStock?: number; minStock?: number; notes?: string }> {
+  try {
+    const filePath = path.resolve(process.cwd(), SUPPLIES_STOCK_FILE);
+    if (!fs.existsSync(filePath)) return {};
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.error('Error reading supplies stock config:', err);
+    return {};
+  }
+}
+
+export function saveSuppliesStockConfig(config: Record<string, { initialStock?: number; minStock?: number; notes?: string }>) {
+  try {
+    const filePath = path.resolve(process.cwd(), SUPPLIES_STOCK_FILE);
+    fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error saving supplies stock config:', err);
+  }
+}
+
+export async function updateSupplyStockConfig(itemNorm: string, update: { initialStock?: number; minStock?: number; notes?: string }): Promise<{ success: boolean; message: string }> {
+  try {
+    const config = loadSuppliesStockConfig();
+    const key = itemNorm.trim().toLowerCase();
+    config[key] = {
+      ...config[key],
+      ...update
+    };
+    saveSuppliesStockConfig(config);
+    return { success: true, message: 'Stock y umbral configurados exitosamente.' };
+  } catch (err: any) {
+    return { success: false, message: err.message };
+  }
+}
+
+export function getSuppliesInventory(): {
+  supplies: SupplyItemSummary[];
+  stats: {
+    totalItems: number;
+    criticos: number;
+    bajos: number;
+    optimos: number;
+    valorTotalAlmacen: number;
+    montoTotalInvertido: number;
+  };
+} {
+  const config = getProductionConfig();
+  const stockConfig = loadSuppliesStockConfig();
+  const purchases = loadLocalPurchases();
+  const prods = loadLocalProduction();
+  const packs = loadLocalPackaging();
+  const lines = loadLocalLineReports();
+
+  const map = new Map<string, SupplyItemSummary>();
+
+  // Helper to determine type
+  const detectType = (name: string, isIng?: boolean): { tipo: 'ingrediente' | 'empaque' | 'etiqueta'; tipoLabel: string } => {
+    const n = name.toLowerCase();
+    if (n.includes('etiqueta') || n.includes('cinta')) {
+      return { tipo: 'etiqueta', tipoLabel: 'Etiqueta' };
+    }
+    if (
+      n.includes('bolsa') || 
+      n.includes('bote') || 
+      n.includes('cubeta') || 
+      n.includes('charola') || 
+      n.includes('vaso') || 
+      n.includes('tapa') || 
+      n.includes('termoencogible') ||
+      n.includes('garrafa') ||
+      n.includes('porron') ||
+      isIng === false
+    ) {
+      return { tipo: 'empaque', tipoLabel: 'Empaque / Contenedor' };
+    }
+    return { tipo: 'ingrediente', tipoLabel: 'Materia Prima / Insumo' };
+  };
+
+  // 1. Initialize from config ingredients
+  (config.ingredients || []).forEach((ing: any) => {
+    const norm = ing.name.trim().toLowerCase();
+    const { tipo, tipoLabel } = detectType(ing.name, ing.isIngredient);
+    const custom = stockConfig[norm] || {};
+    const unidadBase = ing.baseUnit || (tipo === 'ingrediente' ? 'kg' : 'pz');
+    const defaultMin = tipo === 'ingrediente' ? 15 : 50;
+    const initialStock = Number(custom.initialStock) || 0;
+    const minStock = custom.minStock !== undefined ? Number(custom.minStock) : defaultMin;
+
+    map.set(norm, {
+      id: norm,
+      nombre: ing.name.trim(),
+      tipo,
+      tipoLabel,
+      unidadBase,
+      proveedor: ing.provider || 'TASSA',
+      costoUnitario: Number(ing.unitCost) || 0,
+      stockInicial: initialStock,
+      minStock,
+      totalComprado: 0,
+      totalConsumido: 0,
+      stockActual: 0,
+      estado: 'critico',
+      estadoLabel: 'Agotado',
+      montoInvertidoCompras: 0,
+      valorInventarioActual: 0,
+      movimientos: []
+    });
+
+    if (initialStock > 0) {
+      map.get(norm)!.movimientos.push({
+        id: 'init_' + norm,
+        fecha: '2026-01-01',
+        tipo: 'ajuste_inicial',
+        referencia: 'Stock Inicial',
+        descripcion: 'Inventario inicial registrado',
+        cantidad: initialStock,
+        unidad: unidadBase,
+        costoUnitario: Number(ing.unitCost) || 0,
+        costoTotal: initialStock * (Number(ing.unitCost) || 0)
+      });
+    }
+  });
+
+  // 2. Add purchases (Entradas)
+  purchases.forEach((p: any) => {
+    const rawName = (p.itemNombre || '').trim();
+    if (!rawName) return;
+    const norm = rawName.toLowerCase();
+    if (!map.has(norm)) {
+      const { tipo, tipoLabel } = detectType(rawName, p.isIngredient);
+      const custom = stockConfig[norm] || {};
+      const unidadBase = p.unidadBase || (tipo === 'ingrediente' ? 'kg' : 'pz');
+      const defaultMin = tipo === 'ingrediente' ? 15 : 50;
+      map.set(norm, {
+        id: norm,
+        nombre: rawName,
+        tipo,
+        tipoLabel,
+        unidadBase,
+        proveedor: p.proveedor || 'Sin asignar',
+        costoUnitario: Number(p.costoUnitarioBase) || 0,
+        stockInicial: Number(custom.initialStock) || 0,
+        minStock: custom.minStock !== undefined ? Number(custom.minStock) : defaultMin,
+        totalComprado: 0,
+        totalConsumido: 0,
+        stockActual: 0,
+        estado: 'critico',
+        estadoLabel: 'Agotado',
+        montoInvertidoCompras: 0,
+        valorInventarioActual: 0,
+        movimientos: []
+      });
+    }
+
+    const item = map.get(norm)!;
+    const cant = Number(p.totalUnidadesBase) || 0;
+    const costoTotal = Number(p.costoTotal) || 0;
+    item.totalComprado += cant;
+    item.montoInvertidoCompras += costoTotal;
+    if (p.costoUnitarioBase) item.costoUnitario = Number(p.costoUnitarioBase);
+    item.ultimaCompraFecha = p.fechaCompra;
+    item.ultimaCompraProveedor = p.proveedor;
+
+    item.movimientos.push({
+      id: p.id || 'pur_' + Math.random(),
+      fecha: p.fechaCompra || p.fechaCaptura?.slice(0, 10) || '',
+      tipo: 'compra',
+      referencia: p.folio ? `Folio: ${p.folio}` : 'Compra',
+      descripcion: `Entrada de compra (${p.proveedor || 'Proveedor'})`,
+      cantidad: cant,
+      unidad: item.unidadBase,
+      costoUnitario: Number(p.costoUnitarioBase) || item.costoUnitario,
+      costoTotal
+    });
+  });
+
+  // 3. Subtract production consumptions (Salidas)
+  prods.forEach((prod: any) => {
+    (prod.registrosInsumos || []).forEach((reg: any) => {
+      const rawName = (reg.nombre || '').trim();
+      if (!rawName) return;
+      const norm = rawName.toLowerCase();
+      if (!map.has(norm)) {
+        const { tipo, tipoLabel } = detectType(rawName, true);
+        map.set(norm, {
+          id: norm,
+          nombre: rawName,
+          tipo,
+          tipoLabel,
+          unidadBase: 'kg',
+          proveedor: 'General',
+          costoUnitario: Number(reg.costoUnitario) || 0,
+          stockInicial: 0,
+          minStock: 15,
+          totalComprado: 0,
+          totalConsumido: 0,
+          stockActual: 0,
+          estado: 'critico',
+          estadoLabel: 'Agotado',
+          montoInvertidoCompras: 0,
+          valorInventarioActual: 0,
+          movimientos: []
+        });
+      }
+      const item = map.get(norm)!;
+      const cant = Number(reg.cantidad) || 0;
+      item.totalConsumido += cant;
+
+      item.movimientos.push({
+        id: `${prod.id}_${norm}`,
+        fecha: prod.fechaProduccion || prod.fechaCaptura || '',
+        tipo: 'produccion',
+        referencia: prod.lote || 'Lote',
+        descripcion: `Consumo en lote ${prod.lote} (${prod.categoria})`,
+        cantidad: -cant,
+        unidad: item.unidadBase,
+        costoUnitario: Number(reg.costoUnitario) || item.costoUnitario,
+        costoTotal: Number(reg.costoTotal) || (cant * item.costoUnitario)
+      });
+    });
+  });
+
+  // 4. Subtract packaging consumptions (Empaques, Etiquetas y Adicionales)
+  packs.forEach((pack: any) => {
+    // Adicionales
+    if (pack.adicionalesKg) {
+      Object.entries(pack.adicionalesKg).forEach(([adName, cantKg]: [string, any]) => {
+        const norm = adName.trim().toLowerCase();
+        if (norm && map.has(norm)) {
+          const item = map.get(norm)!;
+          const cant = Number(cantKg) || 0;
+          item.totalConsumido += cant;
+          item.movimientos.push({
+            id: `${pack.id}_${norm}`,
+            fecha: pack.fechaEmpaque || pack.fechaCaptura || '',
+            tipo: 'empaque',
+            referencia: pack.lote,
+            descripcion: `Adicional utilizado en empacado de lote ${pack.lote}`,
+            cantidad: -cant,
+            unidad: 'kg'
+          });
+        }
+      });
+    }
+
+    // Empaques y Etiquetas de items empacados
+    (pack.items || []).forEach((item: any) => {
+      const pz = Number(item.piezas) || 0;
+      if (pz <= 0) return;
+
+      // Buscar SKU en configuración
+      const sku = (config.skus || []).find((s: any) => (s.product || '').trim().toLowerCase() === (item.producto || '').trim().toLowerCase());
+      if (sku) {
+        (sku.empaques || []).forEach((empName: string) => {
+          const normEmp = empName.trim().toLowerCase();
+          if (normEmp && map.has(normEmp)) {
+            const empItem = map.get(normEmp)!;
+            empItem.totalConsumido += pz;
+            empItem.movimientos.push({
+              id: `${pack.id}_${normEmp}_${item.producto}`,
+              fecha: pack.fechaEmpaque || pack.fechaCaptura || '',
+              tipo: 'empaque',
+              referencia: pack.lote,
+              descripcion: `Empacado de ${pz} pz (${item.producto})`,
+              cantidad: -pz,
+              unidad: 'pz'
+            });
+          }
+        });
+
+        if (sku.etiqueta) {
+          const normEtiq = sku.etiqueta.trim().toLowerCase();
+          if (normEtiq && map.has(normEtiq)) {
+            const etiqItem = map.get(normEtiq)!;
+            etiqItem.totalConsumido += pz;
+            etiqItem.movimientos.push({
+              id: `${pack.id}_${normEtiq}_${item.producto}`,
+              fecha: pack.fechaEmpaque || pack.fechaCaptura || '',
+              tipo: 'empaque',
+              referencia: pack.lote,
+              descripcion: `Etiqueta usada en ${pz} pz (${item.producto})`,
+              cantidad: -pz,
+              unidad: 'pz'
+            });
+          }
+        }
+      }
+    });
+  });
+
+  // 5. Subtract line consumptions
+  lines.forEach((l: any) => {
+    if (l.insumos && typeof l.insumos === 'object') {
+      Object.entries(l.insumos).forEach(([insName, cant]: [string, any]) => {
+        const numCant = Number(cant) || 0;
+        if (numCant <= 0) return;
+        const norm = insName.trim().toLowerCase();
+        if (map.has(norm)) {
+          const item = map.get(norm)!;
+          item.totalConsumido += numCant;
+          item.movimientos.push({
+            id: `${l.id}_${norm}`,
+            fecha: l.fecha || l.fechaCaptura?.slice(0, 10) || '',
+            tipo: 'linea',
+            referencia: l.lineNombre || 'Línea',
+            descripcion: `Consumo en proceso de ${l.lineNombre}`,
+            cantidad: -numCant,
+            unidad: item.unidadBase
+          });
+        }
+      });
+    }
+  });
+
+  // 6. Compute final balances and status
+  let criticos = 0;
+  let bajos = 0;
+  let optimos = 0;
+  let valorTotalAlmacen = 0;
+  let montoTotalInvertido = 0;
+
+  const supplies = Array.from(map.values()).map(item => {
+    item.stockActual = Number((item.stockInicial + item.totalComprado - item.totalConsumido).toFixed(2));
+    item.totalComprado = Number(item.totalComprado.toFixed(2));
+    item.totalConsumido = Number(item.totalConsumido.toFixed(2));
+    item.montoInvertidoCompras = Number(item.montoInvertidoCompras.toFixed(2));
+
+    if (item.stockActual <= 0) {
+      item.estado = 'critico';
+      item.estadoLabel = 'Agotado';
+      criticos++;
+    } else if (item.stockActual <= item.minStock) {
+      item.estado = 'bajo';
+      item.estadoLabel = 'Próximo a Agotarse';
+      bajos++;
+    } else {
+      item.estado = 'optimo';
+      item.estadoLabel = 'Óptimo';
+      optimos++;
+    }
+
+    item.valorInventarioActual = Number((Math.max(0, item.stockActual) * item.costoUnitario).toFixed(2));
+    valorTotalAlmacen += item.valorInventarioActual;
+    montoTotalInvertido += item.montoInvertidoCompras;
+
+    // Sort movements by date descending
+    item.movimientos.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+
+    return item;
+  });
+
+  // Sort supplies: critical first, then low, then name
+  supplies.sort((a, b) => {
+    const order = { critico: 0, bajo: 1, optimo: 2 };
+    if (order[a.estado] !== order[b.estado]) {
+      return order[a.estado] - order[b.estado];
+    }
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  return {
+    supplies,
+    stats: {
+      totalItems: supplies.length,
+      criticos,
+      bajos,
+      optimos,
+      valorTotalAlmacen: Number(valorTotalAlmacen.toFixed(2)),
+      montoTotalInvertido: Number(montoTotalInvertido.toFixed(2))
+    }
+  };
+}
+
+// ==========================================
+// 11. Production KPIs & Analytics Service
+// ==========================================
+export function getProductionKPIs(options?: {
+  startDate?: string;
+  endDate?: string;
+  categoria?: string;
+  lineId?: string;
+}): any {
+  const prods = loadLocalProduction();
+  const packs = loadLocalPackaging();
+  const lines = loadLocalLineReports();
+
+  const start = options?.startDate;
+  const end = options?.endDate;
+  const selectedCat = options?.categoria;
+  const selectedLine = options?.lineId;
+
+  // Filter helper
+  const inDateRange = (fecha?: string) => {
+    if (!fecha) return true;
+    if (start && fecha < start) return false;
+    if (end && fecha > end) return false;
+    return true;
+  };
+
+  const filteredProds = prods.filter(p => {
+    if (!inDateRange(p.fechaProduccion)) return false;
+    if (selectedCat && selectedCat !== 'all' && p.categoria !== selectedCat) return false;
+    return true;
+  });
+
+  const filteredPacks = packs.filter(p => {
+    if (!inDateRange(p.fechaEmpaque)) return false;
+    if (selectedCat && selectedCat !== 'all' && p.categoria !== selectedCat) return false;
+    return true;
+  });
+
+  const filteredLines = lines.filter(l => {
+    if (!inDateRange(l.fecha)) return false;
+    if (selectedLine && selectedLine !== 'all' && l.lineId !== selectedLine) return false;
+    return true;
+  });
+
+  // Global KPIs
+  let totalKgProduced = 0;
+  let totalMilkLiters = 0;
+  let totalProductionCost = 0;
+  let totalCremaNatural = 0;
+
+  const byCategory: Record<string, {
+    categoria: string;
+    lotes: number;
+    kgProduced: number;
+    milkLiters: number;
+    totalCost: number;
+    kgPackaged: number;
+    mermaKg: number;
+    yieldLtPerKg: number;
+    packagingYield: number;
+    avgCostPerKg: number;
+  }> = {};
+
+  const dailyMap: Record<string, {
+    fecha: string;
+    kgProduced: number;
+    milkLiters: number;
+    kgPackaged: number;
+    costo: number;
+  }> = {};
+
+  filteredProds.forEach(b => {
+    const kg = Number(b.kgTotal) || 0;
+    const cost = Number(b.costoTotal) || 0;
+    totalKgProduced += kg;
+    totalProductionCost += cost;
+
+    let batchMilk = 0;
+    (b.registrosInsumos || []).forEach(r => {
+      const n = (r.nombre || '').toLowerCase();
+      if (n.includes('leche')) {
+        batchMilk += Number(r.cantidad) || 0;
+      }
+      if (n === 'crema natural') {
+        totalCremaNatural += Number(r.cantidad) || 0;
+      }
+    });
+    totalMilkLiters += batchMilk;
+
+    const cat = b.categoria || 'Sin Categoría';
+    if (!byCategory[cat]) {
+      byCategory[cat] = {
+        categoria: cat,
+        lotes: 0,
+        kgProduced: 0,
+        milkLiters: 0,
+        totalCost: 0,
+        kgPackaged: 0,
+        mermaKg: 0,
+        yieldLtPerKg: 0,
+        packagingYield: 0,
+        avgCostPerKg: 0
+      };
+    }
+    byCategory[cat].lotes += 1;
+    byCategory[cat].kgProduced += kg;
+    byCategory[cat].milkLiters += batchMilk;
+    byCategory[cat].totalCost += cost;
+
+    const f = b.fechaProduccion || 'Sin Fecha';
+    if (!dailyMap[f]) {
+      dailyMap[f] = { fecha: f, kgProduced: 0, milkLiters: 0, kgPackaged: 0, costo: 0 };
+    }
+    dailyMap[f].kgProduced += kg;
+    dailyMap[f].milkLiters += batchMilk;
+    dailyMap[f].costo += cost;
+  });
+
+  // Packaging KPIs
+  let totalKgPackaged = 0;
+  let totalMermaKg = 0;
+  let totalPiecesPackaged = 0;
+
+  filteredPacks.forEach(p => {
+    const kgPack = Number(p.kgCapturados) || 0;
+    const loteKg = Number(p.loteKgTotal) || kgPack;
+    totalKgPackaged += kgPack;
+    const merma = Math.max(0, loteKg - kgPack);
+    totalMermaKg += merma;
+
+    (p.items || []).forEach(i => {
+      totalPiecesPackaged += Number(i.piezas) || 0;
+    });
+
+    const cat = p.categoria || 'Sin Categoría';
+    if (byCategory[cat]) {
+      byCategory[cat].kgPackaged += kgPack;
+      byCategory[cat].mermaKg += merma;
+    }
+
+    const f = p.fechaEmpaque || 'Sin Fecha';
+    if (!dailyMap[f]) {
+      dailyMap[f] = { fecha: f, kgProduced: 0, milkLiters: 0, kgPackaged: 0, costo: 0 };
+    }
+    dailyMap[f].kgPackaged += kgPack;
+  });
+
+  // Finish Category computations
+  Object.values(byCategory).forEach(c => {
+    c.yieldLtPerKg = c.kgProduced > 0 ? Number((c.milkLiters / c.kgProduced).toFixed(2)) : 0;
+    c.packagingYield = c.kgProduced > 0 ? Number(((c.kgPackaged / c.kgProduced) * 100).toFixed(1)) : 0;
+    c.avgCostPerKg = c.kgProduced > 0 ? Number((c.totalCost / c.kgProduced).toFixed(2)) : 0;
+    c.kgProduced = Number(c.kgProduced.toFixed(2));
+    c.milkLiters = Number(c.milkLiters.toFixed(2));
+    c.kgPackaged = Number(c.kgPackaged.toFixed(2));
+    c.mermaKg = Number(c.mermaKg.toFixed(2));
+    c.totalCost = Number(c.totalCost.toFixed(2));
+  });
+
+  // Lines KPIs
+  let totalSueroLiters = 0;
+  let totalLineCremaKg = 0;
+  let totalLineWasteKg = 0;
+  let totalLineSurplusKg = 0;
+  let totalLineMilkEntera = 0;
+  let totalLineMilkDescremada = 0;
+
+  const byLine: Record<string, any> = {};
+  filteredLines.forEach(l => {
+    totalSueroLiters += Number(l.sueroObtenido) || 0;
+    totalLineCremaKg += Number(l.cremaNatural) || 0;
+    totalLineWasteKg += Number(l.merma) || 0;
+    totalLineSurplusKg += Number(l.sobrante) || 0;
+    totalLineMilkEntera += Number(l.lecheEnteraLitros) || 0;
+    totalLineMilkDescremada += Number(l.lecheDescremadaLitros) || 0;
+
+    const lid = l.lineId;
+    if (!byLine[lid]) {
+      byLine[lid] = {
+        lineId: lid,
+        lineNombre: l.lineNombre,
+        reportesCount: 0,
+        lecheEntera: 0,
+        lecheDescremada: 0,
+        kgObtenidos: 0,
+        suero: 0,
+        crema: 0,
+        merma: 0,
+        sobrante: 0
+      };
+    }
+    byLine[lid].reportesCount += 1;
+    byLine[lid].lecheEntera += Number(l.lecheEnteraLitros) || 0;
+    byLine[lid].lecheDescremada += Number(l.lecheDescremadaLitros) || 0;
+    byLine[lid].kgObtenidos += Number(l.kgObtenidos) || 0;
+    byLine[lid].suero += Number(l.sueroObtenido) || 0;
+    byLine[lid].crema += Number(l.cremaNatural) || 0;
+    byLine[lid].merma += Number(l.merma) || 0;
+    byLine[lid].sobrante += Number(l.sobrante) || 0;
+  });
+
+  // Daily Trend sorted
+  const dailyTrend = Object.values(dailyMap)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .map(d => ({
+      fecha: d.fecha,
+      kgProduced: Number(d.kgProduced.toFixed(2)),
+      milkLiters: Number(d.milkLiters.toFixed(2)),
+      yieldLtPerKg: d.kgProduced > 0 ? Number((d.milkLiters / d.kgProduced).toFixed(2)) : 0,
+      kgPackaged: Number(d.kgPackaged.toFixed(2)),
+      costo: Number(d.costo.toFixed(2))
+    }));
+
+  const globalYieldLtPerKg = totalKgProduced > 0 ? Number((totalMilkLiters / totalKgProduced).toFixed(2)) : 0;
+  const globalPackagingYield = totalKgProduced > 0 ? Number(((totalKgPackaged / totalKgProduced) * 100).toFixed(1)) : 0;
+  const globalWastePercentage = totalKgProduced > 0 ? Number(((totalMermaKg / totalKgProduced) * 100).toFixed(1)) : 0;
+  const avgCostPerKg = totalKgProduced > 0 ? Number((totalProductionCost / totalKgProduced).toFixed(2)) : 0;
+
+  // Recent lots combined info
+  const recentBatches = filteredProds.slice(0, 15).map(b => {
+    const pack = filteredPacks.find(p => p.lote === b.lote);
+    let milk = 0;
+    (b.registrosInsumos || []).forEach(r => {
+      if ((r.nombre || '').toLowerCase().includes('leche')) milk += Number(r.cantidad) || 0;
+    });
+    const yieldLt = b.kgTotal > 0 ? Number((milk / b.kgTotal).toFixed(2)) : 0;
+    const packYield = pack ? Number(pack.aprovechamientoTotal.toFixed(1)) : null;
+
+    return {
+      lote: b.lote,
+      categoria: b.categoria,
+      fechaProduccion: b.fechaProduccion,
+      kgTotal: b.kgTotal,
+      milkLiters: milk,
+      yieldLtPerKg: yieldLt,
+      costoPorKg: b.costoPorKg,
+      costoTotal: b.costoTotal,
+      kgPackaged: pack ? pack.kgCapturados : null,
+      packYield,
+      status: pack ? 'Empacado' : 'Pendiente Empaque'
+    };
+  });
+
+  return {
+    summary: {
+      totalKgProduced: Number(totalKgProduced.toFixed(2)),
+      totalMilkLiters: Number(totalMilkLiters.toFixed(2)),
+      globalYieldLtPerKg,
+      totalBatches: filteredProds.length,
+      totalKgPackaged: Number(totalKgPackaged.toFixed(2)),
+      totalPiecesPackaged,
+      globalPackagingYield,
+      totalMermaKg: Number(totalMermaKg.toFixed(2)),
+      globalWastePercentage,
+      totalProductionCost: Number(totalProductionCost.toFixed(2)),
+      avgCostPerKg,
+      totalSueroLiters: Number(totalSueroLiters.toFixed(2)),
+      totalCremaKg: Number((totalCremaNatural + totalLineCremaKg).toFixed(2)),
+      linesTotalMilkEntera: Number(totalLineMilkEntera.toFixed(2)),
+      linesTotalMilkDescremada: Number(totalLineMilkDescremada.toFixed(2)),
+      linesTotalKgObtained: Number((Object.values(byLine).reduce((acc, curr) => acc + curr.kgObtenidos, 0)).toFixed(2))
+    },
+    byCategory: Object.values(byCategory),
+    byLine: Object.values(byLine),
+    dailyTrend,
+    recentBatches
+  };
 }

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -20,6 +20,8 @@ import CommissionsView from './components/CommissionsView';
 import ProductionView from './components/ProductionView';
 import ProductionLinesView from './components/ProductionLinesView';
 import PurchasesView from './components/PurchasesView';
+import SuppliesInventoryView from './components/SuppliesInventoryView';
+import ProductionKpisView from './components/ProductionKpisView';
 import { auth } from './lib/firebase';
 
 
@@ -249,6 +251,8 @@ function App() {
   const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const canAccessProductionLines = isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea;
   const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canAccessSupplies = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canAccessProductionKpis = isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea;
   const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const role = user?.role || 'user';
 
@@ -611,6 +615,36 @@ function App() {
                 </button>
               )}
 
+              {/* Inventario de Insumos */}
+              {canAccessSupplies && (
+                <button 
+                  onClick={() => setActiveTab('supplies_inventory')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'supplies_inventory' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Boxes className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'supplies_inventory' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Inventario de Insumos</span>
+                </button>
+              )}
+
+              {/* KPIs de Producción */}
+              {canAccessProductionKpis && (
+                <button 
+                  onClick={() => setActiveTab('production_kpis')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'production_kpis' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Activity className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production_kpis' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>KPIs de Producción</span>
+                </button>
+              )}
+
               {/* Compras e Insumos */}
               {canAccessPurchases && (
                 <button 
@@ -762,6 +796,8 @@ function App() {
               {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
               {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
               {activeTab === 'production_lines' && canAccessProductionLines && <ProductionLinesView role={role} user={user} state={state} />}
+              {activeTab === 'supplies_inventory' && canAccessSupplies && <SuppliesInventoryView role={role} user={user} state={state} />}
+              {activeTab === 'production_kpis' && canAccessProductionKpis && <ProductionKpisView role={role} user={user} state={state} />}
               {activeTab === 'purchases' && canAccessPurchases && <PurchasesView role={role} user={user} state={state} />}
             </ErrorBoundary>
           )}
