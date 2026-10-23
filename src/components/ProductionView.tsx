@@ -556,7 +556,7 @@ export default function ProductionView({
       const hasEtiqueta = Boolean(etiqueta && etiqueta.trim().length > 0);
 
       const specialKeywords = ['chipotle', 'jalape', 'jamon', 'jamón', 'habanero', 'morral', 'hierba', 'sabor', 'aderezado'];
-      const requiresAdicionales = specialKeywords.some(kw => normName.includes(kw));
+      const requiresAdicionales = specialKeywords.some(kw => norm.includes(kw));
       const hasAdicionales = requiresAdicionales ? (Array.isArray(adicionales) && adicionales.length > 0) : true;
 
       const missing: string[] = [];

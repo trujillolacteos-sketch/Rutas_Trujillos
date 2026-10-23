@@ -38,13 +38,15 @@ class ErrorBoundary extends React.Component<Props, State> {
           <div className="flex gap-2 mb-4">
             <button
               onClick={() => {
-                if ('caches' in window) {
-                  caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))).finally(() => {
-                    window.location.reload();
-                  });
-                } else {
-                  window.location.reload();
-                }
+                try {
+                  if (typeof caches !== 'undefined') {
+                    caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))).finally(() => {
+                      window.location.reload();
+                    });
+                    return;
+                  }
+                } catch (e) {}
+                window.location.reload();
               }}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs shadow-sm"
             >
