@@ -138,6 +138,81 @@ export default function ProductionView({
   const [selectedOdooCategory, setSelectedOdooCategory] = useState<string>('all');
   const [productSearchTerm, setProductSearchTerm] = useState('');
 
+  // Category & Lot Cascading Selection in Packaging
+  const [selectedPackCategory, setSelectedPackCategory] = useState<string>('');
+
+  const cleanCatName = (cat: string) => {
+    return (cat || '')
+      .replace(/^All\s*\/\s*Quesos\s*\/\s*/i, '')
+      .replace(/^All\s*\/\s*/i, '')
+      .replace(/^All\//i, '')
+      .trim();
+  };
+
+  const isCategoryMatch = (cat1: string, cat2: string) => {
+    if (!cat1 || !cat2) return false;
+    if (cat1.trim().toLowerCase() === cat2.trim().toLowerCase()) return true;
+    const c1 = cleanCatName(cat1).toLowerCase();
+    const c2 = cleanCatName(cat2).toLowerCase();
+    return c1 === c2 || c1.includes(c2) || c2.includes(c1);
+  };
+
+  // Active lot categories from availableLots
+  const activeLotCategories = useMemo(() => {
+    const map = new Map<string, number>();
+    availableLots.forEach(l => {
+      const clean = l.categoria || 'Sin categoría';
+      map.set(clean, (map.get(clean) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([categoria, count]) => ({
+      categoria,
+      cleanName: cleanCatName(categoria),
+      count
+    }));
+  }, [availableLots]);
+
+  // Categories without active lots
+  const otherCategories = useMemo(() => {
+    return (config.categories || []).filter(c =>
+      !activeLotCategories.some(alc => isCategoryMatch(alc.categoria, c))
+    );
+  }, [config.categories, activeLotCategories]);
+
+  // Lots filtered ONLY for the selected category
+  const lotsForSelectedCategory = useMemo(() => {
+    if (!selectedPackCategory) return [];
+    return availableLots.filter(l => isCategoryMatch(l.categoria, selectedPackCategory));
+  }, [availableLots, selectedPackCategory]);
+
+  // Automatically select the first category that has active lots if none selected
+  useEffect(() => {
+    if (!selectedPackCategory && activeLotCategories.length > 0) {
+      setSelectedPackCategory(activeLotCategories[0].categoria);
+    }
+  }, [activeLotCategories]);
+
+  // Keep category in sync if a lot is loaded
+  useEffect(() => {
+    if (selectedLotInfo && selectedLotInfo.categoria) {
+      if (!isCategoryMatch(selectedPackCategory, selectedLotInfo.categoria)) {
+        setSelectedPackCategory(selectedLotInfo.categoria);
+      }
+    }
+  }, [selectedLotInfo]);
+
+  const openSkuConfig = (sku: any) => {
+    setSelectedPendingSku(sku);
+    setSkuModalForm({
+      product: sku.product || sku.name,
+      category: sku.category || selectedPackCategory || (selectedLotInfo ? selectedLotInfo.categoria : ''),
+      peso: sku.peso || sku.weight || parseWeightFromTitle(sku.product || sku.name),
+      empaques: sku.empaques || [],
+      etiqueta: sku.etiqueta || '',
+      adicionales: sku.adicionales || []
+    });
+    setShowConfigModal(true);
+  };
+
   // SKU Technical Configuration Modal (Gerencia & Supervisión)
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [selectedPendingSku, setSelectedPendingSku] = useState<any | null>(null);
@@ -446,7 +521,7 @@ export default function ProductionView({
     return availableLots.find(l => l.lote === packLote);
   }, [availableLots, packLote]);
 
-  // Combine configured SKUs with Odoo dairy catalog
+  // Combine configured SKUs with Odoo dairy catalog & evaluate full recipe elements
   const availablePackagingSkus = useMemo(() => {
     const list: {
       product: string;
@@ -456,6 +531,8 @@ export default function ProductionView({
       empaques: string[];
       etiqueta: string;
       isConfigured: boolean;
+      hasCompleteRecipe: boolean;
+      missingRecipeElements: string[];
     }[] = [];
 
     const configuredMap = new Map<string, any>();
@@ -463,60 +540,95 @@ export default function ProductionView({
       configuredMap.set(s.product.trim().toLowerCase(), s);
     });
 
+    const checkRecipe = (name: string, category: string, peso: number, empaques: string[], etiqueta: string, adicionales: string[]) => {
+      const norm = name.trim().toLowerCase();
+      const hasInsumosCategory = (config.categories || []).some(c =>
+        c.toLowerCase() === category.toLowerCase() ||
+        category.toLowerCase().includes(c.toLowerCase()) ||
+        c.toLowerCase().includes(category.toLowerCase())
+      );
+      const hasPeso = Boolean(peso && peso > 0);
+      const hasEmpaque = Array.isArray(empaques) && empaques.length > 0;
+      const hasEtiqueta = Boolean(etiqueta && etiqueta.trim().length > 0);
+
+      const specialKeywords = ['chipotle', 'jalape', 'jamon', 'jamón', 'habanero', 'morral', 'hierba', 'sabor', 'aderezado'];
+      const requiresAdicionales = specialKeywords.some(kw => normName.includes(kw));
+      const hasAdicionales = requiresAdicionales ? (Array.isArray(adicionales) && adicionales.length > 0) : true;
+
+      const missing: string[] = [];
+      if (!hasInsumosCategory) missing.push('Insumos/Categoría');
+      if (!hasPeso) missing.push('Peso Unitario');
+      if (!hasEmpaque) missing.push('Material de Empaque');
+      if (!hasEtiqueta) missing.push('Etiqueta');
+      if (!hasAdicionales) missing.push('Insumos Adicionales');
+
+      return {
+        hasCompleteRecipe: missing.length === 0,
+        missingRecipeElements: missing
+      };
+    };
+
     (odooCatalog.products || []).forEach(op => {
       const norm = op.name.trim().toLowerCase();
       const cfg = configuredMap.get(norm);
+      const category = cfg?.category || op.category || '';
+      const peso = (cfg && Number(cfg.peso) > 0) ? Number(cfg.peso) : (op.weight || parseWeightFromTitle(op.name));
+      const empaques = cfg?.empaques || [];
+      const etiqueta = cfg?.etiqueta || '';
+      const adicionales = cfg?.adicionales || [];
+
+      const { hasCompleteRecipe, missingRecipeElements } = checkRecipe(op.name, category, peso, empaques, etiqueta, adicionales);
+
       list.push({
         product: op.name,
-        category: op.category,
-        peso: cfg?.peso || op.weight || parseWeightFromTitle(op.name),
-        adicionales: cfg?.adicionales || [],
-        empaques: cfg?.empaques || [],
-        etiqueta: cfg?.etiqueta || '',
-        isConfigured: !!cfg
+        category,
+        peso,
+        adicionales,
+        empaques,
+        etiqueta,
+        isConfigured: hasCompleteRecipe,
+        hasCompleteRecipe,
+        missingRecipeElements
       });
     });
 
     (config.skus || []).forEach(cs => {
       const norm = cs.product.trim().toLowerCase();
       if (!list.some(item => item.product.trim().toLowerCase() === norm)) {
+        const peso = cs.peso || parseWeightFromTitle(cs.product);
+        const { hasCompleteRecipe, missingRecipeElements } = checkRecipe(cs.product, cs.category, peso, cs.empaques || [], cs.etiqueta || '', cs.adicionales || []);
         list.push({
           product: cs.product,
           category: cs.category,
-          peso: cs.peso || parseWeightFromTitle(cs.product),
+          peso,
           adicionales: cs.adicionales || [],
           empaques: cs.empaques || [],
           etiqueta: cs.etiqueta || '',
-          isConfigured: true
+          isConfigured: hasCompleteRecipe,
+          hasCompleteRecipe,
+          missingRecipeElements
         });
       }
     });
 
     return list;
-  }, [odooCatalog.products, config.skus]);
+  }, [odooCatalog.products, config.skus, config.categories]);
 
-  // SKUs filtered for selected lot's category & selected Odoo category
+  // SKUs filtered for selected category (from dropdown or active lot)
   const filteredSkus = useMemo(() => {
     let prods = availablePackagingSkus;
 
-    if (selectedLotInfo) {
-      const catClean = selectedLotInfo.categoria
-        .replace(/All\s*\/\s*Quesos\s*\/\s*/i, '')
-        .replace(/All\s*\/\s*/i, '')
-        .toLowerCase();
-
-      const lotMatches = prods.filter(s => {
+    const activeCat = selectedLotInfo?.categoria || selectedPackCategory;
+    if (activeCat) {
+      const clean = cleanCatName(activeCat).toLowerCase();
+      const catMatches = prods.filter(s => {
         const pCat = (s.category || '').toLowerCase();
         const pName = (s.product || '').toLowerCase();
-        return pCat.includes(catClean) || pName.includes(catClean);
+        return pCat.includes(clean) || pName.includes(clean);
       });
-      if (lotMatches.length > 0) {
-        prods = lotMatches;
+      if (catMatches.length > 0) {
+        prods = catMatches;
       }
-    }
-
-    if (selectedOdooCategory !== 'all') {
-      prods = prods.filter(s => s.category.toLowerCase().includes(selectedOdooCategory.toLowerCase()));
     }
 
     if (productSearchTerm.trim()) {
@@ -525,7 +637,7 @@ export default function ProductionView({
     }
 
     return prods;
-  }, [availablePackagingSkus, selectedLotInfo, selectedOdooCategory, productSearchTerm]);
+  }, [availablePackagingSkus, selectedLotInfo, selectedPackCategory, productSearchTerm]);
 
   const availableEmpaqueOptions = useMemo(() => {
     return (config.ingredients || [])
@@ -784,24 +896,24 @@ export default function ProductionView({
         </div>
       )}
 
-      {/* Gerencia & Supervisión Alert Banner for Unconfigured Odoo Products */}
+      {/* Gerencia & Supervisión Alert Banner for Incomplete Costing Recipes */}
       {canEditCosts && odooCatalog.unconfiguredProducts && odooCatalog.unconfiguredProducts.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-300 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
               <AlertTriangle className="w-5 h-5 animate-bounce" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h4 className="text-sm font-black text-amber-950 uppercase tracking-wide">
-                  Aviso a Gerencia y Supervisión de Producción
+                  Aviso a Gerencia y Supervisión: Recetas de Costos Incompletas
                 </h4>
                 <span className="text-[10px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
-                  {odooCatalog.unconfiguredProducts.length} producto(s) nuevo(s) de Odoo sin costeo
+                  {odooCatalog.unconfiguredProducts.length} producto(s) lácteo(s) con elementos faltantes
                 </span>
               </div>
               <p className="text-xs text-amber-800 mt-1">
-                Se detectaron nuevos productos lácteos dados de alta en Odoo dentro de las categorías de producción. Para habilitar su empaque y costeo exacto, se requiere ingresar la información técnica (peso neto unitario, empaque primario y etiqueta).
+                Se detectaron productos lácteos en Odoo a los que les faltan elementos en su receta de costos (insumos de tina, material de empaque primario, etiqueta, peso unitario o adicionales requeridos). Es indispensable completar la receta para autorizar su empaque y costeo exacto.
               </p>
             </div>
           </div>
@@ -810,21 +922,12 @@ export default function ProductionView({
             type="button"
             onClick={() => {
               const first = odooCatalog.unconfiguredProducts[0];
-              setSelectedPendingSku(first);
-              setSkuModalForm({
-                product: first.name,
-                category: first.category,
-                peso: first.weight || 1.0,
-                empaques: [],
-                etiqueta: '',
-                adicionales: []
-              });
-              setShowConfigModal(true);
+              openSkuConfig(first);
             }}
             className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-xs font-bold transition-all shadow-md shrink-0 flex items-center justify-center gap-2"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Configurar Ficha Técnica ({odooCatalog.unconfiguredProducts.length})</span>
+            <span>Completar Receta de Costos ({odooCatalog.unconfiguredProducts.length})</span>
           </button>
         </div>
       )}
@@ -1171,20 +1274,65 @@ export default function ProductionView({
                 Lote a Empacar
               </h3>
 
+              {/* 1. Lista Desplegable de la Categoría */}
               <div>
-                <label className="text-xs font-semibold text-slate-600 block mb-1">Selecciona el Lote con Saldo</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  1. Categoría a Empacar
+                </label>
+                <select
+                  value={selectedPackCategory}
+                  onChange={e => {
+                    const newCat = e.target.value;
+                    setSelectedPackCategory(newCat);
+                    setPackLote('');
+                  }}
+                  required
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-blue-700 focus:ring-2 focus:ring-blue-500 shadow-sm"
+                >
+                  <option value="">-- Elige una categoría de lácteos --</option>
+                  {activeLotCategories.map(item => (
+                    <option key={item.categoria} value={item.categoria}>
+                      {item.cleanName} ({item.count} lote{item.count === 1 ? '' : 's'} con saldo)
+                    </option>
+                  ))}
+                  {otherCategories.length > 0 && (
+                    <optgroup label="Otras categorías sin lotes producidos">
+                      {otherCategories.map(cat => (
+                        <option key={cat} value={cat}>
+                          {cleanCatName(cat)} (0 lotes)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* 2. Lista Desplegable de Lotes (Únicamente de la Categoría Seleccionada) */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  2. Lote con Saldo {selectedPackCategory ? `(${cleanCatName(selectedPackCategory)})` : ''}
+                </label>
                 <select
                   value={packLote}
                   onChange={e => setPackLote(e.target.value)}
+                  disabled={!selectedPackCategory}
                   required
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 >
-                  <option value="">-- Elige un lote producido --</option>
-                  {availableLots.map(l => (
-                    <option key={l.lote} value={l.lote}>
-                      {l.display}
-                    </option>
-                  ))}
+                  {!selectedPackCategory ? (
+                    <option value="">-- Primero selecciona una categoría arriba --</option>
+                  ) : lotsForSelectedCategory.length === 0 ? (
+                    <option value="">-- No hay lotes con saldo para ${cleanCatName(selectedPackCategory)} --</option>
+                  ) : (
+                    <>
+                      <option value="">-- Elige un lote de ${cleanCatName(selectedPackCategory)} --</option>
+                      {lotsForSelectedCategory.map(l => (
+                        <option key={l.lote} value={l.lote}>
+                          {l.display}
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -1274,92 +1422,51 @@ export default function ProductionView({
 
             {/* Right Card: Products & Presentations */}
             <div className="md:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">Presentaciones Empacadas (Odoo)</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-800">Presentaciones Empacadas</h3>
+                    {selectedPackCategory && (
+                      <span className="text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+                        {cleanCatName(selectedPackCategory)}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-400">
-                    Registra piezas empacadas por presentación de Odoo (puedes agregar múltiples tamaños)
+                    Registra piezas empacadas de {selectedPackCategory ? cleanCatName(selectedPackCategory) : 'la categoría seleccionada'}
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleAddPackItem}
-                  disabled={!selectedLotInfo}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-50 text-xs font-bold rounded-lg transition-colors border border-blue-200"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Agregar Presentación</span>
-                </button>
-              </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Buscar presentación..."
+                      value={productSearchTerm}
+                      onChange={e => setProductSearchTerm(e.target.value)}
+                      className="w-48 px-3 py-1.5 pl-8 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                    />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                    {productSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setProductSearchTerm('')}
+                        className="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
 
-              {/* Categorías de Odoo y Filtro de Búsqueda */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold text-slate-600 uppercase flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5 text-blue-600" /> Categorías de Planta en Odoo
-                  </span>
-                  {selectedOdooCategory !== 'all' && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOdooCategory('all')}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800"
-                    >
-                      Ver todas ({availablePackagingSkus.length})
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
                   <button
                     type="button"
-                    onClick={() => setSelectedOdooCategory('all')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                      selectedOdooCategory === 'all'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    }`}
+                    onClick={handleAddPackItem}
+                    disabled={!selectedLotInfo}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-50 text-xs font-bold rounded-lg transition-colors border border-blue-200 shrink-0"
                   >
-                    Todas ({availablePackagingSkus.length})
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ Agregar Presentación</span>
                   </button>
-                  {odooCatalog.categories.map(cat => {
-                    const count = availablePackagingSkus.filter(s => (s.category || '').toLowerCase().includes(cat.toLowerCase())).length;
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setSelectedOdooCategory(cat)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center gap-1 ${
-                          selectedOdooCategory === cat
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        <span>{cat.replace(/^All\s*\/\s*/i, '')}</span>
-                        <span className="text-[10px] opacity-75">({count})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Buscar producto de planta por nombre o presentación..."
-                    value={productSearchTerm}
-                    onChange={e => setProductSearchTerm(e.target.value)}
-                    className="w-full px-3 py-1.5 pl-8 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  {productSearchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => setProductSearchTerm('')}
-                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs"
-                    >
-                      ✕
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1408,39 +1515,33 @@ export default function ProductionView({
                           >
                             {filteredSkus.map(s => (
                               <option key={s.product} value={s.product}>
-                                {s.product} {!s.isConfigured ? ' ⚠️ (Sin Ficha)' : ''}
+                                {s.product} {!s.hasCompleteRecipe ? ` ⚠️ (Falta: ${s.missingRecipeElements.join(', ')})` : ''}
                               </option>
                             ))}
                           </select>
 
-                          {/* Unconfigured Alert / Configure Button for this SKU */}
+                          {/* Recipe Incomplete Alert / Configure Button for this SKU */}
                           {(() => {
                             const currentSku = availablePackagingSkus.find(s => s.product === item.product);
-                            if (currentSku && !currentSku.isConfigured) {
+                            if (currentSku && !currentSku.hasCompleteRecipe) {
                               return (
-                                <div className="mt-2 flex items-center justify-between p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
-                                  <span className="flex items-center gap-1 font-semibold text-[11px]">
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                    Producto de Odoo sin parámetros de empaque y costeo
-                                  </span>
+                                <div className="mt-2 flex items-center justify-between p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                    <div>
+                                      <span className="font-bold block text-xs">Receta de costos incompleta:</span>
+                                      <span className="text-[11px] text-amber-800">
+                                        Faltan elementos: {currentSku.missingRecipeElements.join(', ')}
+                                      </span>
+                                    </div>
+                                  </div>
                                   {canEditCosts && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setSelectedPendingSku(currentSku);
-                                        setSkuModalForm({
-                                          product: currentSku.product,
-                                          category: currentSku.category || selectedLotInfo?.categoria || '',
-                                          peso: currentSku.peso || 1.0,
-                                          empaques: currentSku.empaques || [],
-                                          etiqueta: currentSku.etiqueta || '',
-                                          adicionales: currentSku.adicionales || []
-                                        });
-                                        setShowConfigModal(true);
-                                      }}
-                                      className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded text-[10px]"
+                                      onClick={() => openSkuConfig(currentSku)}
+                                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shrink-0 shadow-sm"
                                     >
-                                      Definir Ficha Técnica
+                                      Completar Receta
                                     </button>
                                   )}
                                 </div>
@@ -1861,33 +1962,50 @@ export default function ProductionView({
               </button>
             </div>
 
+            {/* Recipe Elements Verification Checklist */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
+                Verificación de Elementos de la Receta de Costos:
+              </span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div className={`p-2 rounded-lg border ${skuModalForm.category ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                  <span className="font-bold block">1. Insumos Base</span>
+                  <span className="text-[10px]">{skuModalForm.category ? '✓ Categoría asignada' : '✗ Falta categoría'}</span>
+                </div>
+                <div className={`p-2 rounded-lg border ${skuModalForm.peso > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                  <span className="font-bold block">2. Peso Unitario</span>
+                  <span className="text-[10px]">{skuModalForm.peso > 0 ? `✓ ${skuModalForm.peso} kg` : '✗ Falta peso'}</span>
+                </div>
+                <div className={`p-2 rounded-lg border ${skuModalForm.empaques.length > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                  <span className="font-bold block">3. Empaque</span>
+                  <span className="text-[10px]">{skuModalForm.empaques.length > 0 ? `✓ ${skuModalForm.empaques.length} sel.` : '✗ Falta empaque'}</span>
+                </div>
+                <div className={`p-2 rounded-lg border ${skuModalForm.etiqueta ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                  <span className="font-bold block">4. Etiqueta</span>
+                  <span className="text-[10px]">{skuModalForm.etiqueta ? '✓ Asignada' : '✗ Falta etiqueta'}</span>
+                </div>
+              </div>
+            </div>
+
             {/* Pending Products Selector */}
             {odooCatalog.unconfiguredProducts && odooCatalog.unconfiguredProducts.length > 0 && (
               <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
                 <label className="text-[11px] font-bold text-amber-900 block">
-                  Seleccionar Producto de Odoo Pendiente de Configurar ({odooCatalog.unconfiguredProducts.length}):
+                  Seleccionar Producto con Receta Incompleta ({odooCatalog.unconfiguredProducts.length}):
                 </label>
                 <select
                   value={skuModalForm.product}
                   onChange={e => {
                     const sel = odooCatalog.unconfiguredProducts.find(p => p.name === e.target.value);
                     if (sel) {
-                      setSelectedPendingSku(sel);
-                      setSkuModalForm({
-                        product: sel.name,
-                        category: sel.category || '',
-                        peso: sel.weight || 1.0,
-                        empaques: [],
-                        etiqueta: '',
-                        adicionales: []
-                      });
+                      openSkuConfig(sel);
                     }
                   }}
                   className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold text-slate-800"
                 >
                   {odooCatalog.unconfiguredProducts.map(p => (
                     <option key={p.odooId || p.name} value={p.name}>
-                      {p.name} ({p.category})
+                      {p.name} {p.missingRecipeElements ? ` (Falta: ${p.missingRecipeElements.join(', ')})` : ''}
                     </option>
                   ))}
                 </select>

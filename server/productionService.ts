@@ -935,8 +935,8 @@ export async function fetchOdooDairyCatalog(forceRefresh = false): Promise<{
       const normName = p.name.trim().toLowerCase();
       const configMatch = configuredMap.get(normName);
 
-      // Guess weight from name if 0
-      let weight = Number(p.weight) || 0;
+      // Weight resolution: configMatch.peso > Odoo p.weight > parse from title
+      let weight = (configMatch && Number(configMatch.peso) > 0) ? Number(configMatch.peso) : (Number(p.weight) || 0);
       if (weight === 0) {
         const lower = p.name.toLowerCase();
         const kgM = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilos?)/);
@@ -947,22 +947,53 @@ export async function fetchOdooDairyCatalog(forceRefresh = false): Promise<{
         }
       }
 
+      const empaquesList = configMatch?.empaques || [];
+      const etiquetaStr = configMatch?.etiqueta || '';
+      const adicionalesList = configMatch?.adicionales || [];
+      const targetCategory = configMatch?.category || catName;
+
+      // Recipe Elements Verification (Insumos, Empaque, Etiqueta, Peso, Adicionales)
+      const hasInsumosCategory = (cfg.categories || []).some((c: string) =>
+        c.toLowerCase() === targetCategory.toLowerCase() ||
+        targetCategory.toLowerCase().includes(c.toLowerCase()) ||
+        c.toLowerCase().includes(targetCategory.toLowerCase())
+      );
+      const hasEmpaque = Array.isArray(empaquesList) && empaquesList.length > 0;
+      const hasEtiqueta = Boolean(etiquetaStr && etiquetaStr.trim().length > 0);
+      const hasPeso = Boolean(weight && weight > 0);
+
+      // Check if product is flavored/special requiring adicionales
+      const specialKeywords = ['chipotle', 'jalape', 'jamon', 'jamón', 'habanero', 'morral', 'hierba', 'sabor', 'aderezado'];
+      const requiresAdicionales = specialKeywords.some(kw => normName.includes(kw));
+      const hasAdicionales = requiresAdicionales ? (Array.isArray(adicionalesList) && adicionalesList.length > 0) : true;
+
+      const missingRecipeElements: string[] = [];
+      if (!hasInsumosCategory) missingRecipeElements.push('Insumos de Categoría Base');
+      if (!hasPeso) missingRecipeElements.push('Peso Unitario');
+      if (!hasEmpaque) missingRecipeElements.push('Material de Empaque');
+      if (!hasEtiqueta) missingRecipeElements.push('Etiqueta');
+      if (!hasAdicionales) missingRecipeElements.push('Insumos Adicionales (Receta)');
+
+      const hasCompleteRecipe = missingRecipeElements.length === 0 && !!configMatch;
+
       const prodObj = {
         odooId: p.id,
         name: p.name,
-        category: catName,
+        category: targetCategory,
         weight: weight || 1.0,
         price: Number(p.list_price) || 0,
         code: p.default_code || '',
-        isConfigured: !!configMatch,
-        adicionales: configMatch?.adicionales || [],
-        empaques: configMatch?.empaques || [],
-        etiqueta: configMatch?.etiqueta || ''
+        isConfigured: hasCompleteRecipe,
+        hasCompleteRecipe,
+        missingRecipeElements,
+        adicionales: adicionalesList,
+        empaques: empaquesList,
+        etiqueta: etiquetaStr
       };
 
       products.push(prodObj);
 
-      if (!configMatch) {
+      if (!hasCompleteRecipe) {
         unconfigured.push(prodObj);
       }
     });
