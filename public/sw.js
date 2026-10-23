@@ -1,5 +1,5 @@
 // Lácteos Trujillos Service Worker
-const CACHE_NAME = 'trujillos-rutas-v2';
+const CACHE_NAME = 'trujillos-rutas-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
