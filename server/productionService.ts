@@ -597,16 +597,32 @@ export function getAvailableProductionLots(categoria?: string): any[] {
     .map(l => {
       const empacado = kgEmpacadosPorLote[l.lote] || 0;
       const disponible = l.kgTotal - empacado;
+      // Calcular días de reposo natural desde la fecha de elaboración
+      let diasReposo = 0;
+      if (l.fechaProduccion) {
+        const parts = l.fechaProduccion.split('-');
+        if (parts.length === 3) {
+          const prodDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          const diffMs = Date.now() - prodDate.getTime();
+          diasReposo = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        }
+      }
+
+      const reposoText = diasReposo === 0 
+        ? 'Elaborado hoy' 
+        : `${diasReposo} d reposo`;
+
       return {
         lote: l.lote,
         categoria: l.categoria,
         fechaProduccion: l.fechaProduccion,
+        diasReposo,
         kgTotal: l.kgTotal,
         kgEmpacados: empacado,
         kgDisponible: disponible,
         costoPorKg: l.costoPorKg,
         costoTotal: l.costoTotal,
-        display: `${l.lote} | Disp: ${disponible.toFixed(2)} kg ($${l.costoPorKg.toFixed(2)}/kg)`
+        display: `${l.lote} | ${reposoText} | Disp: ${disponible.toFixed(2)} kg ($${l.costoPorKg.toFixed(2)}/kg)`
       };
     });
 }
@@ -846,5 +862,185 @@ export async function getOdooLiveInventory(): Promise<any[]> {
   } catch (err: any) {
     console.error('Error fetching Odoo inventory:', err);
     return [];
+  }
+}
+
+// ==========================================
+// 8. Odoo Dairy Plant Catalog & Unconfigured SKUs
+// ==========================================
+let _odooCatalogCache: any = null;
+let _odooCatalogCacheTime = 0;
+
+export async function fetchOdooDairyCatalog(forceRefresh = false): Promise<{
+  categories: string[];
+  products: any[];
+  unconfiguredProducts: any[];
+  lastSync: number;
+}> {
+  const now = Date.now();
+  if (!forceRefresh && _odooCatalogCache && (now - _odooCatalogCacheTime < 5 * 60 * 1000)) {
+    return _odooCatalogCache;
+  }
+
+  try {
+    const cfg = getProductionConfig();
+    const configuredMap = new Map<string, any>();
+    (cfg.skus || []).forEach((s: any) => {
+      configuredMap.set(s.product.trim().toLowerCase(), s);
+    });
+
+    const categories = await executeKw('product.category', 'search_read', [[]], {
+      fields: ['id', 'name', 'complete_name'],
+      limit: 150
+    });
+
+    const dairyKeywords = ['queso', 'crema', 'jocoque', 'yogurt', 'pizzero', 'adobera', 'mantequilla'];
+    const excludedKeywords = [
+      'abarrote', 'dulce', 'cecina', 'cesina', 'bebida', 'galleta', 
+      'embutido', 'bimbo', 'desechable', 'embazado', 'mayonesa', 
+      'pan', 'tortilla', 'tostada', 'salsa', 'material', 'expense', 'saleable'
+    ];
+
+    const prodCategories = (categories || []).filter((c: any) => {
+      const name = (c.complete_name || '').toLowerCase();
+      const isExcluded = excludedKeywords.some(ex => name.includes(ex));
+      if (isExcluded) return false;
+      return dairyKeywords.some(kw => name.includes(kw));
+    });
+
+    const catIds = prodCategories.map((c: any) => c.id);
+    const odooProducts = await executeKw('product.product', 'search_read', [
+      [
+        ['sale_ok', '=', true],
+        ['categ_id', 'in', catIds]
+      ]
+    ], {
+      fields: ['id', 'name', 'default_code', 'categ_id', 'list_price', 'standard_price', 'weight', 'uom_id'],
+      limit: 500
+    });
+
+    const validProducts = (odooProducts || []).filter((p: any) => {
+      const n = (p.name || '').toLowerCase();
+      return !n.includes('% de descuento') && !n.includes('$') && !n.includes('por punto');
+    });
+
+    const unconfigured: any[] = [];
+    const products: any[] = [];
+    const cleanCategoriesSet = new Set<string>();
+
+    validProducts.forEach((p: any) => {
+      const catName = p.categ_id ? p.categ_id[1] : 'Otros';
+      cleanCategoriesSet.add(catName);
+
+      const normName = p.name.trim().toLowerCase();
+      const configMatch = configuredMap.get(normName);
+
+      // Guess weight from name if 0
+      let weight = Number(p.weight) || 0;
+      if (weight === 0) {
+        const lower = p.name.toLowerCase();
+        const kgM = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilos?)/);
+        if (kgM) weight = parseFloat(kgM[1]);
+        else {
+          const gM = lower.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|gramos?)/);
+          if (gM) weight = parseFloat(gM[1]) / 1000;
+        }
+      }
+
+      const prodObj = {
+        odooId: p.id,
+        name: p.name,
+        category: catName,
+        weight: weight || 1.0,
+        price: Number(p.list_price) || 0,
+        code: p.default_code || '',
+        isConfigured: !!configMatch,
+        adicionales: configMatch?.adicionales || [],
+        empaques: configMatch?.empaques || [],
+        etiqueta: configMatch?.etiqueta || ''
+      };
+
+      products.push(prodObj);
+
+      if (!configMatch) {
+        unconfigured.push(prodObj);
+      }
+    });
+
+    const result = {
+      categories: Array.from(cleanCategoriesSet).sort(),
+      products,
+      unconfiguredProducts: unconfigured,
+      lastSync: now
+    };
+
+    _odooCatalogCache = result;
+    _odooCatalogCacheTime = now;
+    return result;
+  } catch (err: any) {
+    console.error('Error fetching Odoo dairy catalog:', err);
+    return {
+      categories: [],
+      products: [],
+      unconfiguredProducts: [],
+      lastSync: now
+    };
+  }
+}
+
+export async function configureProductSku(data: {
+  product: string;
+  category: string;
+  peso: number;
+  adicionales?: string[];
+  empaques?: string[];
+  etiqueta?: string;
+}): Promise<{ success: boolean; message: string; sku?: any }> {
+  try {
+    if (!data.product || !data.category) {
+      return { success: false, message: 'Producto y categoría son obligatorios.' };
+    }
+
+    const cfg = getProductionConfig();
+    if (!cfg.skus) cfg.skus = [];
+
+    const normName = data.product.trim().toLowerCase();
+    const existingIdx = cfg.skus.findIndex((s: any) => s.product.trim().toLowerCase() === normName);
+
+    const newSku = {
+      product: data.product.trim(),
+      category: data.category.trim(),
+      peso: Number(data.peso) || 1.0,
+      adicionales: data.adicionales || [],
+      empaques: data.empaques || [],
+      etiqueta: data.etiqueta || ''
+    };
+
+    if (existingIdx !== -1) {
+      cfg.skus[existingIdx] = { ...cfg.skus[existingIdx], ...newSku };
+    } else {
+      cfg.skus.push(newSku);
+    }
+
+    // Ensure category is in categories list
+    if (!cfg.categories) cfg.categories = [];
+    if (!cfg.categories.includes(data.category)) {
+      cfg.categories.push(data.category);
+    }
+
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+
+    // Invalidate Odoo catalog cache so updated config is reflected
+    _odooCatalogCache = null;
+    _odooCatalogCacheTime = 0;
+
+    return {
+      success: true,
+      message: `¡Producto "${newSku.product}" configurado exitosamente para planta y empaque!`,
+      sku: newSku
+    };
+  } catch (err: any) {
+    console.error('Error configuring product SKU:', err);
+    return { success: false, message: err.message };
   }
 }

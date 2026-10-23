@@ -33,7 +33,9 @@ import {
   updateProductionCosts,
   loadLocalPurchases,
   saveLocalPurchases,
-  recordPurchase
+  recordPurchase,
+  fetchOdooDairyCatalog,
+  configureProductSku
 } from './server/productionService.ts';
 import {
   loadLocalLineReports,
@@ -1052,6 +1054,28 @@ async function startServer() {
       res.json(inv);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/production/odoo-catalog', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const force = req.query.force === 'true';
+      const catalog = await fetchOdooDairyCatalog(force);
+      res.json(catalog);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production/configure-sku', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Solo Gerencia o Supervisión pueden configurar fichas técnicas de costeo." });
+      const result = await configureProductSku(req.body);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 
