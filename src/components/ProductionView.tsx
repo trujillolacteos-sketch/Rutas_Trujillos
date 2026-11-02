@@ -198,13 +198,15 @@ export default function ProductionView({
 
   // Selected lot info derived from availableLots and packLote
   const selectedLotInfo = useMemo(() => {
-    return availableLots.find(l => l.lote === packLote);
+    const list = Array.isArray(availableLots) ? availableLots : [];
+    return list.find(l => l.lote === packLote);
   }, [availableLots, packLote]);
 
   // Active lot categories from availableLots
   const activeLotCategories = useMemo(() => {
+    const list = Array.isArray(availableLots) ? availableLots : [];
     const map = new Map<string, number>();
-    availableLots.forEach(l => {
+    list.forEach(l => {
       const cats = (l.applicableCategories && l.applicableCategories.length > 0)
         ? l.applicableCategories
         : [l.categoria || "Sin categoría"];
@@ -232,7 +234,8 @@ export default function ProductionView({
   // Lots filtered ONLY for the selected category
   const lotsForSelectedCategory = useMemo(() => {
     if (!selectedPackCategory) return [];
-    return availableLots.filter(l => {
+    const list = Array.isArray(availableLots) ? availableLots : [];
+    return list.filter(l => {
       if (isCategoryMatch(l.categoria, selectedPackCategory)) return true;
       if (l.applicableCategories && Array.isArray(l.applicableCategories)) {
         return l.applicableCategories.some(ac => isCategoryMatch(ac, selectedPackCategory));
@@ -290,10 +293,15 @@ export default function ProductionView({
   const loadLots = async () => {
     try {
       const res = await apiFetch('/api/production/lots');
-      const data = await res.json();
-      setAvailableLots(data || []);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableLots(Array.isArray(data) ? data : []);
+      } else {
+        setAvailableLots([]);
+      }
     } catch (e: any) {
       console.error('Error cargando lotes:', e);
+      setAvailableLots([]);
     }
   };
 
@@ -1862,7 +1870,7 @@ export default function ProductionView({
                       );
                     })
                     .map(b => {
-                      const lotInfo = availableLots.find(l => l.lote === b.lote);
+                      const lotInfo = (Array.isArray(availableLots) ? availableLots : []).find(l => l.lote === b.lote);
                       const disp = lotInfo ? lotInfo.kgDisponible : 0;
                       const emp = lotInfo ? lotInfo.kgEmpacados : (b.kgTotal - disp);
                       const isComplete = disp <= 0.5;

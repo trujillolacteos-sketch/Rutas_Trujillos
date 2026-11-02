@@ -829,7 +829,7 @@ export function getAvailableProductionLots(categoria?: string): any[] {
         ? 'Elaborado hoy' 
         : `${diasReposo} d reposo`;
 
-      const lineaTag = l.lineNombre ? ` [${l.lineNombre.split(' ')[0]}]` : '';
+      const lineTag = l.lineNombre ? ` [${l.lineNombre.split(' ')[0]}]` : '';
 
       return {
         lote: l.lote,
