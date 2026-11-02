@@ -586,6 +586,376 @@ export function calculateContabilidadBalances(targetYear?: number): Contabilidad
   };
 }
 
+// ==========================================
+// ESTADO DE RESULTADOS (Comparativo vs Período Anterior & Año Pasado)
+// ==========================================
+
+export interface LineaEstadoResultados {
+  concepto: string;
+  actual: number;
+  porcentajeVentas: number;
+  anterior: number;
+  variacionAnterior: number;
+  crecimientoAnterior: number | null;
+  añoPasado: number;
+  variacionAñoPasado: number;
+  crecimientoAñoPasado: number | null;
+  litrosActual?: number;
+  precioPromedioActual?: number;
+}
+
+export interface EstadoResultadosResponse {
+  tipo: 'semana' | 'mes' | 'año';
+  periodoLabel: string;
+  anteriorLabel: string;
+  añoPasadoLabel: string;
+  año: number;
+  semana?: number;
+  mes?: string;
+  disponibleAños: number[];
+  disponibleMeses: string[];
+  disponibleSemanas: number[];
+
+  ingresos: LineaEstadoResultados[];
+  totalIngresos: LineaEstadoResultados;
+
+  costosDirectos: LineaEstadoResultados[];
+  totalCostosDirectos: LineaEstadoResultados;
+
+  utilidadBruta: LineaEstadoResultados;
+  margenBrutoPct: {
+    actual: number;
+    anterior: number;
+    variacionAnterior: number;
+    añoPasado: number;
+    variacionAñoPasado: number;
+  };
+
+  gastosOperativos: LineaEstadoResultados[];
+  totalGastosOperativos: LineaEstadoResultados;
+
+  otros: LineaEstadoResultados[];
+  totalOtros: LineaEstadoResultados;
+
+  totalEgresos: LineaEstadoResultados;
+
+  utilidadNeta: LineaEstadoResultados;
+  margenNetoPct: {
+    actual: number;
+    anterior: number;
+    variacionAnterior: number;
+    añoPasado: number;
+    variacionAñoPasado: number;
+  };
+
+  kpis: {
+    ingresos: { actual: number; crecAnterior: number | null; crecAñoPasado: number | null };
+    utilidadBruta: { actual: number; margenPct: number; crecAnterior: number | null };
+    gastosOperativos: { actual: number; pctIngresos: number; crecAnterior: number | null };
+    utilidadNeta: { actual: number; margenPct: number; crecAnterior: number | null; crecAñoPasado: number | null };
+  };
+}
+
+function aggregateMovimientos(movs: MovimientoContable[]) {
+  let ruta = 0, manzanilloRuta6 = 0, ventasManzanillo = 0, ventaDirecta = 0;
+  let insumos = 0, leche = 0, litrosLeche = 0;
+  let gastos = 0, gastosManzanillo = 0, gastosRutas = 0, rancho = 0, nomina = 0, nominaManzanillo = 0;
+  let credito = 0, diferenciaCalculo = 0;
+
+  movs.forEach(m => {
+    const cta = (m.cuentaMenor || '').trim().toLowerCase();
+    const monto = Math.abs(Number(m.monto) || 0);
+
+    // Ingresos
+    if (cta === 'ruta') ruta += monto;
+    else if (cta === 'manzanillo ruta 6') manzanilloRuta6 += monto;
+    else if (cta === 'ventas manzanillo') ventasManzanillo += monto;
+    else if (cta === 'venta directa') ventaDirecta += monto;
+
+    // Costos directos
+    else if (cta === 'insumos') insumos += monto;
+    else if (cta === 'leche') {
+      const imp = (m.litros && m.precioPorLitro) ? (m.litros * m.precioPorLitro) : monto;
+      leche += imp;
+      if (m.litros) litrosLeche += Number(m.litros) || 0;
+    }
+
+    // Gastos Operativos
+    else if (cta === 'gastos') gastos += monto;
+    else if (cta === 'gastos manzanillo') gastosManzanillo += monto;
+    else if (cta === 'gastos rutas') gastosRutas += monto;
+    else if (cta === 'rancho') rancho += monto;
+    else if (cta === 'nómina' || cta === 'nomina') nomina += monto;
+    else if (cta === 'nómina manzanillo' || cta === 'nomina manzanillo') nominaManzanillo += monto;
+
+    // Otros / Administrativos
+    else if (cta === 'crédito' || cta === 'credito') credito += monto;
+    else if (cta === 'diferencia en calculo' || cta === 'diferencia en cálculo') diferenciaCalculo += (Number(m.totalNeto) || monto);
+  });
+
+  const totalIngresos = Number((ruta + manzanilloRuta6 + ventasManzanillo + ventaDirecta).toFixed(2));
+  const totalCostosDirectos = Number((insumos + leche).toFixed(2));
+  const utilidadBruta = Number((totalIngresos - totalCostosDirectos).toFixed(2));
+  const totalGastosOperativos = Number((gastos + gastosManzanillo + gastosRutas + rancho + nomina + nominaManzanillo).toFixed(2));
+  const totalOtros = Number((credito + diferenciaCalculo).toFixed(2));
+  const totalEgresos = Number((totalCostosDirectos + totalGastosOperativos).toFixed(2));
+  const utilidadNeta = Number((totalIngresos - totalEgresos).toFixed(2));
+
+  return {
+    ruta, manzanilloRuta6, ventasManzanillo, ventaDirecta, totalIngresos,
+    insumos, leche, litrosLeche, totalCostosDirectos,
+    utilidadBruta,
+    gastos, gastosManzanillo, gastosRutas, rancho, nomina, nominaManzanillo,
+    totalNomina: nomina + nominaManzanillo,
+    totalGastosOperativos,
+    credito, diferenciaCalculo, totalOtros,
+    totalEgresos, utilidadNeta
+  };
+}
+
+function buildLinea(
+  concepto: string,
+  actual: number,
+  totalIngresosActual: number,
+  anterior: number,
+  añoPasado: number,
+  extra?: { litrosActual?: number; precioPromedioActual?: number }
+): LineaEstadoResultados {
+  const act = Number(actual.toFixed(2));
+  const ant = Number(anterior.toFixed(2));
+  const ap = Number(añoPasado.toFixed(2));
+
+  const varAnt = Number((act - ant).toFixed(2));
+  const crecAnt = ant !== 0 ? Number((((act - ant) / Math.abs(ant)) * 100).toFixed(1)) : null;
+
+  const varAp = Number((act - ap).toFixed(2));
+  const crecAp = ap !== 0 ? Number((((act - ap) / Math.abs(ap)) * 100).toFixed(1)) : null;
+
+  const pctVentas = totalIngresosActual > 0 ? Number(((act / totalIngresosActual) * 100).toFixed(1)) : 0;
+
+  return {
+    concepto,
+    actual: act,
+    porcentajeVentas: pctVentas,
+    anterior: ant,
+    variacionAnterior: varAnt,
+    crecimientoAnterior: crecAnt,
+    añoPasado: ap,
+    variacionAñoPasado: varAp,
+    crecimientoAñoPasado: crecAp,
+    ...(extra || {})
+  };
+}
+
+export function calculateEstadoResultados(params: {
+  tipo?: 'semana' | 'mes' | 'año';
+  año?: number;
+  semana?: number;
+  mes?: string;
+}): EstadoResultadosResponse {
+  const allMovs = loadLocalContabilidad();
+  const tipo = params.tipo || 'semana';
+
+  const yearSet = new Set<number>();
+  allMovs.forEach(m => {
+    if (m.año && !isNaN(m.año)) yearSet.add(m.año);
+  });
+  const disponibleAños = Array.from(yearSet).sort((a, b) => b - a);
+  const targetYear = params.año || (disponibleAños.length > 0 ? disponibleAños[0] : new Date().getFullYear());
+
+  const disponibleMeses = MESES;
+  const disponibleSemanas = Array.from({ length: 53 }, (_, i) => i + 1);
+
+  let actualMovs: MovimientoContable[] = [];
+  let anteriorMovs: MovimientoContable[] = [];
+  let añoPasadoMovs: MovimientoContable[] = [];
+
+  let periodoLabel = '';
+  let anteriorLabel = '';
+  let añoPasadoLabel = '';
+  let targetSemana = params.semana || 44;
+  let targetMes = (params.mes || 'octubre').toLowerCase().trim();
+
+  if (tipo === 'semana') {
+    periodoLabel = `Semana ${targetSemana} (${targetYear})`;
+    añoPasadoLabel = `Semana ${targetSemana} (${targetYear - 1})`;
+
+    if (targetSemana > 1) {
+      anteriorLabel = `Semana ${targetSemana - 1} (${targetYear})`;
+      anteriorMovs = allMovs.filter(m => m.año === targetYear && m.semanaNum === targetSemana - 1);
+    } else {
+      anteriorLabel = `Semana 52 (${targetYear - 1})`;
+      anteriorMovs = allMovs.filter(m => m.año === targetYear - 1 && m.semanaNum >= 52);
+    }
+
+    actualMovs = allMovs.filter(m => m.año === targetYear && m.semanaNum === targetSemana);
+    añoPasadoMovs = allMovs.filter(m => m.año === targetYear - 1 && m.semanaNum === targetSemana);
+
+  } else if (tipo === 'mes') {
+    const mesIdx = MESES.indexOf(targetMes);
+    const validMesIdx = mesIdx >= 0 ? mesIdx : 9; // default octubre (idx 9)
+    const curMesName = MESES[validMesIdx];
+    targetMes = curMesName;
+
+    periodoLabel = `${curMesName.charAt(0).toUpperCase() + curMesName.slice(1)} ${targetYear}`;
+    añoPasadoLabel = `${curMesName.charAt(0).toUpperCase() + curMesName.slice(1)} ${targetYear - 1}`;
+
+    let prevMesName = '';
+    let prevYear = targetYear;
+    if (validMesIdx > 0) {
+      prevMesName = MESES[validMesIdx - 1];
+    } else {
+      prevMesName = MESES[11];
+      prevYear = targetYear - 1;
+    }
+    anteriorLabel = `${prevMesName.charAt(0).toUpperCase() + prevMesName.slice(1)} ${prevYear}`;
+
+    actualMovs = allMovs.filter(m => m.año === targetYear && (m.mes || '').toLowerCase().trim() === curMesName);
+    anteriorMovs = allMovs.filter(m => m.año === prevYear && (m.mes || '').toLowerCase().trim() === prevMesName);
+    añoPasadoMovs = allMovs.filter(m => m.año === targetYear - 1 && (m.mes || '').toLowerCase().trim() === curMesName);
+
+  } else {
+    // Tipo 'año'
+    periodoLabel = `Año ${targetYear}`;
+    anteriorLabel = `Año ${targetYear - 1}`;
+    añoPasadoLabel = `Año ${targetYear - 2}`;
+
+    actualMovs = allMovs.filter(m => m.año === targetYear);
+    anteriorMovs = allMovs.filter(m => m.año === targetYear - 1);
+    añoPasadoMovs = allMovs.filter(m => m.año === targetYear - 2);
+  }
+
+  const actAgg = aggregateMovimientos(actualMovs);
+  const antAgg = aggregateMovimientos(anteriorMovs);
+  const apAgg = aggregateMovimientos(añoPasadoMovs);
+
+  const tIngAct = actAgg.totalIngresos;
+  const tIngAnt = antAgg.totalIngresos;
+  const tIngAp = apAgg.totalIngresos;
+
+  // 1. Ingresos
+  const ingresos: LineaEstadoResultados[] = [
+    buildLinea('Ventas Ruta', actAgg.ruta, tIngAct, antAgg.ruta, apAgg.ruta),
+    buildLinea('Manzanillo Ruta 6', actAgg.manzanilloRuta6, tIngAct, antAgg.manzanilloRuta6, apAgg.manzanilloRuta6),
+    buildLinea('Ventas Manzanillo', actAgg.ventasManzanillo, tIngAct, antAgg.ventasManzanillo, apAgg.ventasManzanillo),
+    buildLinea('Venta Directa', actAgg.ventaDirecta, tIngAct, antAgg.ventaDirecta, apAgg.ventaDirecta),
+  ];
+  const totalIngresos = buildLinea('TOTAL INGRESOS', tIngAct, tIngAct, tIngAnt, tIngAp);
+
+  // 2. Costos Directos
+  const precioPromedioLecheAct = actAgg.litrosLeche > 0 ? Number((actAgg.leche / actAgg.litrosLeche).toFixed(2)) : 0;
+  const costosDirectos: LineaEstadoResultados[] = [
+    buildLinea('Insumos y Empaques', actAgg.insumos, tIngAct, antAgg.insumos, apAgg.insumos),
+    buildLinea('Materia Prima Leche', actAgg.leche, tIngAct, antAgg.leche, apAgg.leche, {
+      litrosActual: actAgg.litrosLeche,
+      precioPromedioActual: precioPromedioLecheAct
+    }),
+  ];
+  const totalCostosDirectos = buildLinea('TOTAL COSTOS DIRECTOS', actAgg.totalCostosDirectos, tIngAct, antAgg.totalCostosDirectos, apAgg.totalCostosDirectos);
+
+  // 3. Utilidad Bruta
+  const utilidadBruta = buildLinea('UTILIDAD BRUTA', actAgg.utilidadBruta, tIngAct, antAgg.utilidadBruta, apAgg.utilidadBruta);
+  const mBrutoAct = tIngAct > 0 ? Number(((actAgg.utilidadBruta / tIngAct) * 100).toFixed(1)) : 0;
+  const mBrutoAnt = tIngAnt > 0 ? Number(((antAgg.utilidadBruta / tIngAnt) * 100).toFixed(1)) : 0;
+  const mBrutoAp = tIngAp > 0 ? Number(((apAgg.utilidadBruta / tIngAp) * 100).toFixed(1)) : 0;
+
+  // 4. Gastos Operativos
+  const gastosOperativos: LineaEstadoResultados[] = [
+    buildLinea('Gastos Generales', actAgg.gastos, tIngAct, antAgg.gastos, apAgg.gastos),
+    buildLinea('Gastos Manzanillo', actAgg.gastosManzanillo, tIngAct, antAgg.gastosManzanillo, apAgg.gastosManzanillo),
+    buildLinea('Gastos Rutas', actAgg.gastosRutas, tIngAct, antAgg.gastosRutas, apAgg.gastosRutas),
+    buildLinea('Rancho', actAgg.rancho, tIngAct, antAgg.rancho, apAgg.rancho),
+    buildLinea('Nómina General', actAgg.nomina, tIngAct, antAgg.nomina, apAgg.nomina),
+    buildLinea('Nómina Manzanillo', actAgg.nominaManzanillo, tIngAct, antAgg.nominaManzanillo, apAgg.nominaManzanillo),
+  ];
+  const totalGastosOperativos = buildLinea('TOTAL GASTOS OPERATIVOS', actAgg.totalGastosOperativos, tIngAct, antAgg.totalGastosOperativos, apAgg.totalGastosOperativos);
+
+  // 5. Otros / Administrativos
+  const otros: LineaEstadoResultados[] = [
+    buildLinea('Créditos / Ajustes', actAgg.credito, tIngAct, antAgg.credito, apAgg.credito),
+    buildLinea('Diferencia en Cálculo', actAgg.diferenciaCalculo, tIngAct, antAgg.diferenciaCalculo, apAgg.diferenciaCalculo),
+  ];
+  const totalOtros = buildLinea('TOTAL OTROS / ADM.', actAgg.totalOtros, tIngAct, antAgg.totalOtros, apAgg.totalOtros);
+
+  // Total Egresos
+  const totalEgresos = buildLinea('TOTAL EGRESOS Y COSTOS', actAgg.totalEgresos, tIngAct, antAgg.totalEgresos, apAgg.totalEgresos);
+
+  // 6. Utilidad Neta
+  const utilidadNeta = buildLinea('UTILIDAD NETA', actAgg.utilidadNeta, tIngAct, antAgg.utilidadNeta, apAgg.utilidadNeta);
+  const mNetoAct = tIngAct > 0 ? Number(((actAgg.utilidadNeta / tIngAct) * 100).toFixed(1)) : 0;
+  const mNetoAnt = tIngAnt > 0 ? Number(((antAgg.utilidadNeta / tIngAnt) * 100).toFixed(1)) : 0;
+  const mNetoAp = tIngAp > 0 ? Number(((apAgg.utilidadNeta / tIngAp) * 100).toFixed(1)) : 0;
+
+  return {
+    tipo,
+    periodoLabel,
+    anteriorLabel,
+    añoPasadoLabel,
+    año: targetYear,
+    semana: tipo === 'semana' ? targetSemana : undefined,
+    mes: tipo === 'mes' ? targetMes : undefined,
+    disponibleAños,
+    disponibleMeses,
+    disponibleSemanas,
+
+    ingresos,
+    totalIngresos,
+
+    costosDirectos,
+    totalCostosDirectos,
+
+    utilidadBruta,
+    margenBrutoPct: {
+      actual: mBrutoAct,
+      anterior: mBrutoAnt,
+      variacionAnterior: Number((mBrutoAct - mBrutoAnt).toFixed(1)),
+      añoPasado: mBrutoAp,
+      variacionAñoPasado: Number((mBrutoAct - mBrutoAp).toFixed(1))
+    },
+
+    gastosOperativos,
+    totalGastosOperativos,
+
+    otros,
+    totalOtros,
+
+    totalEgresos,
+
+    utilidadNeta,
+    margenNetoPct: {
+      actual: mNetoAct,
+      anterior: mNetoAnt,
+      variacionAnterior: Number((mNetoAct - mNetoAnt).toFixed(1)),
+      añoPasado: mNetoAp,
+      variacionAñoPasado: Number((mNetoAct - mNetoAp).toFixed(1))
+    },
+
+    kpis: {
+      ingresos: {
+        actual: tIngAct,
+        crecAnterior: totalIngresos.crecimientoAnterior,
+        crecAñoPasado: totalIngresos.crecimientoAñoPasado
+      },
+      utilidadBruta: {
+        actual: actAgg.utilidadBruta,
+        margenPct: mBrutoAct,
+        crecAnterior: utilidadBruta.crecimientoAnterior
+      },
+      gastosOperativos: {
+        actual: actAgg.totalGastosOperativos,
+        pctIngresos: totalGastosOperativos.porcentajeVentas,
+        crecAnterior: totalGastosOperativos.crecimientoAnterior
+      },
+      utilidadNeta: {
+        actual: actAgg.utilidadNeta,
+        margenPct: mNetoAct,
+        crecAnterior: utilidadNeta.crecimientoAnterior,
+        crecAñoPasado: utilidadNeta.crecimientoAñoPasado
+      }
+    }
+  };
+}
+
 // Startup Initialization: Loads from sheet if local store is empty
 export async function initContabilidadOnStartup(): Promise<void> {
   try {

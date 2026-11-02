@@ -58,6 +58,7 @@ import {
   createMovimiento,
   deleteLocalMovimiento,
   calculateContabilidadBalances,
+  calculateEstadoResultados,
   loadLocalContabilidad,
   fetchGoogleSheetContabilidad
 } from './server/contabilidadService.ts';
@@ -1395,6 +1396,26 @@ async function startServer() {
       res.json({ success: true, count: rows.length });
     } catch (err: any) {
       console.error('[contabilidad] Error en POST /api/contabilidad/sync-sheets:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET Estado de Resultados (Semana, Mes, Año con comparativo vs anterior y vs año pasado)
+  app.get('/api/contabilidad/estado-resultados', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Estado de Resultados" });
+
+      const { tipo, year, semana, mes } = req.query;
+      const result = calculateEstadoResultados({
+        tipo: (tipo as any) || 'semana',
+        año: year ? parseInt(String(year), 10) : undefined,
+        semana: semana ? parseInt(String(semana), 10) : undefined,
+        mes: mes ? String(mes) : undefined
+      });
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en GET /api/contabilidad/estado-resultados:', err);
       res.status(500).json({ error: err.message });
     }
   });

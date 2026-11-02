@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calculator, PlusCircle, History, TrendingUp, TrendingDown, DollarSign, 
   Calendar, Building, CheckCircle2, RefreshCw, Search, Filter, 
@@ -6,10 +6,7 @@ import {
   Milk, User, CreditCard, ChevronLeft, ChevronRight, FileSpreadsheet,
   AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, 
-  CartesianGrid, Legend, LineChart, Line 
-} from 'recharts';
+import EstadoResultadosView from './EstadoResultadosView';
 
 interface MovimientoContable {
   id: string;
@@ -34,61 +31,11 @@ interface MovimientoContable {
   rowNumber?: number;
 }
 
-interface WeeklyBalanceColumn {
-  semanaNum: number;
-  semanaLabel: string;
-  ruta: number;
-  manzanilloRuta6: number;
-  ventasManzanillo: number;
-  ventaDirecta: number;
-  totalIngresos: number;
-  gastos: number;
-  gastosManzanillo: number;
-  gastosRutas: number;
-  insumos: number;
-  rancho: number;
-  totalEgresos: number;
-  porcentajeEgresos: number;
-  nomina: number;
-  nominaManzanillo: number;
-  nominaTotal: number;
-  porcentajeNomina: number;
-  leche: number;
-  litrosLeche: number;
-  creditoAbono: number;
-  acumulado: number;
-  credito: number;
-  diferenciaCalculo: number;
-  totalesAdministrativos: number;
-  utilidadNeta: number;
-  porcentajeUtilidadNeta: number;
-  utilidadBruta: number;
-  porcentajeUtilidadBruta: number;
-}
-
-interface ContabilidadBalancesResponse {
-  año: number;
-  disponibleAños: number[];
-  semanas: WeeklyBalanceColumn[];
-  resumenAnual: {
-    totalIngresos: number;
-    totalEgresos: number;
-    totalNomina: number;
-    totalLeche: number;
-    totalLitrosLeche: number;
-    utilidadNeta: number;
-    porcentajeUtilidadNeta: number;
-    utilidadBruta: number;
-    porcentajeUtilidadBruta: number;
-    totalMovimientos: number;
-  };
-}
-
 interface ContabilidadViewProps {
   token: string;
-  state: any;
-  role: string;
-  user: any;
+  state?: any;
+  role?: string;
+  user?: any;
 }
 
 const CUENTAS_MENORES = [
@@ -134,7 +81,7 @@ function getExcelWeekNumber(d: Date): number {
 }
 
 export default function ContabilidadView({ token, state, role, user }: ContabilidadViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'capturador' | 'bitacora' | 'balances'>('capturador');
+  const [activeSubTab, setActiveSubTab] = useState<'capturador' | 'bitacora' | 'estado_resultados'>('capturador');
 
   // Form State
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
@@ -177,13 +124,6 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   const [filterCuentaFiscal, setFilterCuentaFiscal] = useState<string>('');
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [syncingSheets, setSyncingSheets] = useState(false);
-
-  // Balances State
-  const [balanceYear, setBalanceYear] = useState<number>(2026);
-  const [balanceData, setBalanceData] = useState<ContabilidadBalancesResponse | null>(null);
-  const [loadingBalances, setLoadingBalances] = useState(false);
-  const [balanceDisplayMode, setBalanceDisplayMode] = useState<'semanal' | 'mensual' | 'grafica'>('semanal');
-  const matrixScrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-calculated formula preview for the current form input
   const formulaPreview = useMemo(() => {
@@ -279,25 +219,6 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
     }
   };
 
-  // Load Balances P&L
-  const loadBalances = async (year: number) => {
-    setLoadingBalances(true);
-    try {
-      const res = await fetch(`/api/contabilidad/balances?year=${year}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Error al cargar balances');
-      const data = await res.json();
-      if (data.balances) {
-        setBalanceData(data.balances);
-      }
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoadingBalances(false);
-    }
-  };
-
   // Sync Google Sheet manually
   const handleSyncSheets = async () => {
     setSyncingSheets(true);
@@ -310,7 +231,6 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       if (data.success) {
         alert(`¡Sincronización exitosa! Se cargaron ${data.count} movimientos de Google Sheets.`);
         loadMovimientos(1);
-        loadBalances(balanceYear);
       } else {
         alert(`Error al sincronizar: ${data.error || 'Desconocido'}`);
       }
@@ -365,15 +285,12 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       const data = await res.json();
       if (data.success) {
         setSaveSuccess(`¡Movimiento registrado con éxito! Folio/ID: ${data.movimiento.id}. Sincronizado a Google Sheets.`);
-        // Reset dynamic fields
         setMonto('');
         setMotivo('');
         setFolio('');
         setLitros('');
         setPrecioPorLitro('');
-        // Reload Bitácora and Balances in background
         loadMovimientos(1);
-        loadBalances(balanceYear);
       } else {
         setSaveError(data.error || 'No se pudo guardar el movimiento');
       }
@@ -395,7 +312,6 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       const data = await res.json();
       if (data.success) {
         loadMovimientos(currentPage);
-        loadBalances(balanceYear);
       } else {
         alert(data.message || 'Error al eliminar');
       }
@@ -408,19 +324,8 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   useEffect(() => {
     if (activeSubTab === 'bitacora') {
       loadMovimientos(1);
-    } else if (activeSubTab === 'balances') {
-      loadBalances(balanceYear);
     }
-  }, [activeSubTab, filterYear, filterMes, filterSemana, filterCuentaMenor, filterTipo, filterCuentaFiscal, balanceYear]);
-
-  // Jump to current week in matrix
-  const handleJumpToCurrentWeek = () => {
-    const curWeek = getExcelWeekNumber(new Date());
-    const el = document.getElementById(`semana-col-${curWeek}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    }
-  };
+  }, [activeSubTab, filterYear, filterMes, filterSemana, filterCuentaMenor, filterTipo, filterCuentaFiscal]);
 
   // Format currency
   const fmt = (val: number | undefined | null) => {
@@ -468,20 +373,6 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
     document.body.removeChild(link);
   };
 
-  // Chart data for Balances
-  const chartData = useMemo(() => {
-    if (!balanceData || !balanceData.semanas) return [];
-    return balanceData.semanas.map(s => ({
-      name: `S${s.semanaNum}`,
-      semana: s.semanaLabel,
-      Ingresos: s.totalIngresos,
-      Egresos: s.totalEgresos,
-      UtilidadNeta: s.utilidadNeta,
-      Leche: s.leche,
-      Nomina: s.nominaTotal
-    }));
-  }, [balanceData]);
-
   return (
     <div className="space-y-6 pb-12">
       {/* Top Header */}
@@ -492,13 +383,13 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black tracking-tight text-white">Contabilidad y Balances</h1>
+              <h1 className="text-2xl font-black tracking-tight text-white">Contabilidad y Movimientos</h1>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                 Google Sheets Live
               </span>
             </div>
             <p className="text-sm text-emerald-100/80 mt-0.5">
-              Capturador ágil de movimientos, bitácora histórica y matrices P&L semanales y anuales.
+              Capturador ágil de movimientos, bitácora histórica y consulta de Estado de Resultados.
             </p>
           </div>
         </div>
@@ -547,15 +438,15 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
         </button>
 
         <button
-          onClick={() => setActiveSubTab('balances')}
+          onClick={() => setActiveSubTab('estado_resultados')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap ${
-            activeSubTab === 'balances'
+            activeSubTab === 'estado_resultados'
               ? 'bg-white text-emerald-800 shadow-md border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <BarChart3 className={`w-4 h-4 ${activeSubTab === 'balances' ? 'text-emerald-600' : 'text-slate-400'}`} />
-          <span>Balances y P&L (Semanas 1-53)</span>
+          <BarChart3 className={`w-4 h-4 ${activeSubTab === 'estado_resultados' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <span>Estado de Resultados</span>
         </button>
       </div>
 
@@ -1260,492 +1151,10 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       )}
 
       {/* ========================================================= */}
-      {/* PESTAÑA 3: BALANCES P&L (SEMANAL, MENSUAL, ANUAL)          */}
+      {/* PESTAÑA 3: ESTADO DE RESULTADOS (SEMANA, MES, AÑO)        */}
       {/* ========================================================= */}
-      {activeSubTab === 'balances' && (
-        <div className="space-y-6">
-          {/* Controls Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-black uppercase text-slate-500">Año de Balances:</span>
-              <div className="flex items-center gap-1.5">
-                {[2026, 2025, 2024].map(y => (
-                  <button
-                    key={y}
-                    onClick={() => setBalanceYear(y)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
-                      balanceYear === y
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200">
-                <button
-                  onClick={() => setBalanceDisplayMode('semanal')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    balanceDisplayMode === 'semanal'
-                      ? 'bg-white text-emerald-800 shadow-sm font-black'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Matriz Semanal 1-53
-                </button>
-                <button
-                  onClick={() => setBalanceDisplayMode('grafica')}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                    balanceDisplayMode === 'grafica'
-                      ? 'bg-white text-emerald-800 shadow-sm font-black'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Gráficas
-                </button>
-              </div>
-
-              {balanceDisplayMode === 'semanal' && (
-                <button
-                  onClick={handleJumpToCurrentWeek}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-all"
-                >
-                  Ir a Semana Actual
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Annual Executive Summary Cards */}
-          {balanceData?.resumenAnual && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200 shadow-sm">
-                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">
-                  Total Ingresos {balanceYear}
-                </div>
-                <div className="text-xl md:text-2xl font-black text-emerald-900">
-                  {fmt(balanceData.resumenAnual.totalIngresos)}
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-rose-50 to-red-50 p-4 rounded-2xl border border-rose-200 shadow-sm">
-                <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wider mb-1">
-                  Total Egresos {balanceYear}
-                </div>
-                <div className="text-xl md:text-2xl font-black text-rose-900">
-                  {fmt(balanceData.resumenAnual.totalEgresos)}
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-4 rounded-2xl border border-slate-700 shadow-sm">
-                <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-1">
-                  Utilidad Neta {balanceYear}
-                </div>
-                <div className={`text-xl md:text-2xl font-black ${
-                  balanceData.resumenAnual.utilidadNeta >= 0 ? 'text-emerald-300' : 'text-rose-400'
-                }`}>
-                  {fmt(balanceData.resumenAnual.utilidadNeta)}
-                </div>
-                <div className="text-[10px] text-slate-300 font-bold mt-0.5">
-                  Margen Neto: {balanceData.resumenAnual.porcentajeUtilidadNeta}%
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-4 rounded-2xl border border-indigo-200 shadow-sm">
-                <div className="text-[11px] font-bold text-indigo-800 uppercase tracking-wider mb-1">
-                  Utilidad Bruta {balanceYear}
-                </div>
-                <div className="text-xl md:text-2xl font-black text-indigo-900">
-                  {fmt(balanceData.resumenAnual.utilidadBruta)}
-                </div>
-                <div className="text-[10px] text-indigo-600 font-bold mt-0.5">
-                  Margen Bruto: {balanceData.resumenAnual.porcentajeUtilidadBruta}%
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Graphical View */}
-          {balanceDisplayMode === 'grafica' && (
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-6">
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
-                Comportamiento Financiero Semanal ({balanceYear})
-              </h3>
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(value: any) => fmt(value)} />
-                    <Legend />
-                    <Bar dataKey="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="h-64 w-full pt-4 border-t border-slate-100">
-                <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
-                  Tendencia de Utilidad Neta ($)
-                </h4>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
-                    <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(value: any) => fmt(value)} />
-                    <Line type="monotone" dataKey="UtilidadNeta" stroke="#059669" strokeWidth={2.5} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {/* Complete 53-Week Balance Matrix matching user's spreadsheet */}
-          {balanceDisplayMode === 'semanal' && (
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-md overflow-hidden">
-              <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-slate-800">
-                    Matriz Ejecutiva de Balances Semanales - Año {balanceYear}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Semanas 1 a 53. Desplaza horizontalmente para explorar todas las semanas.
-                  </p>
-                </div>
-              </div>
-
-              {loadingBalances ? (
-                <div className="p-12 text-center text-slate-500 text-sm">
-                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-600" />
-                  Calculando balances semanales...
-                </div>
-              ) : !balanceData || !balanceData.semanas ? (
-                <div className="p-12 text-center text-slate-500 text-sm">
-                  No hay datos de balance para el año seleccionado.
-                </div>
-              ) : (
-                <div className="overflow-x-auto relative" ref={matrixScrollRef}>
-                  <table className="w-full text-xs text-right border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wider border-b border-slate-300">
-                        {/* Sticky Header Column */}
-                        <th className="sticky left-0 bg-slate-100 z-20 py-3 px-3 text-left border-r border-slate-300 min-w-[210px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                          Cuenta menor
-                        </th>
-                        {balanceData.semanas.map((s) => (
-                          <th
-                            key={s.semanaNum}
-                            id={`semana-col-${s.semanaNum}`}
-                            className="py-3 px-3 min-w-[130px] border-r border-slate-200 text-slate-700 font-bold whitespace-nowrap"
-                          >
-                            Semana {s.semanaNum}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {/* ================= SECCIÓN INGRESOS ================= */}
-                      <tr className="bg-emerald-50/40 font-bold text-slate-800">
-                        <td className="sticky left-0 bg-emerald-50 z-10 py-2.5 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          Ruta
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-slate-100">
-                            {fmt(s.ruta)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Manzanillo Ruta 6
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.manzanilloRuta6)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Ventas Manzanillo
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.ventasManzanillo)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Venta directa
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.ventaDirecta)}
-                          </td>
-                        ))}
-                      </tr>
-                      {/* Total Ingresos */}
-                      <tr className="bg-emerald-100/70 text-emerald-950 font-black border-y-2 border-emerald-300">
-                        <td className="sticky left-0 bg-emerald-100 z-10 py-2.5 px-3 text-left border-r border-emerald-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
-                          Total ingresos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-emerald-200 font-black">
-                            {fmt(s.totalIngresos)}
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* ================= SECCIÓN EGRESOS ================= */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Gastos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 text-rose-700">
-                            {s.gastos > 0 ? `-${fmt(s.gastos)}` : '$ -'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Gastos Manzanillo
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 text-rose-700">
-                            {s.gastosManzanillo > 0 ? `-${fmt(s.gastosManzanillo)}` : '$ -'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Gastos Rutas
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 text-rose-700">
-                            {s.gastosRutas > 0 ? `-${fmt(s.gastosRutas)}` : '$ -'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Insumos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 text-rose-700">
-                            {s.insumos > 0 ? `-${fmt(s.insumos)}` : '$ -'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Rancho
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 text-rose-700">
-                            {s.rancho > 0 ? `-${fmt(s.rancho)}` : '$ -'}
-                          </td>
-                        ))}
-                      </tr>
-                      {/* Total Egresos */}
-                      <tr className="bg-rose-100/70 text-rose-950 font-black border-t-2 border-rose-300">
-                        <td className="sticky left-0 bg-rose-100 z-10 py-2.5 px-3 text-left border-r border-rose-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
-                          Total egresos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-rose-200 font-black">
-                            {fmt(s.totalEgresos)}
-                          </td>
-                        ))}
-                      </tr>
-                      {/* % de Egresos */}
-                      <tr className="bg-rose-50 text-rose-800 font-bold border-b-2 border-rose-200">
-                        <td className="sticky left-0 bg-rose-50 z-10 py-2 px-3 text-left border-r border-rose-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          % de Egresos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-rose-100 font-bold">
-                            {s.porcentajeEgresos}%
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* ================= SECCIÓN NÓMINA ================= */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Nómina
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.nomina)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Nómina Manzanillo
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.nominaManzanillo)}
-                          </td>
-                        ))}
-                      </tr>
-                      {/* Nómina Total */}
-                      <tr className="bg-indigo-50 text-indigo-950 font-black border-t border-indigo-200">
-                        <td className="sticky left-0 bg-indigo-50 z-10 py-2.5 px-3 text-left border-r border-indigo-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          Nómina Total
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-indigo-100 font-black">
-                            {fmt(s.nominaTotal)}
-                          </td>
-                        ))}
-                      </tr>
-                      {/* % Nómina */}
-                      <tr className="bg-indigo-50/50 text-indigo-800 font-bold border-b border-indigo-200">
-                        <td className="sticky left-0 bg-indigo-50/50 z-10 py-2 px-3 text-left border-r border-indigo-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          % Nómina
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-indigo-100 font-bold">
-                            {s.porcentajeNomina}%
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* ================= SECCIÓN LECHE Y ADM ================= */}
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Leche ($)
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100 font-bold text-amber-900">
-                            {fmt(s.leche)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50 text-slate-500">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          Litros de Leche
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {s.litrosLeche > 0 ? s.litrosLeche.toLocaleString() : '-'}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Crédito / Abono
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.creditoAbono)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50 font-bold">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-800">
-                          Acumulado
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.acumulado)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Crédito
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.credito)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="hover:bg-slate-50">
-                        <td className="sticky left-0 bg-white z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-slate-700 font-medium">
-                          Diferencia en cálculo
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-100">
-                            {fmt(s.diferenciaCalculo)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="bg-slate-100 font-bold text-slate-800 border-b border-slate-200">
-                        <td className="sticky left-0 bg-slate-100 z-10 py-2.5 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          Totales administrativos
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-slate-200 font-bold">
-                            {fmt(s.totalesAdministrativos)}
-                          </td>
-                        ))}
-                      </tr>
-
-                      {/* ================= SECCIÓN UTILIDADES / MÁRGENES ================= */}
-                      <tr className="bg-slate-900 text-white font-black border-t-2 border-slate-900">
-                        <td className="sticky left-0 bg-slate-900 text-white z-10 py-3 px-3 text-left border-r border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.3)]">
-                          Utilidad Neta ($)
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td
-                            key={s.semanaNum}
-                            className={`py-3 px-3 border-r border-slate-800 font-black ${
-                              s.utilidadNeta >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                            }`}
-                          >
-                            {fmt(s.utilidadNeta)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="bg-slate-800 text-slate-200 font-bold">
-                        <td className="sticky left-0 bg-slate-800 text-slate-200 z-10 py-2 px-3 text-left border-r border-slate-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.3)]">
-                          % Utilidad Neta
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-700 font-bold">
-                            {s.porcentajeUtilidadNeta}%
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
-                        <td className="sticky left-0 bg-slate-100 z-10 py-2.5 px-3 text-left border-r border-slate-300 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          Utilidad Bruta ($)
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2.5 px-3 border-r border-slate-200 font-black text-slate-900">
-                            {fmt(s.utilidadBruta)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr className="bg-slate-50 font-bold text-slate-700">
-                        <td className="sticky left-0 bg-slate-50 z-10 py-2 px-3 text-left border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          % Utilidad Bruta
-                        </td>
-                        {balanceData.semanas.map(s => (
-                          <td key={s.semanaNum} className="py-2 px-3 border-r border-slate-200 font-bold">
-                            {s.porcentajeUtilidadBruta}%
-                          </td>
-                        ))}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+      {activeSubTab === 'estado_resultados' && (
+        <EstadoResultadosView token={token} role={role} user={user} />
       )}
     </div>
   );

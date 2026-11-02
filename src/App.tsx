@@ -23,6 +23,7 @@ import PurchasesView from './components/PurchasesView';
 import SuppliesInventoryView from './components/SuppliesInventoryView';
 import ProductionKpisView from './components/ProductionKpisView';
 import ContabilidadView from './components/ContabilidadView';
+import EstadoResultadosView from './components/EstadoResultadosView';
 import { auth } from './lib/firebase';
 
 
@@ -309,8 +310,9 @@ function App() {
 
   const showSalesReports = (canAccessRoutes || isOperator) || hasExtraMenu('sales_reports');
   const showCommissions = (canAccessRoutes || isOperator) || hasExtraMenu('commissions');
+  const showEstadoResultados = isAdmin || isGerencia || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad');
   const showContabilidad = isAdmin || isGerencia || hasExtraMenu('contabilidad');
-  const showGroupAdmin = showSalesReports || showCommissions || showContabilidad;
+  const showGroupAdmin = showSalesReports || showCommissions || showEstadoResultados || showContabilidad;
 
   const showZones = isAdmin || hasExtraMenu('zones');
   const showSettings = isAdmin || hasExtraMenu('settings');
@@ -769,6 +771,21 @@ function App() {
                 </button>
               )}
 
+              {/* Estado de Resultados */}
+              {showEstadoResultados && (
+                <button 
+                  onClick={() => setActiveTab('estado_resultados')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'estado_resultados' 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <BarChart3 className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'estado_resultados' ? 'text-white' : 'text-emerald-600'}`} />
+                  <span>Estado de Resultados</span>
+                </button>
+              )}
+
               {/* Contabilidad y Balances */}
               {showContabilidad && (
                 <button 
@@ -885,6 +902,7 @@ function App() {
               )}
               {activeTab === 'sales_reports' && showSalesReports && <SalesReportView state={state} role={role} user={user} />}
               {activeTab === 'commissions' && showCommissions && <CommissionsView token={token!} state={state} role={role} user={user} />}
+              {activeTab === 'estado_resultados' && showEstadoResultados && <EstadoResultadosView token={token!} state={state} role={role} user={user} />}
               {activeTab === 'contabilidad' && showContabilidad && <ContabilidadView token={token!} state={state} role={role} user={user} />}
               {activeTab === 'alerts' && showAlerts && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && showSettings && <SettingsView state={state} setState={setState} />}
