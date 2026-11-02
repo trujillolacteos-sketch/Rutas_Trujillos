@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -672,8 +672,8 @@ function App() {
                       : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
                   }`}
                 >
-                  <Factory className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production' ? 'text-white' : 'text-indigo-600'}`} />
-                  <span>Planta y Empaque</span>
+                  <PackageCheck className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Empaque</span>
                 </button>
               )}
 

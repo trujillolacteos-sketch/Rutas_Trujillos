@@ -48,6 +48,13 @@ interface ProductionConfig {
 interface LotOption {
   lote: string;
   categoria: string;
+  applicableCategories?: string[];
+  lineReportId?: string;
+  lineId?: string;
+  lineNombre?: string;
+  rancho?: string;
+  pipa?: string;
+  lecheLitros?: number;
   fechaProduccion: string;
   kgTotal: number;
   kgEmpacados: number;
@@ -108,7 +115,7 @@ export default function ProductionView({
   const canEditCosts = canManageCosts ?? (role === 'admin' || role === 'gerencia' || role === 'supervisor_produccion');
 
   // Active Sub-Tab
-  const [subTab, setSubTab] = useState<'production' | 'packaging' | 'history' | 'inventory'>('production');
+  const [subTab, setSubTab] = useState<'production' | 'packaging' | 'history' | 'inventory'>('packaging');
 
   // Master Configuration
   const [config, setConfig] = useState<ProductionConfig>({ categories: [], ingredients: [], skus: [] });
@@ -198,8 +205,15 @@ export default function ProductionView({
   const activeLotCategories = useMemo(() => {
     const map = new Map<string, number>();
     availableLots.forEach(l => {
-      const clean = l.categoria || 'Sin categoría';
-      map.set(clean, (map.get(clean) || 0) + 1);
+      const cats = (l.applicableCategories && l.applicableCategories.length > 0)
+        ? l.applicableCategories
+        : [l.categoria || "Sin categoría"];
+      cats.forEach(c => {
+        const clean = cleanCatName(c);
+        if (clean) {
+          map.set(clean, (map.get(clean) || 0) + 1);
+        }
+      });
     });
     return Array.from(map.entries()).map(([categoria, count]) => ({
       categoria,
@@ -218,7 +232,13 @@ export default function ProductionView({
   // Lots filtered ONLY for the selected category
   const lotsForSelectedCategory = useMemo(() => {
     if (!selectedPackCategory) return [];
-    return availableLots.filter(l => isCategoryMatch(l.categoria, selectedPackCategory));
+    return availableLots.filter(l => {
+      if (isCategoryMatch(l.categoria, selectedPackCategory)) return true;
+      if (l.applicableCategories && Array.isArray(l.applicableCategories)) {
+        return l.applicableCategories.some(ac => isCategoryMatch(ac, selectedPackCategory));
+      }
+      return false;
+    });
   }, [availableLots, selectedPackCategory]);
 
   // Automatically select the first category that has active lots if none selected
@@ -625,11 +645,16 @@ export default function ProductionView({
 
     const activeCat = selectedLotInfo?.categoria || selectedPackCategory;
     if (activeCat) {
-      const clean = cleanCatName(activeCat).toLowerCase();
+      const applicableCats = (selectedLotInfo?.applicableCategories && selectedLotInfo.applicableCategories.length > 0)
+        ? selectedLotInfo.applicableCategories
+        : [activeCat];
       const catMatches = prods.filter(s => {
         const pCat = (s.category || '').toLowerCase();
         const pName = (s.product || '').toLowerCase();
-        return pCat.includes(clean) || pName.includes(clean);
+        return applicableCats.some(ac => {
+          const clean = cleanCatName(ac).toLowerCase();
+          return pCat.includes(clean) || pName.includes(clean);
+        });
       });
       if (catMatches.length > 0) {
         prods = catMatches;
@@ -851,13 +876,13 @@ export default function ProductionView({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">Planta, Producción y Empaque</h2>
+              <h2 className="text-xl font-bold text-slate-900">Empaque de Producto Terminado</h2>
               <span className="text-[11px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" /> Sheets Conectado
               </span>
             </div>
             <p className="text-sm text-slate-500">
-              Vaciado operativo en tiempo real sincronizado con Google Sheets y Odoo
+              Vaciado y moldeo de producto terminado a partir de lotes elaborados en Líneas de Producción
             </p>
           </div>
         </div>
@@ -996,11 +1021,14 @@ export default function ProductionView({
       {/* ========================================================================= */}
       {subTab === 'production' && (
         <form onSubmit={handleSaveProduction} className="space-y-6">
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2.5 text-xs text-blue-900 font-medium">
-            <Info className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>
-              <strong>Separación de Procesos (Elaboración en Tina vs Empaque):</strong> Este formato registra exclusivamente el día de elaboración en tina o molde. Tras la elaboración, los quesos se trasladan a cámaras para reposar varios días y deshidratarse naturalmente antes de pasar a empaque.
-            </span>
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-900 font-medium">
+            <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-950 mb-1">Registro de Lote Manual / Extraordinario</p>
+              <p>
+                Los lotes estándar de pasta y quesos se generan <strong>automáticamente</strong> al guardar los reportes de tina en el menú <strong>Líneas de Producción</strong> (Quesos Calientes, Pizzero, Frescos y Fríos) con trazabilidad de pipa y rancho. Usa este formulario manual únicamente si compraste pasta externa o requieres registrar un lote especial fuera de las líneas habituales.
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1360,6 +1388,30 @@ export default function ProductionView({
                     <span className="text-slate-500">Categoría:</span>
                     <span className="font-bold text-slate-800">{selectedLotInfo.categoria}</span>
                   </div>
+                  {selectedLotInfo.lineNombre && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Línea de Tina:</span>
+                      <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                        {selectedLotInfo.lineNombre}
+                      </span>
+                    </div>
+                  )}
+                  {(selectedLotInfo.rancho || selectedLotInfo.pipa) && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Procedencia Leche:</span>
+                      <span className="font-bold text-slate-800 text-right truncate max-w-[150px]">
+                        {[selectedLotInfo.rancho, selectedLotInfo.pipa].filter(Boolean).join(' / ')}
+                      </span>
+                    </div>
+                  )}
+                  {Boolean(selectedLotInfo.lecheLitros && selectedLotInfo.lecheLitros > 0) && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Leche Procesada:</span>
+                      <span className="font-bold text-slate-800">
+                        {selectedLotInfo.lecheLitros} Lts
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Fecha Elaboración:</span>
                     <span className="font-bold text-slate-800">{selectedLotInfo.fechaProduccion}</span>

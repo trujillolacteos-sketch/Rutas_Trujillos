@@ -38,7 +38,9 @@ import {
   configureProductSku,
   getSuppliesInventory,
   updateSupplyStockConfig,
-  getProductionKPIs
+  getProductionKPIs,
+  syncLineReportToProductionLot,
+  removeLineReportBatch
 } from './server/productionService.ts';
 import {
   getGoogleSheetUsers,
@@ -1205,6 +1207,18 @@ async function startServer() {
       const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion_linea', 'produccion'].includes(role);
       if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = await createLineReport(req.body);
+      // Si el reporte incluye kg obtenidos de pasta/tina, generar automáticamente el lote para Empaque
+      if (result.success && result.report && Number(result.report.kgObtenidos) > 0) {
+        try {
+          const lotSync = await syncLineReportToProductionLot(result.report);
+          if (lotSync) {
+            result.message = `${result.message} | Lote ${lotSync.lote} generado para Empaque (${result.report.kgObtenidos} kg disponibles)`;
+            (result as any).lotCode = lotSync.lote;
+          }
+        } catch (lotErr: any) {
+          console.error('[server] Error sincronizando lote de línea a empaque:', lotErr);
+        }
+      }
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
@@ -1217,6 +1231,9 @@ async function startServer() {
       const isAllowed = ['admin', 'gerencia', 'supervisor_produccion'].includes(role);
       if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
       const result = deleteLineReport(req.params.id);
+      if (result.success) {
+        removeLineReportBatch(req.params.id);
+      }
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });

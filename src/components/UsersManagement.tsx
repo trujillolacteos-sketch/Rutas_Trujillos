@@ -34,7 +34,7 @@ export const AVAILABLE_MENUS = [
 
   // GRUPO 2: PLANTA Y PRODUCCIÓN
   { key: 'production_lines', label: 'Líneas de Producción', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
-  { key: 'production', label: 'Planta y Empaque', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
+  { key: 'production', label: 'Empaque', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
   { key: 'supplies_inventory', label: 'Inventario de Insumos', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
   { key: 'production_kpis', label: 'KPIs de Producción', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
   { key: 'purchases', label: 'Compras e Insumos', group: 'Planta', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },

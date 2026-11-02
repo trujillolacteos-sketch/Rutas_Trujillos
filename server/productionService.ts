@@ -41,6 +41,7 @@ export interface ProductionBatch {
   fechaProduccion: string;
   fechaCaptura: string;
   categoria: string;
+  applicableCategories?: string[];
   lote: string;
   kgTotal: number;
   costoTotal: number;
@@ -53,6 +54,15 @@ export interface ProductionBatch {
     costoUnitario: number;
     costoTotal: number;
   }[];
+  // Trazabilidad de origen (Línea de Producción)
+  lineReportId?: string;
+  lineId?: string;
+  lineNombre?: string;
+  rancho?: string;
+  pipa?: string;
+  lecheLitros?: number;
+  sueroObtenido?: number;
+  cremaNatural?: number;
 }
 
 export interface PackagingItem {
@@ -540,6 +550,242 @@ export async function createProductionBatch(data: {
   }
 }
 
+// Helpers for category matching
+function cleanCategoryName(cat: string): string {
+  return (cat || '')
+    .replace(/^All\s*\/\s*Quesos\s*\/\s*/i, '')
+    .replace(/^All\s*\/\s*/i, '')
+    .replace(/^All\//i, '')
+    .trim()
+    .toLowerCase();
+}
+
+export function matchCategories(cat1?: string, cat2?: string): boolean {
+  if (!cat1 || !cat2) return false;
+  if (cat1.trim().toLowerCase() === cat2.trim().toLowerCase()) return true;
+  const c1 = cleanCategoryName(cat1);
+  const c2 = cleanCategoryName(cat2);
+  return c1 === c2 || c1.includes(c2) || c2.includes(c1);
+}
+
+// Sincronización automática: Convierte el reporte de Línea de Producción (Tina) en un Lote de Pasta para Empaque
+export async function syncLineReportToProductionLot(report: any): Promise<{ lote: string; batch: ProductionBatch } | null> {
+  const kgObtenidos = Number(report.kgObtenidos) || 0;
+  if (kgObtenidos <= 0) return null;
+
+  const config = getProductionConfig();
+  const mapaCostos: Record<string, number> = {};
+  (config.ingredients || []).forEach((ing: any) => {
+    mapaCostos[ing.name] = ing.unitCost || 0;
+  });
+
+  // Mapeo por Línea de Producción a prefijos y categorías
+  let prefix = 'lote';
+  let primaryCategory = 'Quesos';
+  let applicableCategories: string[] = [];
+
+  switch (report.lineId) {
+    case 'queso_pizzero':
+      prefix = 'pizz';
+      primaryCategory = 'All/Pizzero';
+      applicableCategories = ['All/Pizzero', 'Pizzero'];
+      break;
+    case 'quesos_calientes':
+      prefix = 'cali';
+      primaryCategory = 'Quesos Calientes';
+      applicableCategories = [
+        'All / Quesos / Mozzarella',
+        'All / Quesos / Asadero',
+        'Quesos Calientes',
+        'Mozzarella',
+        'Asadero'
+      ];
+      break;
+    case 'quesos_frescos':
+      prefix = 'fres';
+      primaryCategory = 'Quesos Frescos';
+      applicableCategories = [
+        'All / Quesos / Panela',
+        'All / Quesos / Adobera',
+        'All / Quesos / Fresco',
+        'All / Quesos / Ranchero',
+        'Quesos Frescos',
+        'Panela',
+        'Adobera',
+        'Fresco',
+        'Ranchero'
+      ];
+      break;
+    case 'quesos_frios':
+      prefix = 'frio';
+      primaryCategory = 'Quesos Fríos';
+      applicableCategories = [
+        'All / Quesos / Oaxaca',
+        'All / Quesos / Manchego',
+        'All / Quesos / Cheddar',
+        'All / Quesos / Chihuahua',
+        'Quesos Fríos',
+        'Oaxaca',
+        'Manchego',
+        'Cheddar',
+        'Chihuahua'
+      ];
+      break;
+    case 'descremado_pasteurizado':
+      prefix = 'crem';
+      primaryCategory = 'All / Crema';
+      applicableCategories = ['Crema Natural', 'Crema bolsa', 'All / Crema'];
+      break;
+    default:
+      prefix = 'lote';
+      primaryCategory = report.lineNombre || 'Quesos';
+      applicableCategories = [primaryCategory];
+      break;
+  }
+
+  const local = loadLocalProduction();
+  const existingIndex = local.findIndex((b: any) => b.lineReportId === report.id || b.id === `batch_${report.id}`);
+
+  let lote = '';
+  if (existingIndex >= 0) {
+    lote = local[existingIndex].lote;
+  } else {
+    lote = generateLotCode(prefix, report.fecha);
+  }
+
+  // Costeo de leche e insumos de la línea
+  let totalCosto = 0;
+  const registrosInsumos: { nombre: string; cantidad: number; costoUnitario: number; costoTotal: number }[] = [];
+
+  // 1. Leche entera
+  const ltsEntera = Number(report.lecheEnteraLitros) || 0;
+  if (ltsEntera > 0) {
+    const costoLtsEntera = mapaCostos['Leche entera'] || mapaCostos['Leche pipa'] || 0;
+    const subtotal = ltsEntera * costoLtsEntera;
+    totalCosto += subtotal;
+    registrosInsumos.push({
+      nombre: 'Leche entera',
+      cantidad: ltsEntera,
+      costoUnitario: costoLtsEntera,
+      costoTotal: subtotal
+    });
+  }
+
+  // 2. Leche descremada
+  const ltsDescremada = Number(report.lecheDescremadaLitros) || 0;
+  if (ltsDescremada > 0) {
+    const costoLtsDescremada = mapaCostos['Leche descremada'] || 0;
+    const subtotal = ltsDescremada * costoLtsDescremada;
+    totalCosto += subtotal;
+    registrosInsumos.push({
+      nombre: 'Leche descremada',
+      cantidad: ltsDescremada,
+      costoUnitario: costoLtsDescremada,
+      costoTotal: subtotal
+    });
+  }
+
+  // 3. Insumos de formulación del reporte de línea
+  if (report.insumos && typeof report.insumos === 'object') {
+    for (const [nombre, cantVal] of Object.entries(report.insumos)) {
+      const cant = Number(cantVal) || 0;
+      if (cant > 0) {
+        let costoUnit = mapaCostos[nombre] || 0;
+        if (!costoUnit) {
+          const matchKey = Object.keys(mapaCostos).find(k => k.toLowerCase() === nombre.toLowerCase());
+          if (matchKey) costoUnit = mapaCostos[matchKey];
+        }
+        const subtotal = cant * costoUnit;
+        totalCosto += subtotal;
+        registrosInsumos.push({
+          nombre,
+          cantidad: cant,
+          costoUnitario: costoUnit,
+          costoTotal: subtotal
+        });
+      }
+    }
+  }
+
+  // 4. Crema natural recuperada
+  const cremaKg = Number(report.cremaNatural) || 0;
+  let ajusteCrema = 0;
+  if (cremaKg > 0) {
+    const costoCrema = mapaCostos['Crema natural'] || 0;
+    ajusteCrema = cremaKg * costoCrema;
+    if (totalCosto > ajusteCrema) {
+      totalCosto -= ajusteCrema;
+    }
+  }
+
+  const costoPorKg = kgObtenidos > 0 ? totalCosto / kgObtenidos : 0;
+  const fechaCaptura = new Date().toISOString().slice(0, 10);
+
+  const batch: ProductionBatch = {
+    id: `batch_${report.id}`,
+    lineReportId: report.id,
+    lineId: report.lineId,
+    lineNombre: report.lineNombre,
+    fechaProduccion: report.fecha,
+    fechaCaptura,
+    categoria: primaryCategory,
+    applicableCategories,
+    lote,
+    kgTotal: kgObtenidos,
+    costoTotal,
+    costoPorKg,
+    ajusteCrema,
+    rancho: report.ranchoEntera || report.ranchoDescremada || 'Rancho La Estrella',
+    pipa: report.pipaEntera || report.pipaDescremada || 'Pipa 1',
+    lecheLitros: ltsEntera + ltsDescremada,
+    sueroObtenido: Number(report.sueroObtenido) || 0,
+    cremaNatural: cremaKg,
+    registrosInsumos
+  };
+
+  if (existingIndex >= 0) {
+    local[existingIndex] = batch;
+  } else {
+    local.unshift(batch);
+  }
+  saveLocalProduction(local);
+
+  // Sincronizar asíncronamente con Google Sheets tab 'Producción'
+  try {
+    const rowForSheet = [
+      batch.fechaProduccion,
+      fechaCaptura,
+      batch.categoria,
+      batch.lote,
+      batch.kgTotal,
+      batch.costoTotal,
+      batch.costoPorKg,
+      batch.ajusteCrema > 0 ? batch.ajusteCrema : '',
+      `Generado desde ${report.lineNombre} (${batch.rancho} / ${batch.pipa})`
+    ];
+    appendRowsToSheet('Producción', [rowForSheet]).catch(() => {});
+  } catch (e) {}
+
+  return { lote, batch };
+}
+
+export function removeLineReportBatch(lineReportId: string): void {
+  try {
+    const local = loadLocalProduction();
+    const empaques = loadLocalPackaging();
+    const filtered = local.filter((b: any) => {
+      if (b.lineReportId === lineReportId) {
+        const empacado = empaques.some(emp => emp.lote === b.lote);
+        return empacado;
+      }
+      return true;
+    });
+    saveLocalProduction(filtered);
+  } catch (err) {
+    console.error('Error removing line report batch:', err);
+  }
+}
+
 // 5. Available lots for packaging (calculates saldo de kg)
 export function getAvailableProductionLots(categoria?: string): any[] {
   const lotes = loadLocalProduction();
@@ -554,7 +800,13 @@ export function getAvailableProductionLots(categoria?: string): any[] {
 
   return lotes
     .filter(l => {
-      if (categoria && l.categoria !== categoria) return false;
+      if (categoria) {
+        let match = matchCategories(l.categoria, categoria);
+        if (!match && l.applicableCategories && Array.isArray(l.applicableCategories)) {
+          match = l.applicableCategories.some(ac => matchCategories(ac, categoria));
+        }
+        if (!match) return false;
+      }
       const empacado = kgEmpacadosPorLote[l.lote] || 0;
       const disponible = l.kgTotal - empacado;
       return disponible > 0.5; // Solo lotes con más de medio kilo disponible
@@ -577,9 +829,18 @@ export function getAvailableProductionLots(categoria?: string): any[] {
         ? 'Elaborado hoy' 
         : `${diasReposo} d reposo`;
 
+      const lineaTag = l.lineNombre ? ` [${l.lineNombre.split(' ')[0]}]` : '';
+
       return {
         lote: l.lote,
         categoria: l.categoria,
+        applicableCategories: l.applicableCategories || [l.categoria],
+        lineReportId: l.lineReportId,
+        lineId: l.lineId,
+        lineNombre: l.lineNombre,
+        rancho: l.rancho,
+        pipa: l.pipa,
+        lecheLitros: l.lecheLitros,
         fechaProduccion: l.fechaProduccion,
         diasReposo,
         kgTotal: l.kgTotal,
@@ -587,7 +848,7 @@ export function getAvailableProductionLots(categoria?: string): any[] {
         kgDisponible: disponible,
         costoPorKg: l.costoPorKg,
         costoTotal: l.costoTotal,
-        display: `${l.lote} | ${reposoText} | Disp: ${disponible.toFixed(2)} kg ($${l.costoPorKg.toFixed(2)}/kg)`
+        display: `${l.lote}${lineTag} | ${reposoText} | Disp: ${disponible.toFixed(2)} kg ($${l.costoPorKg.toFixed(2)}/kg)`
       };
     });
 }
@@ -1259,6 +1520,9 @@ export function getSuppliesInventory(): {
 
   // 3. Subtract production consumptions (Salidas)
   prods.forEach((prod: any) => {
+    // Si este lote proviene de Línea de Producción, sus insumos se descuentan en el paso 5 (Subtract line consumptions)
+    if (prod.lineReportId) return;
+
     (prod.registrosInsumos || []).forEach((reg: any) => {
       const rawName = (reg.nombre || '').trim();
       if (!rawName) return;
