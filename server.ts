@@ -661,7 +661,9 @@ async function startServer() {
         user: {
           id: foundUser.id,
           username: foundUser.username,
-          role: foundUser.role
+          role: foundUser.role,
+          extraMenus: foundUser.extraMenus || [],
+          extraMenusExpiresAt: foundUser.extraMenusExpiresAt || null
         }
       });
     } else {

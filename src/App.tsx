@@ -27,7 +27,7 @@ import { auth } from './lib/firebase';
 
 function App() {
   const { user: fbUser, token, login, logout, loading: fbLoading } = useAuth();
-  const [user, setUser] = useState<{ username: string, role: string } | null>(() => {
+  const [user, setUser] = useState<{ username: string; role: string; extraMenus?: string[]; extraMenusExpiresAt?: string | null } | null>(() => {
     try {
       const stored = localStorage.getItem('offline_user');
       return stored ? JSON.parse(stored) : null;
@@ -170,7 +170,7 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.user) {
-          const userInfo = { username: data.user.username, role: data.user.role };
+          const userInfo = { username: data.user.username, role: data.user.role, extraMenus: data.user.extraMenus || [], extraMenusExpiresAt: data.user.extraMenusExpiresAt || null };
           setUser(userInfo);
           localStorage.setItem('offline_user', JSON.stringify(userInfo));
           setLoginError('');
@@ -206,7 +206,7 @@ function App() {
     );
     
     if (foundUser) {
-      const userInfo = { username: foundUser.username, role: foundUser.role };
+      const userInfo = { username: foundUser.username, role: foundUser.role, extraMenus: (foundUser as any).extraMenus || [], extraMenusExpiresAt: (foundUser as any).extraMenusExpiresAt || null };
       setUser(userInfo);
       localStorage.setItem('offline_user', JSON.stringify(userInfo));
       setLoginError('');
@@ -255,6 +255,64 @@ function App() {
   const canAccessProductionKpis = isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea;
   const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
   const role = user?.role || 'user';
+  // Sincronización en tiempo real del usuario activo con state.users
+  useEffect(() => {
+    if (user?.username && state?.users) {
+      const match = state.users.find((u: any) => u.username?.toLowerCase() === user.username.toLowerCase());
+      if (match) {
+        const extraMenus = match.extraMenus || [];
+        const extraMenusExpiresAt = match.extraMenusExpiresAt || null;
+        const currentExtra = user.extraMenus || [];
+        const currentExp = user.extraMenusExpiresAt || null;
+        if (
+          JSON.stringify(extraMenus) !== JSON.stringify(currentExtra) ||
+          extraMenusExpiresAt !== currentExp
+        ) {
+          const updated = {
+            ...user,
+            extraMenus,
+            extraMenusExpiresAt
+          };
+          setUser(updated);
+          localStorage.setItem('offline_user', JSON.stringify(updated));
+        }
+      }
+    }
+  }, [state?.users]);
+
+  // Verificador de menú o función temporal asignada
+  const hasExtraMenu = (menuKey: string) => {
+    if (!user?.extraMenus || !Array.isArray(user.extraMenus)) return false;
+    if (!user.extraMenus.includes(menuKey)) return false;
+    if (user.extraMenusExpiresAt) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (today > user.extraMenusExpiresAt) return false;
+    }
+    return true;
+  };
+
+  // Banderas de visibilidad que combinan rol base + menús temporales autorizados
+  const showDashboard = (canAccessRoutes || isOperator) || hasExtraMenu('dashboard');
+  const showPlanner = (canAccessRoutes || isOperator) || hasExtraMenu('planner');
+  const showClientes = canAccessRoutes || hasExtraMenu('clientes');
+  const showReports = canAccessRoutes || hasExtraMenu('reports');
+  const showAlerts = canAccessRoutes || hasExtraMenu('alerts');
+  const showGroupRoutes = showDashboard || showPlanner || showClientes || showReports || showAlerts;
+
+  const showProductionLines = canAccessProductionLines || hasExtraMenu('production_lines');
+  const showProduction = canAccessProduction || hasExtraMenu('production');
+  const showSupplies = canAccessSupplies || hasExtraMenu('supplies_inventory');
+  const showProductionKpis = canAccessProductionKpis || hasExtraMenu('production_kpis');
+  const showPurchases = canAccessPurchases || hasExtraMenu('purchases');
+  const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases;
+
+  const showSalesReports = (canAccessRoutes || isOperator) || hasExtraMenu('sales_reports');
+  const showCommissions = (canAccessRoutes || isOperator) || hasExtraMenu('commissions');
+  const showGroupAdmin = showSalesReports || showCommissions;
+
+  const showZones = isAdmin || hasExtraMenu('zones');
+  const showSettings = isAdmin || hasExtraMenu('settings');
+  const showGroupSystem = showZones || showSettings;
 
   const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'all'>('rutas');
 
@@ -492,7 +550,7 @@ function App() {
         {/* Tab Navigation with Clear Visible Labels on Both Mobile & Desktop */}
         <nav className="flex-1 px-3 md:px-4 py-2.5 md:py-2 flex md:flex-col gap-2 md:gap-3 overflow-x-auto md:overflow-y-auto no-scrollbar">
           {/* GRUPO 1: RUTAS Y DISTRIBUCIÓN */}
-          {(canAccessRoutes || isOperator) && (
+          {showGroupRoutes && (
             <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1">
               <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-blue-600">
                 <Truck className="w-3.5 h-3.5" />
@@ -500,33 +558,37 @@ function App() {
               </div>
 
               {/* Ventas */}
-              <button 
-                onClick={() => setActiveTab('dashboard')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'dashboard' 
-                    ? 'bg-blue-600 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <LayoutDashboard className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'dashboard' ? 'text-white' : 'text-blue-600'}`} />
-                <span>Ventas</span>
-              </button>
+              {showDashboard && (
+                <button 
+                  onClick={() => setActiveTab('dashboard')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'dashboard' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <LayoutDashboard className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'dashboard' ? 'text-white' : 'text-blue-600'}`} />
+                  <span>Ventas</span>
+                </button>
+              )}
 
               {/* Planificador */}
-              <button 
-                onClick={() => setActiveTab('planner')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'planner' 
-                    ? 'bg-blue-600 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <Map className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'planner' ? 'text-white' : 'text-blue-600'}`} />
-                <span>Planificador</span>
-              </button>
+              {showPlanner && (
+                <button 
+                  onClick={() => setActiveTab('planner')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'planner' 
+                      ? 'bg-blue-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Map className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'planner' ? 'text-white' : 'text-blue-600'}`} />
+                  <span>Planificador</span>
+                </button>
+              )}
 
               {/* Clientes */}
-              {canAccessRoutes && (
+              {showClientes && (
                 <button 
                   onClick={() => setActiveTab('clientes')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -541,7 +603,7 @@ function App() {
               )}
 
               {/* Histórico GPS */}
-              {canAccessRoutes && (
+              {showReports && (
                 <button 
                   onClick={() => setActiveTab('reports')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -556,7 +618,7 @@ function App() {
               )}
 
               {/* Inteligencia */}
-              {canAccessRoutes && (
+              {showAlerts && (
                 <button 
                   onClick={() => setActiveTab('alerts')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -573,12 +635,12 @@ function App() {
           )}
 
           {/* Separador móvil */}
-          {(canAccessRoutes || isOperator) && (canAccessProductionLines || canAccessProduction || canAccessPurchases) && (
+          {showGroupRoutes && showGroupProduction && (
             <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
           )}
 
           {/* GRUPO 2: PLANTA Y PRODUCCIÓN */}
-          {(canAccessProductionLines || canAccessProduction || canAccessPurchases) && (
+          {showGroupProduction && (
             <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
               <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-indigo-600">
                 <Factory className="w-3.5 h-3.5" />
@@ -586,7 +648,7 @@ function App() {
               </div>
 
               {/* Líneas de Producción */}
-              {canAccessProductionLines && (
+              {showProductionLines && (
                 <button 
                   onClick={() => setActiveTab('production_lines')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -601,7 +663,7 @@ function App() {
               )}
 
               {/* Planta y Empaque */}
-              {canAccessProduction && (
+              {showProduction && (
                 <button 
                   onClick={() => setActiveTab('production')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -616,7 +678,7 @@ function App() {
               )}
 
               {/* Inventario de Insumos */}
-              {canAccessSupplies && (
+              {showSupplies && (
                 <button 
                   onClick={() => setActiveTab('supplies_inventory')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -631,7 +693,7 @@ function App() {
               )}
 
               {/* KPIs de Producción */}
-              {canAccessProductionKpis && (
+              {showProductionKpis && (
                 <button 
                   onClick={() => setActiveTab('production_kpis')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -646,7 +708,7 @@ function App() {
               )}
 
               {/* Compras e Insumos */}
-              {canAccessPurchases && (
+              {showPurchases && (
                 <button 
                   onClick={() => setActiveTab('purchases')} 
                   className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
@@ -663,12 +725,12 @@ function App() {
           )}
 
           {/* Separador móvil */}
-          {(canAccessProductionLines || canAccessProduction || canAccessPurchases) && (canAccessRoutes || isOperator) && (
+          {showGroupProduction && showGroupAdmin && (
             <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
           )}
 
           {/* GRUPO 3: ADMINISTRACIÓN Y FINANZAS */}
-          {(canAccessRoutes || isOperator) && (
+          {showGroupAdmin && (
             <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
               <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-emerald-700">
                 <DollarSign className="w-3.5 h-3.5" />
@@ -676,40 +738,44 @@ function App() {
               </div>
 
               {/* Reportes de Venta */}
-              <button 
-                onClick={() => setActiveTab('sales_reports')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'sales_reports' 
-                    ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <BarChart3 className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'sales_reports' ? 'text-white' : 'text-emerald-600'}`} />
-                <span>Reportes</span>
-              </button>
+              {showSalesReports && (
+                <button 
+                  onClick={() => setActiveTab('sales_reports')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'sales_reports' 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <BarChart3 className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'sales_reports' ? 'text-white' : 'text-emerald-600'}`} />
+                  <span>Reportes</span>
+                </button>
+              )}
 
               {/* Nómina y Comisiones */}
-              <button 
-                onClick={() => setActiveTab('commissions')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'commissions' 
-                    ? 'bg-emerald-600 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <DollarSign className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'commissions' ? 'text-white' : 'text-emerald-600'}`} />
-                <span>Nómina y Comisiones</span>
-              </button>
+              {showCommissions && (
+                <button 
+                  onClick={() => setActiveTab('commissions')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'commissions' 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <DollarSign className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'commissions' ? 'text-white' : 'text-emerald-600'}`} />
+                  <span>Nómina y Comisiones</span>
+                </button>
+              )}
             </div>
           )}
 
           {/* Separador móvil */}
-          {isAdmin && (
+          {(showGroupRoutes || showGroupProduction || showGroupAdmin) && showGroupSystem && (
             <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
           )}
 
           {/* GRUPO 4: SISTEMA Y AJUSTES */}
-          {isAdmin && (
+          {showGroupSystem && (
             <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
               <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
                 <SettingsIcon className="w-3.5 h-3.5" />
@@ -717,30 +783,34 @@ function App() {
               </div>
 
               {/* Zonas */}
-              <button 
-                onClick={() => setActiveTab('zones')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'zones' 
-                    ? 'bg-slate-800 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <MapIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'zones' ? 'text-white' : 'text-slate-600'}`} />
-                <span>Zonas</span>
-              </button>
+              {showZones && (
+                <button 
+                  onClick={() => setActiveTab('zones')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'zones' 
+                      ? 'bg-slate-800 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <MapIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'zones' ? 'text-white' : 'text-slate-600'}`} />
+                  <span>Zonas</span>
+                </button>
+              )}
 
               {/* Ajustes */}
-              <button 
-                onClick={() => setActiveTab('settings')} 
-                className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
-                  activeTab === 'settings' 
-                    ? 'bg-slate-800 text-white shadow-sm' 
-                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
-                }`}
-              >
-                <SettingsIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'settings' ? 'text-white' : 'text-slate-600'}`} />
-                <span>Ajustes</span>
-              </button>
+              {showSettings && (
+                <button 
+                  onClick={() => setActiveTab('settings')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'settings' 
+                      ? 'bg-slate-800 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <SettingsIcon className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'settings' ? 'text-white' : 'text-slate-600'}`} />
+                  <span>Ajustes</span>
+                </button>
+              )}
             </div>
           )}
         </nav>
@@ -750,7 +820,14 @@ function App() {
           <div className="px-3 py-2.5 mb-2.5 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Sesión iniciada como:</span>
             <span className="text-sm font-bold text-slate-800 block truncate">{user?.username}</span>
-            <span className="text-[11px] text-blue-600 font-semibold uppercase">{role}</span>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className="text-[11px] text-blue-600 font-semibold uppercase">{role}</span>
+              {user?.extraMenus && user.extraMenus.length > 0 && (
+                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                  +{user.extraMenus.length} extra
+                </span>
+              )}
+            </div>
           </div>
           <button 
             onClick={handleSignOut} 
@@ -778,10 +855,10 @@ function App() {
             </div>
           ) : (
             <ErrorBoundary>
-              {activeTab === 'dashboard' && <DashboardView state={state} role={role} user={user} />}
-              {activeTab === 'planner' && <PlannerView state={state} role={role} user={user} setState={setState} />}
-              {activeTab === 'clientes' && canAccessRoutes && <ClientsView state={state} setState={setState} role={role} user={user} />}
-              {activeTab === 'reports' && (
+              {activeTab === 'dashboard' && showDashboard && <DashboardView state={state} role={role} user={user} />}
+              {activeTab === 'planner' && showPlanner && <PlannerView state={state} role={role} user={user} setState={setState} />}
+              {activeTab === 'clientes' && showClientes && <ClientsView state={state} setState={setState} role={role} user={user} />}
+              {activeTab === 'reports' && showReports && (
                 <>
                   {canAccessRoutes && (
                     <LiveRouteMonitor state={state} setState={setState} />
@@ -789,16 +866,16 @@ function App() {
                   <ReportsView state={state} />
                 </>
               )}
-              {activeTab === 'sales_reports' && <SalesReportView state={state} role={role} user={user} />}
-              {activeTab === 'commissions' && <CommissionsView token={token!} state={state} role={role} user={user} />}
-              {activeTab === 'alerts' && <AlertsView state={state} setState={setState} />}
-              {activeTab === 'settings' && <SettingsView state={state} setState={setState} />}
-              {activeTab === 'zones' && <ZonesView state={state} setState={setState} />}
-              {activeTab === 'production' && <ProductionView role={role} user={user} state={state} />}
-              {activeTab === 'production_lines' && canAccessProductionLines && <ProductionLinesView role={role} user={user} state={state} />}
-              {activeTab === 'supplies_inventory' && canAccessSupplies && <SuppliesInventoryView role={role} user={user} state={state} />}
-              {activeTab === 'production_kpis' && canAccessProductionKpis && <ProductionKpisView role={role} user={user} state={state} />}
-              {activeTab === 'purchases' && canAccessPurchases && <PurchasesView role={role} user={user} state={state} />}
+              {activeTab === 'sales_reports' && showSalesReports && <SalesReportView state={state} role={role} user={user} />}
+              {activeTab === 'commissions' && showCommissions && <CommissionsView token={token!} state={state} role={role} user={user} />}
+              {activeTab === 'alerts' && showAlerts && <AlertsView state={state} setState={setState} />}
+              {activeTab === 'settings' && showSettings && <SettingsView state={state} setState={setState} />}
+              {activeTab === 'zones' && showZones && <ZonesView state={state} setState={setState} />}
+              {activeTab === 'production' && showProduction && <ProductionView role={role} user={user} state={state} />}
+              {activeTab === 'production_lines' && showProductionLines && <ProductionLinesView role={role} user={user} state={state} />}
+              {activeTab === 'supplies_inventory' && showSupplies && <SuppliesInventoryView role={role} user={user} state={state} />}
+              {activeTab === 'production_kpis' && showProductionKpis && <ProductionKpisView role={role} user={user} state={state} />}
+              {activeTab === 'purchases' && showPurchases && <PurchasesView role={role} user={user} state={state} />}
             </ErrorBoundary>
           )}
         </div>
