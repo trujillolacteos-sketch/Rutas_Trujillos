@@ -19410,6 +19410,17 @@
       "role": "supervisor",
       "password": "Estela.1234",
       "id": 1790960667374
+    },
+    {
+      "id": 1792685000000,
+      "username": "Auxiliar Contable",
+      "role": "auxiliar_contable",
+      "password": "Contable.1234",
+      "extraMenus": [
+        "contabilidad",
+        "estado_resultados"
+      ],
+      "extraMenusExpiresAt": null
     }
   ],
   "trackingLogs": [

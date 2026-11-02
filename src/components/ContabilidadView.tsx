@@ -4,7 +4,7 @@ import {
   Calendar, Building, CheckCircle2, RefreshCw, Search, Filter, 
   ArrowUpRight, ArrowDownLeft, Download, Trash2, PieChart, Layers, 
   Milk, User, CreditCard, ChevronLeft, ChevronRight, FileSpreadsheet,
-  AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight
+  AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight, Wallet
 } from 'lucide-react';
 import EstadoResultadosView from './EstadoResultadosView';
 
@@ -125,6 +125,52 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [syncingSheets, setSyncingSheets] = useState(false);
 
+  // Balance Caja Chica (Efectivo Físico)
+  const [cajaChica, setCajaChica] = useState<{
+    saldoTotalEfectivo: number;
+    saldoEfectivoMatriz: number;
+    saldoEfectivoManzanillo: number;
+    totalEntradasHistoricas: number;
+    totalSalidasHistoricas: number;
+    hoy: { entradas: number; salidas: number; flujoNeto: number; movimientos: number };
+    semanaActual: { semanaNum: number; año: number; entradas: number; salidas: number; flujoNeto: number; movimientos: number };
+    mesActual: { mes: string; año: number; entradas: number; salidas: number; flujoNeto: number; movimientos: number };
+    ultimosMovimientosEfectivo: Array<{
+      id: string;
+      fecha: string;
+      cuentaMenor: string;
+      cuentaFiscal: string;
+      tipoMovimiento: string;
+      monto: number;
+      motivo: string;
+      autoriza: string;
+    }>;
+  } | null>(null);
+  const [loadingCajaChica, setLoadingCajaChica] = useState(false);
+
+  const loadCajaChica = async () => {
+    setLoadingCajaChica(true);
+    try {
+      const res = await fetch('/api/contabilidad/caja-chica', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setCajaChica(data);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error cargando caja chica:', err);
+    } finally {
+      setLoadingCajaChica(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCajaChica();
+  }, []);
+
   // Auto-calculated formula preview for the current form input
   const formulaPreview = useMemo(() => {
     let d = new Date();
@@ -173,6 +219,11 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
     const found = CUENTAS_MENORES.find(c => c.value.toLowerCase() === newVal.toLowerCase());
     if (found) {
       setTipoMovimiento(found.tipoDefault as any);
+    }
+    if (newVal.toLowerCase() === 'leche') {
+      setCuentaFiscal('Crédito');
+    } else if (cuentaFiscal === 'Crédito') {
+      setCuentaFiscal('Efectivo');
     }
   };
 
@@ -248,27 +299,58 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
     setSaveSuccess(null);
     setSaveError(null);
 
-    const mVal = parseFloat(monto);
-    if (isNaN(mVal) || mVal <= 0) {
-      setSaveError('El monto debe ser un número mayor a cero');
-      setSaving(false);
-      return;
+    const isLeche = cuentaMenor.toLowerCase() === 'leche';
+    let mVal = parseFloat(monto);
+
+    if (isLeche) {
+      const lVal = parseFloat(litros);
+      const pVal = parseFloat(precioPorLitro);
+      if (isNaN(lVal) || lVal <= 0) {
+        setSaveError('Debes ingresar los litros de leche (mayor a cero)');
+        setSaving(false);
+        return;
+      }
+      if (isNaN(pVal) || pVal <= 0) {
+        setSaveError('Debes ingresar el precio por litro (mayor a cero)');
+        setSaving(false);
+        return;
+      }
+      mVal = Number((lVal * pVal).toFixed(2));
+    } else {
+      if (isNaN(mVal) || mVal <= 0) {
+        setSaveError('El monto debe ser un número mayor a cero');
+        setSaving(false);
+        return;
+      }
+      if (!motivo.trim()) {
+        setSaveError('El motivo o descripción es obligatorio');
+        setSaving(false);
+        return;
+      }
     }
 
     try {
+      const foundCuenta = CUENTAS_MENORES.find(c => c.value.toLowerCase() === cuentaMenor.toLowerCase());
+      const autoTipo = (foundCuenta?.tipoDefault || (isLeche ? 'Salida' : 'Salida')) as 'Entrada' | 'Salida' | 'Control';
+      const autoCuentaFiscal = isLeche ? 'Crédito' : cuentaFiscal;
+      const autoUsuario = user?.displayName || user?.username || 'Auxiliar Contable';
+      const finalMotivo = isLeche && !motivo.trim()
+        ? `Recepción leche: ${litros} Lts a $${precioPorLitro}/Lt`
+        : motivo.trim();
+
       const payload: any = {
         fecha,
-        empresa,
-        tipoMovimiento,
+        empresa: 'Quesería',
+        tipoMovimiento: autoTipo,
         cuentaMenor,
         monto: mVal,
-        motivo,
-        autoriza,
-        cuentaFiscal,
-        folio
+        motivo: finalMotivo,
+        autoriza: autoUsuario,
+        cuentaFiscal: autoCuentaFiscal,
+        folio: folio.trim()
       };
 
-      if (cuentaMenor.toLowerCase() === 'leche') {
+      if (isLeche) {
         payload.litros = parseFloat(litros) || 0;
         payload.precioPorLitro = parseFloat(precioPorLitro) || 0;
       }
@@ -291,6 +373,7 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
         setLitros('');
         setPrecioPorLitro('');
         loadMovimientos(1);
+        loadCajaChica();
       } else {
         setSaveError(data.error || 'No se pudo guardar el movimiento');
       }
@@ -459,10 +542,15 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
           <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
-                <h2 className="text-lg font-black text-slate-800">Nuevo Movimiento Contable</h2>
-                <p className="text-xs text-slate-500">
-                  Las columnas automáticas de semana, mes, año, día y total neto se calculan sin errores.
-                </p>
+                <h2 className="text-lg font-black text-slate-800">Captura de Movimiento Contable</h2>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    🧀 Quesería
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    • Tipo y usuario asignados automáticamente
+                  </span>
+                </div>
               </div>
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
                 Pestaña: Contabilidad!A:P
@@ -484,11 +572,11 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
             )}
 
             <form onSubmit={handleSubmitMovimiento} className="space-y-5">
-              {/* Row 1: Fecha & Empresa */}
+              {/* Row 1: Fecha & Cuenta / Categoría */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna A: Fecha *
+                    Fecha *
                   </label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -504,110 +592,34 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna B: Empresa *
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEmpresa('Quesería')}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
-                        empresa === 'Quesería'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      🧀 Quesería
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEmpresa('Rancho')}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
-                        empresa === 'Rancho'
-                          ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      🚜 Rancho
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2: Tipo de Movimiento & Cuenta Menor */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna C: Tipo de Movimiento *
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setTipoMovimiento('Entrada')}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${
-                        tipoMovimiento === 'Entrada'
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50'
-                      }`}
-                    >
-                      <ArrowDownLeft className="w-3.5 h-3.5" />
-                      Entrada
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTipoMovimiento('Salida')}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${
-                        tipoMovimiento === 'Salida'
-                          ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-rose-50'
-                      }`}
-                    >
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                      Salida
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTipoMovimiento('Control')}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1 ${
-                        tipoMovimiento === 'Control'
-                          ? 'bg-slate-700 text-white border-slate-700 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      Control
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna D: Cuenta Menor (Categoría) *
+                    Cuenta o Categoría *
                   </label>
                   <select
                     value={cuentaMenor}
                     onChange={(e) => handleCuentaMenorChange(e.target.value)}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold bg-white"
                   >
-                    <optgroup label="Ingresos">
+                    <optgroup label="Ingresos (Entradas)">
                       <option value="Ruta">Ruta</option>
                       <option value="Venta directa">Venta directa</option>
                       <option value="Manzanillo Ruta 6">Manzanillo Ruta 6</option>
                       <option value="Ventas Manzanillo">Ventas Manzanillo</option>
                     </optgroup>
-                    <optgroup label="Egresos y Gastos">
+                    <optgroup label="Egresos y Gastos (Salidas)">
                       <option value="Gastos">Gastos generales</option>
                       <option value="Gastos Manzanillo">Gastos Manzanillo</option>
                       <option value="Gastos Rutas">Gastos Rutas</option>
-                      <option value="Insumos">Insumos</option>
-                      <option value="Rancho">Rancho</option>
+                      <option value="Insumos">Insumos y Materias</option>
+                      <option value="Rancho">Rancho (Abonos a Leche)</option>
                     </optgroup>
-                    <optgroup label="Nómina">
+                    <optgroup label="Nómina (Salidas)">
                       <option value="Nómina">Nómina</option>
                       <option value="Nómina Manzanillo">Nómina Manzanillo</option>
                     </optgroup>
-                    <optgroup label="Materia Prima">
-                      <option value="leche">Leche (Litros × Precio)</option>
+                    <optgroup label="Materia Prima Leche">
+                      <option value="leche">Leche (Litros × Precio a Crédito)</option>
                     </optgroup>
-                    <optgroup label="Crédito y Ajustes">
+                    <optgroup label="Administrativos">
                       <option value="Crédito">Crédito</option>
                       <option value="Diferencia en calculo">Diferencia en cálculo</option>
                     </optgroup>
@@ -615,80 +627,96 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                 </div>
               </div>
 
-              {/* Special row for LECHE: Columns J & K */}
+              {/* Special block for LECHE: Litros & Precio */}
               {cuentaMenor.toLowerCase() === 'leche' && (
-                <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-3">
-                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                    <Milk className="w-4 h-4 text-amber-600" />
-                    <span>Campos Especiales de Leche (Columnas J y K)</span>
+                <div className="p-4 bg-amber-50/80 border border-amber-300 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-amber-950 font-black text-xs">
+                      <Milk className="w-4 h-4 text-amber-700" />
+                      <span>Recepción de Leche (Crédito Rancho)</span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 border border-amber-300">
+                      Caja: Crédito Automático
+                    </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-amber-800 mb-1">
-                        Columna J: Litros de Leche
+                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                        Litros de Leche *
                       </label>
                       <input
                         type="number"
                         step="any"
+                        required
                         placeholder="Ej. 1250"
                         value={litros}
                         onChange={(e) => setLitros(e.target.value)}
-                        className="w-full px-3 py-2 text-sm rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold"
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-black"
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-amber-800 mb-1">
-                        Columna K: Precio por Litro ($ MXN)
+                      <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                        Precio por Litro ($ MXN) *
                       </label>
                       <input
                         type="number"
                         step="any"
+                        required
                         placeholder="Ej. 10.50"
                         value={precioPorLitro}
                         onChange={(e) => setPrecioPorLitro(e.target.value)}
-                        className="w-full px-3 py-2 text-sm rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold"
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-black"
                       />
                     </div>
                   </div>
                   {litros && precioPorLitro && (
-                    <div className="text-xs font-semibold text-amber-900 bg-amber-100/70 px-3 py-1.5 rounded-lg flex items-center justify-between">
+                    <div className="text-xs font-semibold text-amber-950 bg-amber-100/90 px-3.5 py-2 rounded-xl flex items-center justify-between border border-amber-200">
                       <span>Cálculo automático: {litros} Lts × ${precioPorLitro}</span>
                       <span className="font-black text-amber-950 text-sm">
-                        Total = {fmt((parseFloat(litros) || 0) * (parseFloat(precioPorLitro) || 0))}
+                        Total a Crédito: {fmt((parseFloat(litros) || 0) * (parseFloat(precioPorLitro) || 0))}
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Row 3: Monto & Motivo */}
+              {/* Row 2: Monto & Motivo */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-1">
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna E: Monto ($ MXN) *
+                    Monto ($ MXN) *
                   </label>
                   <div className="relative">
                     <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     <input
                       type="number"
                       step="any"
-                      required
+                      required={cuentaMenor.toLowerCase() !== 'leche'}
+                      disabled={cuentaMenor.toLowerCase() === 'leche'}
                       placeholder="0.00"
                       value={monto}
                       onChange={(e) => setMonto(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-base font-black rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                      className={`w-full pl-9 pr-3 py-2 text-base font-black rounded-xl border focus:outline-none focus:ring-2 text-slate-800 ${
+                        cuentaMenor.toLowerCase() === 'leche'
+                          ? 'bg-slate-100 border-slate-200 text-slate-600'
+                          : 'border-slate-200 focus:ring-emerald-500'
+                      }`}
                     />
                   </div>
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna F: Motivo o Descripción *
+                    Motivo o Descripción {cuentaMenor.toLowerCase() === 'leche' ? '(Opcional)' : '*'}
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="Ej. Pago chofer ruta sur, Compra de sal, Venta mostrador..."
+                    required={cuentaMenor.toLowerCase() !== 'leche'}
+                    placeholder={
+                      cuentaMenor.toLowerCase() === 'leche'
+                        ? 'Opcional (se genera automáticamente con litros y precio)'
+                        : 'Ej. Pago chofer ruta sur, Compra de sal, Venta mostrador...'
+                    }
                     value={motivo}
                     onChange={(e) => setMotivo(e.target.value)}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
@@ -696,45 +724,39 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                 </div>
               </div>
 
-              {/* Row 4: Autoriza, Cuenta Fiscal & Folio */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Row 3: Caja / Cuenta & Folio */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna G: Usuario / Autoriza *
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
-                    <input
-                      type="text"
-                      required
-                      value={autoriza}
-                      onChange={(e) => setAutoriza(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna H: Cuenta / Caja *
+                    Caja / Cuenta *
                   </label>
                   <div className="relative">
                     <CreditCard className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                     <select
-                      value={cuentaFiscal}
+                      value={cuentaMenor.toLowerCase() === 'leche' ? 'Crédito' : cuentaFiscal}
+                      disabled={cuentaMenor.toLowerCase() === 'leche'}
                       onChange={(e) => setCuentaFiscal(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold bg-white"
+                      className={`w-full pl-9 pr-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 font-semibold ${
+                        cuentaMenor.toLowerCase() === 'leche'
+                          ? 'bg-slate-100 border-slate-200 text-slate-600'
+                          : 'border-slate-200 focus:ring-emerald-500 bg-white'
+                      }`}
                     >
                       {CUENTAS_FISCALES.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
+                  {cuentaMenor.toLowerCase() === 'leche' && (
+                    <span className="block text-[10px] text-amber-700 font-medium mt-1">
+                      Fijado automáticamente como Crédito al Rancho.
+                    </span>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Columna I: Folio (Opcional)
+                    Folio (Opcional)
                   </label>
                   <input
                     type="text"
@@ -760,81 +782,142 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
             </form>
           </div>
 
-          {/* Right Preview Column: Col L, M, N, O, P formulas */}
-          <div className="space-y-6">
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-6 border border-slate-700 shadow-md space-y-4">
+          {/* Right Column: Balance de Efectivo / Caja Chica */}
+          <div className="space-y-4">
+            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-5 border border-slate-700 shadow-md space-y-4">
               <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                  <Eye className="w-4 h-4" />
-                  Cálculo Automático
-                </span>
-                <span className="text-[10px] text-slate-400">Columnas L - P</span>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-400/30">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-300">
+                      Balance de Efectivo
+                    </h3>
+                    <p className="text-[10px] text-slate-400">Arqueo físico en Caja Chica</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadCajaChica}
+                  disabled={loadingCajaChica}
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-all disabled:opacity-50"
+                  title="Actualizar arqueo de caja chica"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingCajaChica ? 'animate-spin text-emerald-400' : ''}`} />
+                </button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-xs text-slate-300">Columna L (Semana):</span>
-                  <span className="text-xs font-black text-white bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-400/30">
-                    {formulaPreview.semanaLabel}
-                  </span>
+              {/* Saldo Principal Físico */}
+              <div className="p-4 rounded-xl bg-white/10 border border-white/15 space-y-1">
+                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide">
+                  Efectivo Físico Disponible (Total)
+                </span>
+                <div className={`text-2xl font-black ${
+                  (cajaChica?.saldoTotalEfectivo || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }`}>
+                  {fmt(cajaChica?.saldoTotalEfectivo)}
                 </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-xs text-slate-300">Columna M (Mes):</span>
-                  <span className="text-xs font-bold text-white capitalize">
-                    {formulaPreview.mesLabel}
-                  </span>
+                <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-white/10 text-[11px]">
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">🏢 Quesería Matriz</span>
+                    <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoMatriz)}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px]">🌴 Efectivo Manzanillo</span>
+                    <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoManzanillo)}</span>
+                  </div>
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-xs text-slate-300">Columna N (Año):</span>
-                  <span className="text-xs font-bold text-white">
-                    {formulaPreview.añoLabel}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-xs text-slate-300">Columna P (Día):</span>
-                  <span className="text-xs font-bold text-white capitalize">
-                    {formulaPreview.diaLabel}
-                  </span>
-                </div>
-
-                {/* Col O formula calculation */}
-                <div className="p-3.5 rounded-xl bg-white/10 border border-white/15 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-300">Columna O: Total Neto</span>
-                    <span className={`text-base font-black ${
-                      formulaPreview.totalNeto > 0 ? 'text-emerald-400' :
-                      formulaPreview.totalNeto < 0 ? 'text-rose-400' : 'text-slate-300'
-                    }`}>
-                      {fmt(formulaPreview.totalNeto)}
+              {/* Flujos del Período */}
+              <div className="space-y-2 text-xs">
+                {/* Hoy */}
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-300 font-bold block text-[11px]">Flujo de Hoy:</span>
+                    <span className="text-[10px] text-slate-400">
+                      +{fmt(cajaChica?.hoy?.entradas)} | -{fmt(cajaChica?.hoy?.salidas)}
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 italic">
-                    {empresa.toLowerCase() === 'rancho'
-                      ? 'Empresa Rancho: 0 en Total Neto'
-                      : cuentaMenor.toLowerCase() === 'leche'
-                      ? 'Leche: Litros × Precio'
-                      : tipoMovimiento === 'Salida'
-                      ? 'Salida: Monto con signo negativo (-1 * E)'
-                      : 'Entrada: Monto con signo positivo (+E)'}
-                  </p>
+                  <span className={`text-xs font-black ${
+                    (cajaChica?.hoy?.flujoNeto || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}>
+                    {(cajaChica?.hoy?.flujoNeto || 0) >= 0 ? '+' : ''}{fmt(cajaChica?.hoy?.flujoNeto)}
+                  </span>
+                </div>
+
+                {/* Semana Actual */}
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-300 font-bold block text-[11px]">
+                      Semana {cajaChica?.semanaActual?.semanaNum || 44}:
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      +{fmt(cajaChica?.semanaActual?.entradas)} | -{fmt(cajaChica?.semanaActual?.salidas)}
+                    </span>
+                  </div>
+                  <span className={`text-xs font-black ${
+                    (cajaChica?.semanaActual?.flujoNeto || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}>
+                    {(cajaChica?.semanaActual?.flujoNeto || 0) >= 0 ? '+' : ''}{fmt(cajaChica?.semanaActual?.flujoNeto)}
+                  </span>
+                </div>
+
+                {/* Mes Actual */}
+                <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-300 font-bold block text-[11px] capitalize">
+                      {cajaChica?.mesActual?.mes || 'Mes Actual'}:
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      +{fmt(cajaChica?.mesActual?.entradas)} | -{fmt(cajaChica?.mesActual?.salidas)}
+                    </span>
+                  </div>
+                  <span className={`text-xs font-black ${
+                    (cajaChica?.mesActual?.flujoNeto || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}>
+                    {(cajaChica?.mesActual?.flujoNeto || 0) >= 0 ? '+' : ''}{fmt(cajaChica?.mesActual?.flujoNeto)}
+                  </span>
                 </div>
               </div>
-            </div>
 
-            {/* Quick tips card */}
-            <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-5 space-y-2">
-              <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
-                <HelpCircle className="w-4 h-4 text-emerald-700" />
-                Reglas del Sistema
-              </h4>
-              <ul className="text-xs text-emerald-800/90 space-y-1.5 list-disc pl-4">
-                <li>Los movimientos se guardan de inmediato en la base de datos y se agregan a tu Google Sheet.</li>
-                <li>No necesitas calcular semanas ni fórmulas manualmente en Excel; el sistema lo hace automáticamente.</li>
-                <li>Para movimientos de leche, ingresa litros y precio y el monto total se calculará solo.</li>
-              </ul>
+              {/* Mini Bitácora de Efectivo */}
+              <div className="pt-2 border-t border-slate-700/80 space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Últimos Movimientos en Efectivo
+                </span>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {(cajaChica?.ultimosMovimientosEfectivo || []).slice(0, 6).map((m, idx) => {
+                    const isEntrada = (m.tipoMovimiento || '').toLowerCase() === 'entrada';
+                    return (
+                      <div
+                        key={m.id || idx}
+                        className="p-2 rounded-lg bg-white/5 border border-white/5 flex items-center justify-between text-[11px]"
+                      >
+                        <div className="truncate pr-2">
+                          <span className="text-slate-300 font-semibold truncate block">
+                            {m.motivo || m.cuentaMenor}
+                          </span>
+                          <span className="text-[9px] text-slate-500">
+                            {m.fecha} • {m.cuentaMenor}
+                          </span>
+                        </div>
+                        <span className={`font-black whitespace-nowrap ${
+                          isEntrada ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
+                          {isEntrada ? '+' : '-'}{fmt(m.monto)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {(!cajaChica?.ultimosMovimientosEfectivo || cajaChica.ultimosMovimientosEfectivo.length === 0) && (
+                    <div className="text-[11px] text-slate-500 text-center py-2">
+                      Sin movimientos recientes en efectivo
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

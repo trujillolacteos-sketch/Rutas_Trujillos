@@ -60,7 +60,8 @@ import {
   calculateContabilidadBalances,
   calculateEstadoResultados,
   loadLocalContabilidad,
-  fetchGoogleSheetContabilidad
+  fetchGoogleSheetContabilidad,
+  getCajaChicaBalance
 } from './server/contabilidadService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
@@ -328,7 +329,8 @@ function loadState(): AppState {
     { username: 'Supervisor Rutas', role: 'supervisor_rutas', password: 'Rutas.1234' },
     { username: 'Supervisor Planta', role: 'supervisor_produccion', password: 'Planta.1234' },
     { username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
-    { username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' }
+    { username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' },
+    { username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' }
   ];
 
   let usersUpdated = false;
@@ -1199,10 +1201,11 @@ async function startServer() {
   const checkContabilidadAccess = async (req: AuthRequest): Promise<boolean> => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (['admin', 'gerencia'].includes(role)) return true;
+      if (['admin', 'gerencia', 'auxiliar_contable'].includes(role)) return true;
       if (req.user?.uid === 'local-admin' || req.user?.uid?.startsWith('local-')) return true;
       const st = loadState();
-      const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email);
+      const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email || (u.id && String(u.id) === req.user!.uid));
+      if (localUser?.role === 'auxiliar_contable') return true;
       if (localUser?.extraMenus && Array.isArray(localUser.extraMenus) && localUser.extraMenus.includes('contabilidad')) {
         if (localUser.extraMenusExpiresAt) {
           const today = new Date().toISOString().slice(0, 10);
@@ -1416,6 +1419,20 @@ async function startServer() {
       res.json({ success: true, ...result });
     } catch (err: any) {
       console.error('[contabilidad] Error en GET /api/contabilidad/estado-resultados:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET Balance de Efectivo / Caja Chica
+  app.get('/api/contabilidad/caja-chica', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Caja Chica" });
+
+      const balance = getCajaChicaBalance();
+      res.json({ success: true, ...balance });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en GET /api/contabilidad/caja-chica:', err);
       res.status(500).json({ error: err.message });
     }
   });

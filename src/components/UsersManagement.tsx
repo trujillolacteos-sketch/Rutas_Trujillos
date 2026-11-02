@@ -212,6 +212,8 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
         return { label: 'Producción', color: 'bg-amber-50 text-amber-700 border-amber-200' };
       case 'produccion_linea':
         return { label: 'Línea Planta', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+      case 'auxiliar_contable':
+        return { label: 'Auxiliar Contable', color: 'bg-teal-50 text-teal-700 border-teal-200' };
       case 'operator':
         return { label: 'Chofer Ruta', color: 'bg-slate-100 text-slate-700 border-slate-200' };
       default:
@@ -493,6 +495,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
                 <option value="supervisor_produccion">Supervisor de Producción</option>
                 <option value="produccion">Operador de Producción (Solo Planta)</option>
                 <option value="produccion_linea">Operador de Línea (Solo Línea)</option>
+                <option value="auxiliar_contable">Auxiliar Contable (Solo Captura y Estado de Resultados)</option>
                 <option value="operator">Ruta / Chofer</option>
               </select>
               <input
@@ -576,6 +579,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
                       <option value="supervisor_produccion">Supervisor de Producción</option>
                       <option value="produccion">Operador de Producción (Solo Planta)</option>
                       <option value="produccion_linea">Operador de Línea (Solo Línea)</option>
+                      <option value="auxiliar_contable">Auxiliar Contable (Solo Captura y Estado de Resultados)</option>
                       <option value="operator">Ruta / Chofer</option>
                     </select>
                   </div>

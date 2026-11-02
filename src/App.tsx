@@ -198,7 +198,8 @@ function App() {
       { id: 7, username: 'Ruta 5', role: 'operator', password: 'Ruta5.1234' },
       { id: 8, username: 'Operador Producción', role: 'produccion', password: 'Produccion.1234' },
       { id: 9, username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
-      { id: 10, username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' }
+      { id: 10, username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' },
+      { id: 11, username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' }
     ];
 
     const usersList = (state?.users && state.users.length > 0) ? state.users : fallbackUsers;
@@ -248,14 +249,15 @@ function App() {
   const isProduccion = user?.role === 'produccion';
   const isProduccionLinea = user?.role === 'produccion_linea';
   const isOperator = user?.role === 'operator';
+  const isAuxiliarContable = user?.role === 'auxiliar_contable';
 
-  const canAccessRoutes = isAdmin || isGerencia || isSupervisorRutas;
-  const canAccessProduction = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
-  const canAccessProductionLines = isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea;
-  const canAccessPurchases = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
-  const canAccessSupplies = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
-  const canAccessProductionKpis = isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea;
-  const canManageCosts = isAdmin || isGerencia || isSupervisorProduccion || isProduccion;
+  const canAccessRoutes = (isAdmin || isGerencia || isSupervisorRutas) && !isAuxiliarContable;
+  const canAccessProduction = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
+  const canAccessProductionLines = (isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea) && !isAuxiliarContable;
+  const canAccessPurchases = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
+  const canAccessSupplies = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
+  const canAccessProductionKpis = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea) && !isAuxiliarContable;
+  const canManageCosts = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
   const role = user?.role || 'user';
   // Sincronización en tiempo real del usuario activo con state.users
   useEffect(() => {
@@ -294,28 +296,28 @@ function App() {
   };
 
   // Banderas de visibilidad que combinan rol base + menús temporales autorizados
-  const showDashboard = (canAccessRoutes || isOperator) || hasExtraMenu('dashboard');
-  const showPlanner = (canAccessRoutes || isOperator) || hasExtraMenu('planner');
-  const showClientes = canAccessRoutes || hasExtraMenu('clientes');
-  const showReports = canAccessRoutes || hasExtraMenu('reports');
-  const showAlerts = canAccessRoutes || hasExtraMenu('alerts');
+  const showDashboard = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('dashboard'));
+  const showPlanner = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('planner'));
+  const showClientes = !isAuxiliarContable && (canAccessRoutes || hasExtraMenu('clientes'));
+  const showReports = !isAuxiliarContable && (canAccessRoutes || hasExtraMenu('reports'));
+  const showAlerts = !isAuxiliarContable && (canAccessRoutes || hasExtraMenu('alerts'));
   const showGroupRoutes = showDashboard || showPlanner || showClientes || showReports || showAlerts;
 
-  const showProductionLines = canAccessProductionLines || hasExtraMenu('production_lines');
-  const showProduction = canAccessProduction || hasExtraMenu('production');
-  const showSupplies = canAccessSupplies || hasExtraMenu('supplies_inventory');
-  const showProductionKpis = canAccessProductionKpis || hasExtraMenu('production_kpis');
-  const showPurchases = canAccessPurchases || hasExtraMenu('purchases');
+  const showProductionLines = !isAuxiliarContable && (canAccessProductionLines || hasExtraMenu('production_lines'));
+  const showProduction = !isAuxiliarContable && (canAccessProduction || hasExtraMenu('production'));
+  const showSupplies = !isAuxiliarContable && (canAccessSupplies || hasExtraMenu('supplies_inventory'));
+  const showProductionKpis = !isAuxiliarContable && (canAccessProductionKpis || hasExtraMenu('production_kpis'));
+  const showPurchases = !isAuxiliarContable && (canAccessPurchases || hasExtraMenu('purchases'));
   const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases;
 
-  const showSalesReports = (canAccessRoutes || isOperator) || hasExtraMenu('sales_reports');
-  const showCommissions = (canAccessRoutes || isOperator) || hasExtraMenu('commissions');
-  const showEstadoResultados = isAdmin || isGerencia || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad');
-  const showContabilidad = isAdmin || isGerencia || hasExtraMenu('contabilidad');
+  const showSalesReports = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('sales_reports'));
+  const showCommissions = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('commissions'));
+  const showEstadoResultados = isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad');
+  const showContabilidad = isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('contabilidad');
   const showGroupAdmin = showSalesReports || showCommissions || showEstadoResultados || showContabilidad;
 
-  const showZones = isAdmin || hasExtraMenu('zones');
-  const showSettings = isAdmin || hasExtraMenu('settings');
+  const showZones = !isAuxiliarContable && (isAdmin || hasExtraMenu('zones'));
+  const showSettings = !isAuxiliarContable && (isAdmin || hasExtraMenu('settings'));
   const showGroupSystem = showZones || showSettings;
 
   const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'all'>('rutas');
@@ -327,7 +329,11 @@ function App() {
       localStorage.removeItem('preferred_view');
       return;
     }
-    if (user?.role === 'produccion_linea') {
+    if (user?.role === 'auxiliar_contable') {
+      if (activeTab !== 'contabilidad' && activeTab !== 'estado_resultados') {
+        setActiveTab('contabilidad');
+      }
+    } else if (user?.role === 'produccion_linea') {
       setActiveTab('production_lines');
     } else if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
       setActiveTab('production');
@@ -348,6 +354,7 @@ function App() {
       { id: 4, username: 'Supervisor Planta', role: 'supervisor_produccion' },
       { id: 5, username: 'Operador Producción', role: 'produccion' },
       { id: 6, username: 'Operador Línea', role: 'produccion_linea' },
+      { id: 12, username: 'Auxiliar Contable', role: 'auxiliar_contable' },
       { id: 7, username: 'Ruta 1', role: 'operator' },
       { id: 8, username: 'Ruta 2', role: 'operator' },
       { id: 9, username: 'Ruta 3', role: 'operator' },
@@ -363,7 +370,7 @@ function App() {
         return ['supervisor_produccion', 'produccion', 'produccion_linea', 'gerencia', 'admin'].includes(u.role);
       }
       if (loginMode === 'gerencia') {
-        return ['gerencia', 'admin'].includes(u.role);
+        return ['gerencia', 'admin', 'auxiliar_contable'].includes(u.role);
       }
       return true;
     });

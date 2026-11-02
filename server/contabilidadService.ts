@@ -648,11 +648,21 @@ export interface EstadoResultadosResponse {
     variacionAñoPasado: number;
   };
 
+  cuentaCorrienteRancho: {
+    lecheRecibida: number;
+    litrosLeche: number;
+    precioPromedioLeche: number;
+    abonosRancho: number;
+    creditoAbono: number;
+    estado: string;
+  };
+
   kpis: {
     ingresos: { actual: number; crecAnterior: number | null; crecAñoPasado: number | null };
     utilidadBruta: { actual: number; margenPct: number; crecAnterior: number | null };
     gastosOperativos: { actual: number; pctIngresos: number; crecAnterior: number | null };
     utilidadNeta: { actual: number; margenPct: number; crecAnterior: number | null; crecAñoPasado: number | null };
+    creditoRancho: { leche: number; abonoRancho: number; balanceCredito: number };
   };
 }
 
@@ -694,9 +704,11 @@ function aggregateMovimientos(movs: MovimientoContable[]) {
   });
 
   const totalIngresos = Number((ruta + manzanilloRuta6 + ventasManzanillo + ventaDirecta).toFixed(2));
-  const totalCostosDirectos = Number((insumos + leche).toFixed(2));
+  // La leche es a crédito del rancho. Lo que entra a costo real desembolsado son los abonos pagados al Rancho:
+  const totalCostosDirectos = Number((insumos + rancho).toFixed(2));
   const utilidadBruta = Number((totalIngresos - totalCostosDirectos).toFixed(2));
-  const totalGastosOperativos = Number((gastos + gastosManzanillo + gastosRutas + rancho + nomina + nominaManzanillo).toFixed(2));
+  // Gastos operativos sin rancho (ya que rancho es costo directo de leche):
+  const totalGastosOperativos = Number((gastos + gastosManzanillo + gastosRutas + nomina + nominaManzanillo).toFixed(2));
   const totalOtros = Number((credito + diferenciaCalculo).toFixed(2));
   const totalEgresos = Number((totalCostosDirectos + totalGastosOperativos).toFixed(2));
   const utilidadNeta = Number((totalIngresos - totalEgresos).toFixed(2));
@@ -843,13 +855,11 @@ export function calculateEstadoResultados(params: {
   const totalIngresos = buildLinea('TOTAL INGRESOS', tIngAct, tIngAct, tIngAnt, tIngAp);
 
   // 2. Costos Directos
+  // Nota: La leche es a crédito del rancho. Lo que entra a costo real desembolsado son los abonos pagados al Rancho.
   const precioPromedioLecheAct = actAgg.litrosLeche > 0 ? Number((actAgg.leche / actAgg.litrosLeche).toFixed(2)) : 0;
   const costosDirectos: LineaEstadoResultados[] = [
     buildLinea('Insumos y Empaques', actAgg.insumos, tIngAct, antAgg.insumos, apAgg.insumos),
-    buildLinea('Materia Prima Leche', actAgg.leche, tIngAct, antAgg.leche, apAgg.leche, {
-      litrosActual: actAgg.litrosLeche,
-      precioPromedioActual: precioPromedioLecheAct
-    }),
+    buildLinea('Abonos a Rancho (Costo Leche)', actAgg.rancho, tIngAct, antAgg.rancho, apAgg.rancho),
   ];
   const totalCostosDirectos = buildLinea('TOTAL COSTOS DIRECTOS', actAgg.totalCostosDirectos, tIngAct, antAgg.totalCostosDirectos, apAgg.totalCostosDirectos);
 
@@ -859,12 +869,11 @@ export function calculateEstadoResultados(params: {
   const mBrutoAnt = tIngAnt > 0 ? Number(((antAgg.utilidadBruta / tIngAnt) * 100).toFixed(1)) : 0;
   const mBrutoAp = tIngAp > 0 ? Number(((apAgg.utilidadBruta / tIngAp) * 100).toFixed(1)) : 0;
 
-  // 4. Gastos Operativos
+  // 4. Gastos Operativos (OPEX sin Rancho, ya que Rancho es costo directo de leche)
   const gastosOperativos: LineaEstadoResultados[] = [
     buildLinea('Gastos Generales', actAgg.gastos, tIngAct, antAgg.gastos, apAgg.gastos),
     buildLinea('Gastos Manzanillo', actAgg.gastosManzanillo, tIngAct, antAgg.gastosManzanillo, apAgg.gastosManzanillo),
     buildLinea('Gastos Rutas', actAgg.gastosRutas, tIngAct, antAgg.gastosRutas, apAgg.gastosRutas),
-    buildLinea('Rancho', actAgg.rancho, tIngAct, antAgg.rancho, apAgg.rancho),
     buildLinea('Nómina General', actAgg.nomina, tIngAct, antAgg.nomina, apAgg.nomina),
     buildLinea('Nómina Manzanillo', actAgg.nominaManzanillo, tIngAct, antAgg.nominaManzanillo, apAgg.nominaManzanillo),
   ];
@@ -930,6 +939,17 @@ export function calculateEstadoResultados(params: {
       variacionAñoPasado: Number((mNetoAct - mNetoAp).toFixed(1))
     },
 
+    cuentaCorrienteRancho: {
+      lecheRecibida: Number(actAgg.leche.toFixed(2)),
+      litrosLeche: Number(actAgg.litrosLeche.toFixed(2)),
+      precioPromedioLeche: precioPromedioLecheAct,
+      abonosRancho: Number(actAgg.rancho.toFixed(2)),
+      creditoAbono: Number((actAgg.leche - actAgg.rancho).toFixed(2)),
+      estado: (actAgg.leche - actAgg.rancho) > 0
+        ? 'Quedó a deber al rancho'
+        : ((actAgg.leche - actAgg.rancho) < 0 ? 'Abonó a deuda histórica' : 'Sin saldo pendiente')
+    },
+
     kpis: {
       ingresos: {
         actual: tIngAct,
@@ -951,8 +971,173 @@ export function calculateEstadoResultados(params: {
         margenPct: mNetoAct,
         crecAnterior: utilidadNeta.crecimientoAnterior,
         crecAñoPasado: utilidadNeta.crecimientoAñoPasado
+      },
+      creditoRancho: {
+        leche: actAgg.leche,
+        abonoRancho: actAgg.rancho,
+        balanceCredito: Number((actAgg.leche - actAgg.rancho).toFixed(2))
       }
     }
+  };
+}
+
+export interface CajaChicaBalanceResponse {
+  saldoTotalEfectivo: number;
+  saldoEfectivoMatriz: number;
+  saldoEfectivoManzanillo: number;
+  totalEntradasHistoricas: number;
+  totalSalidasHistoricas: number;
+  hoy: {
+    entradas: number;
+    salidas: number;
+    flujoNeto: number;
+    movimientos: number;
+  };
+  semanaActual: {
+    semanaNum: number;
+    año: number;
+    entradas: number;
+    salidas: number;
+    flujoNeto: number;
+    movimientos: number;
+  };
+  mesActual: {
+    mes: string;
+    año: number;
+    entradas: number;
+    salidas: number;
+    flujoNeto: number;
+    movimientos: number;
+  };
+  ultimosMovimientosEfectivo: Array<{
+    id: string;
+    fecha: string;
+    cuentaMenor: string;
+    cuentaFiscal: string;
+    tipoMovimiento: string;
+    monto: number;
+    motivo: string;
+    autoriza: string;
+  }>;
+}
+
+export function getCajaChicaBalance(): CajaChicaBalanceResponse {
+  const movs = loadLocalContabilidad();
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${('0' + (now.getMonth() + 1)).slice(-2)}-${('0' + now.getDate()).slice(-2)}`;
+  const curSemNum = getExcelWeekNumber(now);
+  const curMes = MESES[now.getMonth()];
+  const curYear = now.getFullYear();
+
+  let totalEntradasHistoricas = 0;
+  let totalSalidasHistoricas = 0;
+  let saldoEfectivoMatriz = 0;
+  let saldoEfectivoManzanillo = 0;
+
+  let hoyEntradas = 0;
+  let hoySalidas = 0;
+  let hoyMovs = 0;
+
+  let semanaEntradas = 0;
+  let semanaSalidas = 0;
+  let semanaMovs = 0;
+
+  let mesEntradas = 0;
+  let mesSalidas = 0;
+  let mesMovs = 0;
+
+  const cashMovs: MovimientoContable[] = [];
+
+  movs.forEach(m => {
+    const cf = (m.cuentaFiscal || '').trim().toLowerCase();
+    const isEfectivoMatriz = cf === 'efectivo';
+    const isEfectivoManzanillo = cf === 'efectivo manzanillo';
+    if (!isEfectivoMatriz && !isEfectivoManzanillo) return;
+
+    cashMovs.push(m);
+    const monto = Math.abs(Number(m.monto) || 0);
+    const tipo = (m.tipoMovimiento || '').toLowerCase();
+
+    if (tipo === 'entrada') {
+      totalEntradasHistoricas += monto;
+      if (isEfectivoMatriz) saldoEfectivoMatriz += monto;
+      if (isEfectivoManzanillo) saldoEfectivoManzanillo += monto;
+    } else if (tipo === 'salida') {
+      totalSalidasHistoricas += monto;
+      if (isEfectivoMatriz) saldoEfectivoMatriz -= monto;
+      if (isEfectivoManzanillo) saldoEfectivoManzanillo -= monto;
+    }
+
+    // Hoy
+    if (m.fecha === todayStr) {
+      hoyMovs++;
+      if (tipo === 'entrada') hoyEntradas += monto;
+      else if (tipo === 'salida') hoySalidas += monto;
+    }
+
+    // Semana Actual
+    if (m.año === curYear && m.semanaNum === curSemNum) {
+      semanaMovs++;
+      if (tipo === 'entrada') semanaEntradas += monto;
+      else if (tipo === 'salida') semanaSalidas += monto;
+    }
+
+    // Mes Actual
+    if (m.año === curYear && (m.mes || '').toLowerCase().trim() === curMes) {
+      mesMovs++;
+      if (tipo === 'entrada') mesEntradas += monto;
+      else if (tipo === 'salida') mesSalidas += monto;
+    }
+  });
+
+  const saldoTotalEfectivo = Number((totalEntradasHistoricas - totalSalidasHistoricas).toFixed(2));
+
+  // Sort cash movements by date desc, then rowNumber desc
+  cashMovs.sort((a, b) => {
+    if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
+    return (b.rowNumber || 0) - (a.rowNumber || 0);
+  });
+
+  const ultimosMovimientosEfectivo = cashMovs.slice(0, 10).map(m => ({
+    id: m.id,
+    fecha: m.fecha,
+    cuentaMenor: m.cuentaMenor,
+    cuentaFiscal: m.cuentaFiscal,
+    tipoMovimiento: m.tipoMovimiento,
+    monto: Number(m.monto) || 0,
+    motivo: m.motivo,
+    autoriza: m.autoriza
+  }));
+
+  return {
+    saldoTotalEfectivo,
+    saldoEfectivoMatriz: Number(saldoEfectivoMatriz.toFixed(2)),
+    saldoEfectivoManzanillo: Number(saldoEfectivoManzanillo.toFixed(2)),
+    totalEntradasHistoricas: Number(totalEntradasHistoricas.toFixed(2)),
+    totalSalidasHistoricas: Number(totalSalidasHistoricas.toFixed(2)),
+    hoy: {
+      entradas: Number(hoyEntradas.toFixed(2)),
+      salidas: Number(hoySalidas.toFixed(2)),
+      flujoNeto: Number((hoyEntradas - hoySalidas).toFixed(2)),
+      movimientos: hoyMovs
+    },
+    semanaActual: {
+      semanaNum: curSemNum,
+      año: curYear,
+      entradas: Number(semanaEntradas.toFixed(2)),
+      salidas: Number(semanaSalidas.toFixed(2)),
+      flujoNeto: Number((semanaEntradas - semanaSalidas).toFixed(2)),
+      movimientos: semanaMovs
+    },
+    mesActual: {
+      mes: curMes,
+      año: curYear,
+      entradas: Number(mesEntradas.toFixed(2)),
+      salidas: Number(mesSalidas.toFixed(2)),
+      flujoNeto: Number((mesEntradas - mesSalidas).toFixed(2)),
+      movimientos: mesMovs
+    },
+    ultimosMovimientosEfectivo
   };
 }
 

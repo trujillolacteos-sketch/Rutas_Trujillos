@@ -68,11 +68,21 @@ interface EstadoResultadosData {
     variacionAñoPasado: number;
   };
 
+  cuentaCorrienteRancho?: {
+    lecheRecibida: number;
+    litrosLeche: number;
+    precioPromedioLeche: number;
+    abonosRancho: number;
+    creditoAbono: number;
+    estado: string;
+  };
+
   kpis: {
     ingresos: { actual: number; crecAnterior: number | null; crecAñoPasado: number | null };
     utilidadBruta: { actual: number; margenPct: number; crecAnterior: number | null };
     gastosOperativos: { actual: number; pctIngresos: number; crecAnterior: number | null };
     utilidadNeta: { actual: number; margenPct: number; crecAnterior: number | null; crecAñoPasado: number | null };
+    creditoRancho?: { leche: number; abonoRancho: number; balanceCredito: number };
   };
 }
 
@@ -596,6 +606,95 @@ export default function EstadoResultadosView({ token }: EstadoResultadosViewProp
               </div>
             </div>
           </div>
+
+          {/* Card Destacada: Control de Crédito de Leche y Cuenta Corriente Rancho */}
+          {data.cuentaCorrienteRancho && (
+            <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 rounded-2xl p-5 text-white border border-amber-700/60 shadow-md space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                    <Milk className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black text-white">
+                        Control de Crédito de Leche y Cuenta Corriente Rancho
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40">
+                        {data.periodoLabel}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      La leche cruda se recibe a crédito. En el Estado de Resultados el costo real son los abonos pagados al Rancho.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Badge de Diagnóstico */}
+                <div className="self-start md:self-center">
+                  {data.cuentaCorrienteRancho.creditoAbono > 0 ? (
+                    <div className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/40 text-xs font-black flex items-center gap-1.5">
+                      <span>⚠️ Quedó a deber al Rancho: +{fmt(data.cuentaCorrienteRancho.creditoAbono)}</span>
+                    </div>
+                  ) : data.cuentaCorrienteRancho.creditoAbono < 0 ? (
+                    <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 text-xs font-black flex items-center gap-1.5">
+                      <span>✅ Abonó a deuda histórica: -{fmt(Math.abs(data.cuentaCorrienteRancho.creditoAbono))}</span>
+                    </div>
+                  ) : (
+                    <div className="px-3.5 py-1.5 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-400/40 text-xs font-black">
+                      <span>Crédito liquidado sin diferencia en el período</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Grid de 3 Columnas: Leche Recibida, Abonos Rancho, Diferencia */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                  <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
+                    1. Leche Recibida (A Crédito)
+                  </span>
+                  <div className="text-xl font-black text-white">
+                    {fmt(data.cuentaCorrienteRancho.lecheRecibida)}
+                  </div>
+                  <span className="text-[11px] text-slate-300 block">
+                    {data.cuentaCorrienteRancho.litrosLeche.toLocaleString()} Lts a ${data.cuentaCorrienteRancho.precioPromedioLeche}/Lt prom.
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider block">
+                    2. Abonos Pagados al Rancho
+                  </span>
+                  <div className="text-xl font-black text-emerald-300">
+                    {fmt(data.cuentaCorrienteRancho.abonosRancho)}
+                  </div>
+                  <span className="text-[11px] text-slate-300 block">
+                    Costo real contabilizado en el P&L
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                    3. Crédito / Abono Neto (Leche - Rancho)
+                  </span>
+                  <div className={`text-xl font-black ${
+                    data.cuentaCorrienteRancho.creditoAbono > 0 ? 'text-amber-300' :
+                    data.cuentaCorrienteRancho.creditoAbono < 0 ? 'text-emerald-400' : 'text-slate-200'
+                  }`}>
+                    {data.cuentaCorrienteRancho.creditoAbono > 0 ? '+' : ''}{fmt(data.cuentaCorrienteRancho.creditoAbono)}
+                  </div>
+                  <span className="text-[11px] text-slate-300 block">
+                    {data.cuentaCorrienteRancho.creditoAbono > 0 
+                      ? 'Aumento de saldo por pagar al Rancho' 
+                      : data.cuentaCorrienteRancho.creditoAbono < 0 
+                      ? 'Reducción de saldo histórico por pagar' 
+                      : 'Saldo del período liquidado'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Comparative Chart */}
           {showChart && (
