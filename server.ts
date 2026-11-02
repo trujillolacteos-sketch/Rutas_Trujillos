@@ -41,6 +41,11 @@ import {
   getProductionKPIs
 } from './server/productionService.ts';
 import {
+  getGoogleSheetUsers,
+  saveUsersToGoogleSheet,
+  initUsersSyncOnStartup
+} from './server/usersSheetService.ts';
+import {
   loadLocalLineReports,
   createLineReport,
   deleteLineReport
@@ -186,6 +191,13 @@ async function initPersistentDatabase() {
     }
   } catch (fsErr: any) {
     console.warn("Google Cloud Firestore notice (continuing with local state):", fsErr.message);
+  }
+  // Google Sheets Users Persistence (Persistencia 100% Permanente en tu Google Sheet)
+  try {
+    const currentState = loadState();
+    await initUsersSyncOnStartup(currentState, saveState);
+  } catch (sheetErr: any) {
+    console.warn("Google Sheets Users notice (continuing with local state):", sheetErr.message);
   }
 }
 
@@ -616,6 +628,7 @@ async function startServer() {
     user.id = Date.now();
     state.users.push(user);
     saveState(state);
+    saveUsersToGoogleSheet(state.users).catch(e => console.error('[usersSheetService] Error saving on POST:', e));
     res.json({ success: true, user });
   });
 
@@ -627,9 +640,30 @@ async function startServer() {
     if (idx !== -1) {
       state.users[idx] = { ...state.users[idx], ...updates };
       saveState(state);
+      saveUsersToGoogleSheet(state.users).catch(e => console.error('[usersSheetService] Error saving on PUT:', e));
       res.json({ success: true, user: state.users[idx] });
     } else {
       res.status(404).json({ error: "User not found" });
+    }
+  });
+
+  // Sincronización manual bidireccional con Google Sheets (Pestaña 'Usuarios')
+  app.post('/api/users/sync-sheets', async (req, res) => {
+    try {
+      const { action } = req.body || {};
+      const state = loadState();
+      if (action === 'pull') {
+        const sheetUsers = await getGoogleSheetUsers();
+        if (sheetUsers.length > 0) {
+          state.users = sheetUsers;
+          saveState(state);
+          return res.json({ success: true, message: `¡Se descargaron ${sheetUsers.length} usuarios desde tu Google Sheet con éxito!`, users: sheetUsers });
+        }
+      }
+      const result = await saveUsersToGoogleSheet(state.users);
+      res.json({ success: true, message: result.message, users: state.users });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 
@@ -638,6 +672,7 @@ async function startServer() {
     const state = loadState();
     state.users = state.users.filter(u => u.id !== id);
     saveState(state);
+    saveUsersToGoogleSheet(state.users).catch(e => console.error('[usersSheetService] Error saving on DELETE:', e));
     res.json({ success: true });
   });
 

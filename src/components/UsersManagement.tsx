@@ -16,6 +16,10 @@ import {
   Factory,
   DollarSign,
   Settings as SettingsIcon,
+  RefreshCw,
+  FileSpreadsheet,
+  ExternalLink,
+  CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 import { AppState } from '../types';
@@ -44,6 +48,8 @@ export const AVAILABLE_MENUS = [
   { key: 'settings', label: 'Ajustes', group: 'Sistema', color: 'text-slate-700 bg-slate-100 border-slate-300' }
 ];
 
+const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit?usp=sharing';
+
 export default function UsersManagement({ state, setState }: { state: AppState; setState: any }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({
@@ -55,9 +61,16 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
   });
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [syncingSheets, setSyncingSheets] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const users = state.users || [];
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMsg({ text, type });
+    setTimeout(() => setToastMsg(null), 4000);
+  };
 
   const resetForm = () => {
     setEditForm({
@@ -67,6 +80,29 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
       extraMenus: [],
       extraMenusExpiresAt: ''
     });
+  };
+
+  const handleSyncSheets = async (action: 'pull' | 'push' = 'pull') => {
+    try {
+      setSyncingSheets(true);
+      const res = await apiFetch('/api/users/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (data.success && data.users) {
+        setState((prev: AppState) => ({ ...prev, users: data.users }));
+        showToast(data.message || 'Sincronizado con Google Sheets con éxito', 'success');
+      } else {
+        showToast(data.message || 'Error al sincronizar con Google Sheets', 'error');
+      }
+    } catch (e: any) {
+      console.error(e);
+      showToast('Error de conexión con Google Sheets', 'error');
+    } finally {
+      setSyncingSheets(false);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -84,9 +120,11 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
         setState((prev: AppState) => ({ ...prev, users: [...(prev.users || []), data.user] }));
         setIsAdding(false);
         resetForm();
+        showToast(`Usuario "${data.user.username}" guardado en la app y en tu Google Sheet`, 'success');
       }
     } catch (e) {
       console.error(e);
+      showToast('Error al guardar usuario', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -108,16 +146,18 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
         }));
         setEditingId(null);
         resetForm();
+        showToast(`Usuario "${data.user.username}" actualizado en la app y en tu Google Sheet`, 'success');
       }
     } catch (e) {
       console.error(e);
+      showToast('Error al actualizar usuario', 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('¿Seguro que deseas eliminar este usuario?')) return;
+    if (!window.confirm('¿Seguro que deseas eliminar este usuario? Se actualizará también en Google Sheet.')) return;
     try {
       const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -126,6 +166,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
           ...prev,
           users: prev.users.filter((u: any) => u.id !== id)
         }));
+        showToast('Usuario eliminado en la app y en tu Google Sheet', 'success');
       }
     } catch (e) {
       console.error(e);
@@ -331,8 +372,73 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
   );
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
+    <div className="space-y-4">
+      {/* Toast */}
+      {toastMsg && (
+        <div
+          className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-2.5 text-sm font-semibold animate-in fade-in slide-in-from-top-3 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+        >
+          {toastMsg.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+          )}
+          <span>{toastMsg.text}</span>
+        </div>
+      )}
+
+      {/* Banner de Sincronización Permanente con Google Sheets */}
+      <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                Persistencia 100% Permanente en Google Sheets
+              </span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Pestaña "Usuarios" Conectada
+              </span>
+            </div>
+            <p className="text-xs text-emerald-800 mt-0.5">
+              Todos los usuarios, contraseñas y permisos temporales se guardan de forma permanente en tu hoja oficial de Google. Nunca más se perderán tras una actualización o reinicio.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+          <button
+            onClick={() => handleSyncSheets('pull')}
+            disabled={syncingSheets}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all shadow-sm"
+            title="Recargar usuarios directamente desde la hoja de Google Sheets"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncingSheets ? 'animate-spin text-emerald-600' : ''}`} />
+            <span>Sincronizar con Sheet</span>
+          </button>
+
+          <a
+            href={SPREADSHEET_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-xl transition-all"
+            title="Abrir hoja de cálculo oficial en Google Sheets"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Ver Hoja</span>
+          </a>
+        </div>
+      </div>
+
+      {/* Header Principal */}
+      <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
