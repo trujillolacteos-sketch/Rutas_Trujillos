@@ -42,6 +42,7 @@ export const AVAILABLE_MENUS = [
   // GRUPO 3: ADMINISTRACIÓN Y FINANZAS
   { key: 'sales_reports', label: 'Reportes de Venta', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
   { key: 'commissions', label: 'Nómina y Comisiones', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  { key: 'contabilidad', label: 'Contabilidad', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
 
   // GRUPO 4: SISTEMA
   { key: 'zones', label: 'Zonas', group: 'Sistema', color: 'text-slate-700 bg-slate-100 border-slate-300' },

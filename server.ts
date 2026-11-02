@@ -53,6 +53,15 @@ import {
   deleteLineReport
 } from './server/productionLinesService.ts';
 
+import {
+  initContabilidadOnStartup,
+  createMovimiento,
+  deleteLocalMovimiento,
+  calculateContabilidadBalances,
+  loadLocalContabilidad,
+  fetchGoogleSheetContabilidad
+} from './server/contabilidadService.ts';
+
 const PAYROLLS_FILE = 'payrolls_store.json';
 
 export function loadLocalPayrolls(): any[] {
@@ -200,6 +209,12 @@ async function initPersistentDatabase() {
     await initUsersSyncOnStartup(currentState, saveState);
   } catch (sheetErr: any) {
     console.warn("Google Sheets Users notice (continuing with local state):", sheetErr.message);
+  }
+  // Google Sheets Contabilidad Persistence & Sync (Módulo Contabilidad)
+  try {
+    await initContabilidadOnStartup();
+  } catch (contErr: any) {
+    console.warn("Google Sheets Contabilidad notice (continuing with local state):", contErr.message);
   }
 }
 
@@ -1173,6 +1188,214 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ==========================================
+  // CONTABILIDAD Y BALANCES (Google Sheets)
+  // ==========================================
+
+  const checkContabilidadAccess = async (req: AuthRequest): Promise<boolean> => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (['admin', 'gerencia'].includes(role)) return true;
+      if (req.user?.uid === 'local-admin' || req.user?.uid?.startsWith('local-')) return true;
+      const st = loadState();
+      const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email);
+      if (localUser?.extraMenus && Array.isArray(localUser.extraMenus) && localUser.extraMenus.includes('contabilidad')) {
+        if (localUser.extraMenusExpiresAt) {
+          const today = new Date().toISOString().slice(0, 10);
+          if (today > localUser.extraMenusExpiresAt) return false;
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // GET Movimientos (con filtros y paginación)
+  app.get('/api/contabilidad/movimientos', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para acceder a Contabilidad" });
+
+      const all = loadLocalContabilidad();
+      const {
+        year,
+        mes,
+        semana,
+        cuentaMenor,
+        tipo,
+        cuentaFiscal,
+        search,
+        page = '1',
+        limit = '50'
+      } = req.query;
+
+      let filtered = all;
+
+      if (year) {
+        const yNum = parseInt(String(year), 10);
+        if (!isNaN(yNum)) filtered = filtered.filter(m => m.año === yNum);
+      }
+      if (mes) {
+        const mStr = String(mes).toLowerCase().trim();
+        filtered = filtered.filter(m => (m.mes || '').toLowerCase().trim() === mStr);
+      }
+      if (semana) {
+        const semNum = parseInt(String(semana), 10);
+        if (!isNaN(semNum)) filtered = filtered.filter(m => m.semanaNum === semNum);
+      }
+      if (cuentaMenor) {
+        const cmStr = String(cuentaMenor).toLowerCase().trim();
+        filtered = filtered.filter(m => (m.cuentaMenor || '').toLowerCase().trim() === cmStr);
+      }
+      if (tipo) {
+        const tStr = String(tipo).toLowerCase().trim();
+        filtered = filtered.filter(m => (m.tipoMovimiento || '').toLowerCase().trim() === tStr);
+      }
+      if (cuentaFiscal) {
+        const cfStr = String(cuentaFiscal).toLowerCase().trim();
+        filtered = filtered.filter(m => (m.cuentaFiscal || '').toLowerCase().trim() === cfStr);
+      }
+      if (search) {
+        const q = String(search).toLowerCase().trim();
+        filtered = filtered.filter(m =>
+          (m.motivo || '').toLowerCase().includes(q) ||
+          (m.autoriza || '').toLowerCase().includes(q) ||
+          (m.folio || '').toLowerCase().includes(q) ||
+          (m.cuentaMenor || '').toLowerCase().includes(q)
+        );
+      }
+
+      let totalEntradas = 0;
+      let totalSalidas = 0;
+      let totalNeto = 0;
+      let totalLeche = 0;
+      let totalLitrosLeche = 0;
+
+      filtered.forEach(m => {
+        const monto = Math.abs(Number(m.monto) || 0);
+        if ((m.tipoMovimiento || '').toLowerCase() === 'entrada') totalEntradas += monto;
+        if ((m.tipoMovimiento || '').toLowerCase() === 'salida') totalSalidas += monto;
+        totalNeto += (Number(m.totalNeto) || 0);
+        if ((m.cuentaMenor || '').toLowerCase() === 'leche') {
+          totalLeche += (m.litros && m.precioPorLitro ? m.litros * m.precioPorLitro : monto);
+          if (m.litros) totalLitrosLeche += Number(m.litros) || 0;
+        }
+      });
+
+      const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+      const limitNum = Math.max(1, Math.min(200, parseInt(String(limit), 10) || 50));
+      const total = filtered.length;
+      const totalPages = Math.ceil(total / limitNum) || 1;
+      const startIndex = (pageNum - 1) * limitNum;
+      const paginated = filtered.slice(startIndex, startIndex + limitNum);
+
+      res.json({
+        movimientos: paginated,
+        total,
+        page: pageNum,
+        totalPages,
+        summary: {
+          totalEntradas: Number(totalEntradas.toFixed(2)),
+          totalSalidas: Number(totalSalidas.toFixed(2)),
+          totalNeto: Number(totalNeto.toFixed(2)),
+          totalLeche: Number(totalLeche.toFixed(2)),
+          totalLitrosLeche: Number(totalLitrosLeche.toFixed(2))
+        }
+      });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en GET /api/contabilidad/movimientos:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Nuevo Movimiento
+  app.post('/api/contabilidad/movimientos', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para registrar en Contabilidad" });
+
+      const {
+        fecha,
+        empresa,
+        tipoMovimiento,
+        cuentaMenor,
+        monto,
+        motivo,
+        autoriza,
+        cuentaFiscal,
+        folio,
+        litros,
+        precioPorLitro
+      } = req.body;
+
+      if (!fecha) return res.status(400).json({ error: "La fecha es obligatoria" });
+      if (!cuentaMenor) return res.status(400).json({ error: "La cuenta menor es obligatoria" });
+
+      const newMov = await createMovimiento({
+        fecha,
+        empresa: empresa || 'Quesería',
+        tipoMovimiento: tipoMovimiento || 'Salida',
+        cuentaMenor,
+        monto: Number(monto) || 0,
+        motivo: motivo || '',
+        autoriza: autoriza || req.user?.displayName || req.user?.email || 'Usuario',
+        cuentaFiscal: cuentaFiscal || 'Efectivo',
+        folio: folio || '',
+        litros: litros !== undefined && litros !== '' ? Number(litros) : undefined,
+        precioPorLitro: precioPorLitro !== undefined && precioPorLitro !== '' ? Number(precioPorLitro) : undefined
+      });
+
+      res.json({ success: true, movimiento: newMov });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en POST /api/contabilidad/movimientos:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE Movimiento
+  app.delete('/api/contabilidad/movimientos/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para eliminar en Contabilidad" });
+
+      const result = deleteLocalMovimiento(req.params.id);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // GET Balances P&L (Semanal, Mensual, Anual)
+  app.get('/api/contabilidad/balances', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Balances" });
+
+      const yearParam = req.query.year ? parseInt(String(req.query.year), 10) : undefined;
+      const balances = calculateContabilidadBalances(yearParam);
+      res.json({ success: true, balances });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en GET /api/contabilidad/balances:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Forzar Resincronización desde Google Sheets
+  app.post('/api/contabilidad/sync-sheets', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Contabilidad" });
+
+      const rows = await fetchGoogleSheetContabilidad();
+      res.json({ success: true, count: rows.length });
+    } catch (err: any) {
+      console.error('[contabilidad] Error en POST /api/contabilidad/sync-sheets:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 

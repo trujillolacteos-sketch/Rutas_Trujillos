@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck, Calculator } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -22,6 +22,7 @@ import ProductionLinesView from './components/ProductionLinesView';
 import PurchasesView from './components/PurchasesView';
 import SuppliesInventoryView from './components/SuppliesInventoryView';
 import ProductionKpisView from './components/ProductionKpisView';
+import ContabilidadView from './components/ContabilidadView';
 import { auth } from './lib/firebase';
 
 
@@ -308,7 +309,8 @@ function App() {
 
   const showSalesReports = (canAccessRoutes || isOperator) || hasExtraMenu('sales_reports');
   const showCommissions = (canAccessRoutes || isOperator) || hasExtraMenu('commissions');
-  const showGroupAdmin = showSalesReports || showCommissions;
+  const showContabilidad = isAdmin || isGerencia || hasExtraMenu('contabilidad');
+  const showGroupAdmin = showSalesReports || showCommissions || showContabilidad;
 
   const showZones = isAdmin || hasExtraMenu('zones');
   const showSettings = isAdmin || hasExtraMenu('settings');
@@ -766,6 +768,21 @@ function App() {
                   <span>Nómina y Comisiones</span>
                 </button>
               )}
+
+              {/* Contabilidad y Balances */}
+              {showContabilidad && (
+                <button 
+                  onClick={() => setActiveTab('contabilidad')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'contabilidad' 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Calculator className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'contabilidad' ? 'text-white' : 'text-emerald-600'}`} />
+                  <span>Contabilidad</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -868,6 +885,7 @@ function App() {
               )}
               {activeTab === 'sales_reports' && showSalesReports && <SalesReportView state={state} role={role} user={user} />}
               {activeTab === 'commissions' && showCommissions && <CommissionsView token={token!} state={state} role={role} user={user} />}
+              {activeTab === 'contabilidad' && showContabilidad && <ContabilidadView token={token!} state={state} role={role} user={user} />}
               {activeTab === 'alerts' && showAlerts && <AlertsView state={state} setState={setState} />}
               {activeTab === 'settings' && showSettings && <SettingsView state={state} setState={setState} />}
               {activeTab === 'zones' && showZones && <ZonesView state={state} setState={setState} />}
