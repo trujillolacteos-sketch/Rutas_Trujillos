@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Users, UserPlus, Search, Filter, Phone, MessageSquare, AlertCircle,
-  Calendar, DollarSign, Briefcase, Building2, Download, RefreshCw,
-  Edit2, UserX, UserCheck, Eye, X, ShieldAlert, Heart, CheckCircle2,
-  Clock, Hash, MapPin, Mail, ChevronRight, Layers, FileSpreadsheet
+  Users, UserPlus, Search, Phone, MessageSquare, AlertCircle,
+  DollarSign, Briefcase, Download, RefreshCw,
+  Edit2, UserX, UserCheck, Eye, X, CheckCircle2,
+  Calendar, FileSpreadsheet
 } from 'lucide-react';
 
 export interface EmpleadoRH {
@@ -55,12 +55,11 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  // Filtros
+  // Filtros - Default a 'ACTIVO'
   const [search, setSearch] = useState('');
   const [estatusFiltro, setEstatusFiltro] = useState<'TODOS' | 'ACTIVO' | 'INACTIVO'>('ACTIVO');
   const [deptoFiltro, setDeptoFiltro] = useState('TODOS');
   const [tipoSalarioFiltro, setTipoSalarioFiltro] = useState('TODOS');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Modales
   const [showFormModal, setShowFormModal] = useState(false);
@@ -102,7 +101,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
       if (estatusFiltro !== 'TODOS') params.append('estatus', estatusFiltro);
       if (deptoFiltro !== 'TODOS') params.append('departamento', deptoFiltro);
       if (tipoSalarioFiltro !== 'TODOS') params.append('tipoSalario', tipoSalarioFiltro);
-      if (search) params.append('search', search);
+      if (search.trim()) params.append('search', search.trim());
 
       const res = await fetch(`/api/rh/empleados?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -119,9 +118,13 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
     }
   };
 
+  // Debounced auto-fetch on filter or search change
   useEffect(() => {
-    fetchEmpleados();
-  }, [estatusFiltro, deptoFiltro, tipoSalarioFiltro]);
+    const timer = setTimeout(() => {
+      fetchEmpleados();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search, estatusFiltro, deptoFiltro, tipoSalarioFiltro]);
 
   // Sincronizar desde Sheets
   const handleSyncSheets = async () => {
@@ -152,9 +155,8 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      const nextNum = data.success ? data.nextNumero : 1059;
+      const nextNum = data.nextNumero || 1059;
 
-      const today = new Date().toLocaleDateString('es-MX');
       setEditingEmp(null);
       setFormData({
         numeroEmpleado: nextNum,
@@ -173,12 +175,12 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
         departamento: 'PRODUCCIÓN',
         tipoSalario: 'jornada',
         sueldoBase: 2200,
-        fechaIngreso: today,
+        fechaIngreso: new Date().toLocaleDateString('es-MX'),
         fechaBaja: ''
       });
       setShowFormModal(true);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      alert(`Error al obtener número de empleado: ${err.message}`);
     }
   };
 
@@ -187,9 +189,9 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
     setEditingEmp(emp);
     setFormData({
       numeroEmpleado: emp.numeroEmpleado,
-      nombre: emp.nombre || '',
-      primerApellido: emp.primerApellido || '',
-      segundoApellido: emp.segundoApellido || '',
+      nombre: emp.nombre,
+      primerApellido: emp.primerApellido,
+      segundoApellido: emp.segundoApellido,
       estatus: emp.estatus,
       fechaNacimiento: emp.fechaNacimiento || '',
       curp: emp.curp || '',
@@ -198,24 +200,23 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
       contactoEmergenciaNombre: emp.contactoEmergenciaNombre || '',
       contactoEmergenciaParentesco: emp.contactoEmergenciaParentesco || '',
       contactoEmergenciaTelefono: emp.contactoEmergenciaTelefono || '',
-      puesto: emp.puesto || 'PRODUCCIÓN',
-      departamento: emp.departamento || 'PRODUCCIÓN',
-      tipoSalario: emp.tipoSalario || 'jornada',
-      sueldoBase: emp.sueldoBase || 2200,
+      puesto: emp.puesto,
+      departamento: emp.departamento,
+      tipoSalario: emp.tipoSalario,
+      sueldoBase: emp.sueldoBase,
       fechaIngreso: emp.fechaIngreso || '',
       fechaBaja: emp.fechaBaja || ''
     });
     setShowFormModal(true);
   };
 
-  // Guardar Alta o Edición
+  // Guardar Formulario (Alta o Edición)
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nombre.trim()) {
-      alert('El nombre del colaborador es obligatorio.');
+      alert('El nombre es obligatorio');
       return;
     }
-
     setFormSaving(true);
     try {
       const url = editingEmp ? `/api/rh/empleados/${editingEmp.id}` : '/api/rh/empleados';
@@ -347,474 +348,365 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
   }, [stats]);
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 border border-indigo-900/40">
-        <div className="flex items-center gap-4">
-          <div className="p-3.5 bg-indigo-500/20 rounded-2xl backdrop-blur-md border border-indigo-400/30 shadow-inner">
-            <Users className="w-8 h-8 text-indigo-300" />
+    <div className="space-y-4 pb-16">
+      {/* Encabezado limpio y minimalista */}
+      <div className="bg-white rounded-2xl p-4 md:p-5 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
+            <Users className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black tracking-tight text-white">Recursos Humanos</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                Padrón & Expedientes
+              <h1 className="text-lg md:text-xl font-black text-slate-900 tracking-tight">Recursos Humanos</h1>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                Padrón
               </span>
             </div>
-            <p className="text-sm text-slate-300 mt-0.5">
-              Directorio de colaboradores, expedientes digitales y contactos de emergencia sincronizados con Google Sheets.
+            <p className="text-xs text-slate-500">
+              Padrón de colaboradores y expedientes sincronizados con la pestaña RH de Google Sheets.
             </p>
           </div>
         </div>
 
-        {/* Action Buttons */}
+        {/* Botones de acción principales */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all shadow-sm"
+            title="Descargar padrón actual a formato CSV"
           >
-            <Download className="w-4 h-4 text-indigo-300" />
-            <span>Exportar CSV</span>
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>CSV</span>
           </button>
           <button
             onClick={handleSyncSheets}
             disabled={syncing}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-white transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all disabled:opacity-50"
             title="Sincronizar directamente con la pestaña RH de Google Sheets"
           >
-            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-            <span>{syncing ? 'Sincronizando...' : 'Sincronizar Sheets'}</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
+            <span>{syncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
           <button
             onClick={handleOpenCreate}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/40 text-xs font-bold text-white transition-all shadow-md"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition-all shadow-sm"
           >
-            <UserPlus className="w-4 h-4" />
+            <UserPlus className="w-3.5 h-3.5" />
             <span>Nuevo Colaborador</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Resumen rápido de métricas (KPIs compactos) */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. Plantilla Total */}
-          <div className="bg-white p-4.5 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="bg-white p-3 rounded-xl border border-emerald-200/80 bg-emerald-50/20 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold uppercase text-slate-500 block">Plantilla Total</span>
-              <div className="text-2xl font-black text-slate-900 mt-0.5">{stats.totalPlantilla}</div>
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Histórico de colaboradores</span>
+              <span className="text-[10px] font-bold uppercase text-emerald-800 block">Colaboradores Activos</span>
+              <div className="text-xl font-black text-emerald-900 mt-0.5">{stats.totalActivos}</div>
             </div>
-            <div className="p-3 bg-slate-100 rounded-xl text-slate-600">
-              <Users className="w-6 h-6" />
+            <div className="p-2 bg-emerald-100 rounded-lg text-emerald-700">
+              <UserCheck className="w-4 h-4" />
             </div>
           </div>
 
-          {/* 2. Colaboradores Activos */}
-          <div className="bg-white p-4.5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-3 rounded-xl border border-indigo-200/80 bg-indigo-50/20 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold uppercase text-emerald-800 block">Colaboradores Activos</span>
-              <div className="text-2xl font-black text-emerald-900 mt-0.5">{stats.totalActivos}</div>
-              <span className="text-[11px] font-semibold text-emerald-700 mt-0.5 block">
-                {((stats.totalActivos / (stats.totalPlantilla || 1)) * 100).toFixed(0)}% de la plantilla
-              </span>
+              <span className="text-[10px] font-bold uppercase text-indigo-800 block">Masa Salarial Activa</span>
+              <div className="text-lg font-black text-indigo-950 mt-0.5">{fmt(stats.masaSalarialSemanalActiva)}</div>
             </div>
-            <div className="p-3 bg-emerald-100 rounded-xl text-emerald-700">
-              <UserCheck className="w-6 h-6" />
+            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+              <DollarSign className="w-4 h-4" />
             </div>
           </div>
 
-          {/* 3. Colaboradores Inactivos */}
-          <div className="bg-white p-4.5 rounded-2xl border border-slate-200/90 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold uppercase text-slate-500 block">Bajas / Inactivos</span>
-              <div className="text-2xl font-black text-slate-700 mt-0.5">{stats.totalInactivos}</div>
-              <span className="text-[11px] text-slate-400 mt-0.5 block">Con fecha de baja registrada</span>
+              <span className="text-[10px] font-bold uppercase text-slate-500 block">Bajas / Inactivos</span>
+              <div className="text-xl font-black text-slate-700 mt-0.5">{stats.totalInactivos}</div>
             </div>
-            <div className="p-3 bg-slate-100 rounded-xl text-slate-500">
-              <UserX className="w-6 h-6" />
+            <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
+              <UserX className="w-4 h-4" />
             </div>
           </div>
 
-          {/* 4. Masa Salarial Semanal */}
-          <div className="bg-white p-4.5 rounded-2xl border border-indigo-200 bg-indigo-50/20 shadow-sm flex items-center justify-between">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold uppercase text-indigo-800 block">Masa Salarial Activa</span>
-              <div className="text-xl font-black text-indigo-950 mt-0.5">
-                {fmt(stats.masaSalarialSemanalActiva)}
-              </div>
-              <span className="text-[11px] font-semibold text-indigo-700 mt-0.5 block">
-                Estimado semanal sueldos base
-              </span>
+              <span className="text-[10px] font-bold uppercase text-slate-500 block">Plantilla Total</span>
+              <div className="text-xl font-black text-slate-800 mt-0.5">{stats.totalPlantilla}</div>
             </div>
-            <div className="p-3 bg-indigo-100 rounded-xl text-indigo-700">
-              <DollarSign className="w-6 h-6" />
+            <div className="p-2 bg-slate-100 rounded-lg text-slate-600">
+              <Users className="w-4 h-4" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Control Bar: Filtros y Búsqueda */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Buscador */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+      {/* Barra de Filtros & Búsqueda: Simple y directa */}
+      <div className="bg-white p-3 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+        {/* Buscador predictivo */}
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Buscar por nombre, # empleado, puesto, teléfono o CURP..."
+            placeholder="Buscar por nombre, puesto, # empleado, teléfono o CURP..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
           />
         </div>
 
-        {/* Filtros Dropdowns */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Filtro Estatus */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
-            <button
-              onClick={() => setEstatusFiltro('ACTIVO')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                estatusFiltro === 'ACTIVO'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Activos
-            </button>
-            <button
-              onClick={() => setEstatusFiltro('INACTIVO')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                estatusFiltro === 'INACTIVO'
-                  ? 'bg-slate-700 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Inactivos
-            </button>
-            <button
-              onClick={() => setEstatusFiltro('TODOS')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                estatusFiltro === 'TODOS'
-                  ? 'bg-white text-indigo-900 shadow-sm border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Todos
-            </button>
-          </div>
-
-          {/* Filtro Departamento */}
-          <select
-            value={deptoFiltro}
-            onChange={(e) => setDeptoFiltro(e.target.value)}
-            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        {/* Filtro de Estatus (Activos por default) */}
+        <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs shrink-0">
+          <button
+            onClick={() => setEstatusFiltro('ACTIVO')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              estatusFiltro === 'ACTIVO'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <option value="TODOS">Todos los Deptos</option>
-            {listaDeptos.map(d => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-
-          {/* Filtro Tipo Salario */}
-          <select
-            value={tipoSalarioFiltro}
-            onChange={(e) => setTipoSalarioFiltro(e.target.value)}
-            className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            Activos
+          </button>
+          <button
+            onClick={() => setEstatusFiltro('INACTIVO')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              estatusFiltro === 'INACTIVO'
+                ? 'bg-slate-700 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <option value="TODOS">Todos los Salarios</option>
-            <option value="jornada">Jornada</option>
-            <option value="fijo">Fijo</option>
-            <option value="hora">Por Hora</option>
-            <option value="gerencia">Gerencia</option>
-          </select>
-
-          {/* View Toggle */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'cards' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-              }`}
-            >
-              Tarjetas
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
-              }`}
-            >
-              Tabla
-            </button>
-          </div>
+            Bajas
+          </button>
+          <button
+            onClick={() => setEstatusFiltro('TODOS')}
+            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              estatusFiltro === 'TODOS'
+                ? 'bg-white text-indigo-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Todos
+          </button>
         </div>
+
+        {/* Filtro Departamento */}
+        <select
+          value={deptoFiltro}
+          onChange={(e) => setDeptoFiltro(e.target.value)}
+          className="px-2.5 py-1.5 text-xs font-medium rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
+        >
+          <option value="TODOS">Todos los Deptos</option>
+          {listaDeptos.map(d => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+
+        {/* Filtro Tipo Salario */}
+        <select
+          value={tipoSalarioFiltro}
+          onChange={(e) => setTipoSalarioFiltro(e.target.value)}
+          className="px-2.5 py-1.5 text-xs font-medium rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shrink-0"
+        >
+          <option value="TODOS">Todos los Salarios</option>
+          <option value="jornada">Jornada</option>
+          <option value="fijo">Fijo</option>
+          <option value="hora">Por Hora</option>
+          <option value="gerencia">Gerencia</option>
+        </select>
       </div>
 
-      {/* Contenido: Cards o Tabla */}
+      {/* Renglones dentro de la Tabla */}
       {loading ? (
-        <div className="bg-white rounded-2xl p-16 text-center text-slate-500 border border-slate-200 shadow-sm">
-          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-indigo-600" />
-          <div className="text-base font-bold text-slate-800">Cargando directorio de colaboradores...</div>
-          <div className="text-xs text-slate-400 mt-1">Consultando hoja RH</div>
+        <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-200 shadow-sm">
+          <RefreshCw className="w-7 h-7 animate-spin mx-auto mb-2 text-indigo-600" />
+          <div className="text-sm font-bold text-slate-800">Cargando colaboradores...</div>
+          <div className="text-xs text-slate-400 mt-0.5">Consultando hoja RH de Google Sheets</div>
         </div>
       ) : empleados.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-200">
-          No se encontraron colaboradores con los filtros seleccionados.
-        </div>
-      ) : viewMode === 'cards' ? (
-        /* ================= VISTA EN TARJETAS ================= */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {empleados.map((emp) => {
-            const isActivo = emp.estatus === 'ACTIVO';
-            const initials = emp.nombreCompleto
-              .split(' ')
-              .filter(Boolean)
-              .slice(0, 2)
-              .map(p => p[0])
-              .join('')
-              .toUpperCase();
-
-            return (
-              <div
-                key={emp.id}
-                className={`bg-white rounded-2xl p-5 border shadow-sm transition-all hover:shadow-md flex flex-col justify-between ${
-                  isActivo ? 'border-slate-200/90' : 'border-slate-200 bg-slate-50/50 opacity-90'
-                }`}
-              >
-                <div>
-                  {/* Card Header: Avatar + Nombre + Estatus */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-inner ${
-                        isActivo
-                          ? 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white'
-                          : 'bg-slate-300 text-slate-700'
-                      }`}>
-                        {initials || 'EM'}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                            #{emp.numeroEmpleado}
-                          </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            isActivo
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-slate-200 text-slate-700'
-                          }`}>
-                            {emp.estatus}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-black text-slate-900 mt-1 leading-snug line-clamp-1" title={emp.nombreCompleto}>
-                          {emp.nombreCompleto}
-                        </h3>
-                        <p className="text-xs text-slate-500 font-medium">
-                          {emp.puesto} • <span className="font-semibold text-indigo-700">{emp.departamento}</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="my-3.5 border-t border-slate-100" />
-
-                  {/* Info Blocks */}
-                  <div className="space-y-2.5 text-xs">
-                    {/* Sueldo y Esquema */}
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="font-medium">Sueldo Base:</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-black text-slate-900">{emp.sueldoBaseTexto || fmt(emp.sueldoBase)}</span>
-                        <span className="text-[10px] text-slate-500 ml-1 font-semibold uppercase">({emp.tipoSalario})</span>
-                      </div>
-                    </div>
-
-                    {/* Teléfono & WhatsApp */}
-                    {emp.telefonoWhatsapp && (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <Phone className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>WhatsApp:</span>
-                        </div>
-                        <a
-                          href={`https://wa.me/52${emp.telefonoWhatsapp.replace(/\D/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold text-indigo-700 hover:text-indigo-900 hover:underline flex items-center gap-1"
-                        >
-                          <MessageSquare className="w-3 h-3 text-emerald-600" />
-                          {emp.telefonoWhatsapp}
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Contacto de Emergencia Destacado */}
-                    {(emp.contactoEmergenciaNombre || emp.contactoEmergenciaTelefono) && (
-                      <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/80 space-y-1">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-rose-800">
-                          <AlertCircle className="w-3 h-3 text-rose-600" />
-                          <span>Contacto de Emergencia ({emp.contactoEmergenciaParentesco || 'Familiar'}):</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-black text-rose-950">
-                          <span className="truncate pr-2">{emp.contactoEmergenciaNombre || 'Nombre no registrado'}</span>
-                          {emp.contactoEmergenciaTelefono && (
-                            <a
-                              href={`tel:${emp.contactoEmergenciaTelefono}`}
-                              className="px-2 py-0.5 rounded-lg bg-rose-200/70 hover:bg-rose-300 text-rose-900 text-[11px] font-bold shrink-0 transition-colors"
-                            >
-                              📞 {emp.contactoEmergenciaTelefono}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Antigüedad & Ingreso */}
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                      <span>Ingreso: <strong className="text-slate-700">{emp.fechaIngreso || 'N/D'}</strong></span>
-                      <span>Antigüedad: <strong className="text-indigo-700">{emp.antiguedad || 'N/D'}</strong></span>
-                    </div>
-
-                    {!isActivo && emp.fechaBaja && (
-                      <div className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 text-center">
-                        Baja registrada el: {emp.fechaBaja}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Card Actions */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => setDetailEmp(emp)}
-                    className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Expediente</span>
-                  </button>
-                  <button
-                    onClick={() => handleOpenEdit(emp)}
-                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-all"
-                    title="Editar colaborador"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  {isActivo ? (
-                    <button
-                      onClick={() => {
-                        setBajaEmp(emp);
-                        setFechaBajaInput(new Date().toLocaleDateString('es-MX'));
-                        setMotivoBajaInput('');
-                      }}
-                      className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-all"
-                      title="Dar de baja"
-                    >
-                      <UserX className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleReactivar(emp)}
-                      className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-all"
-                      title="Reactivar colaborador"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          No se encontraron colaboradores con los filtros seleccionados ({estatusFiltro === 'ACTIVO' ? 'Activos' : estatusFiltro === 'INACTIVO' ? 'Bajas' : 'Todos'}).
         </div>
       ) : (
-        /* ================= VISTA EN TABLA ================= */
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
-                <tr className="bg-slate-100 text-slate-700 font-black text-[10px] uppercase tracking-wider border-b border-slate-300">
-                  <th className="py-3 px-3"># Emp</th>
-                  <th className="py-3 px-3">Estatus</th>
-                  <th className="py-3 px-4 min-w-[200px]">Nombre Completo</th>
-                  <th className="py-3 px-3">Puesto</th>
-                  <th className="py-3 px-3">Departamento</th>
-                  <th className="py-3 px-3 text-right">Sueldo Base</th>
-                  <th className="py-3 px-3 text-center">Tipo</th>
-                  <th className="py-3 px-3">Ingreso</th>
-                  <th className="py-3 px-3">Antigüedad</th>
-                  <th className="py-3 px-4 min-w-[180px]">Contacto Emergencia</th>
-                  <th className="py-3 px-3 text-center">Acciones</th>
+                <tr className="bg-slate-50 text-slate-600 font-bold text-[10px] uppercase tracking-wider border-b border-slate-200">
+                  <th className="py-2.5 px-3"># Emp</th>
+                  <th className="py-2.5 px-3">Estatus</th>
+                  <th className="py-2.5 px-4 min-w-[200px]">Nombre Completo</th>
+                  <th className="py-2.5 px-3">Puesto</th>
+                  <th className="py-2.5 px-3">Departamento</th>
+                  <th className="py-2.5 px-3 text-right">Sueldo Base</th>
+                  <th className="py-2.5 px-3 text-center">Tipo</th>
+                  <th className="py-2.5 px-3">Antigüedad</th>
+                  <th className="py-2.5 px-3">WhatsApp / Tel</th>
+                  <th className="py-2.5 px-4 min-w-[180px]">Contacto Emergencia</th>
+                  <th className="py-2.5 px-3 text-center min-w-[120px]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {empleados.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 px-3 font-black text-slate-600">
-                      #{emp.numeroEmpleado}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        emp.estatus === 'ACTIVO'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}>
-                        {emp.estatus}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 font-bold text-slate-900">
-                      {emp.nombreCompleto}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600 font-medium">
-                      {emp.puesto}
-                    </td>
-                    <td className="py-2.5 px-3 font-semibold text-indigo-700">
-                      {emp.departamento}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-black text-slate-900">
-                      {emp.sueldoBaseTexto || fmt(emp.sueldoBase)}
-                    </td>
-                    <td className="py-2.5 px-3 text-center uppercase text-[10px] font-bold text-slate-500">
-                      {emp.tipoSalario}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600">
-                      {emp.fechaIngreso || '-'}
-                    </td>
-                    <td className="py-2.5 px-3 text-indigo-800 font-medium">
-                      {emp.antiguedad || '-'}
-                    </td>
-                    <td className="py-2.5 px-4">
-                      {emp.contactoEmergenciaNombre ? (
-                        <div>
-                          <span className="font-bold text-rose-900 block leading-tight">{emp.contactoEmergenciaNombre}</span>
-                          <span className="text-[10px] text-slate-500">({emp.contactoEmergenciaParentesco || 'Familiar'}) {emp.contactoEmergenciaTelefono}</span>
+                {empleados.map((emp) => {
+                  const isActivo = emp.estatus === 'ACTIVO';
+                  const cleanPhone = (emp.telefonoWhatsapp || '').replace(/\D/g, '');
+                  const cleanEmergPhone = (emp.contactoEmergenciaTelefono || '').replace(/\D/g, '');
+
+                  return (
+                    <tr
+                      key={emp.id}
+                      className={`transition-colors ${isActivo ? 'hover:bg-indigo-50/30' : 'bg-slate-50/50 hover:bg-slate-100/60 opacity-85'}`}
+                    >
+                      {/* # Empleado */}
+                      <td className="py-2.5 px-3">
+                        <span className="font-mono font-black text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
+                          #{emp.numeroEmpleado}
+                        </span>
+                      </td>
+
+                      {/* Estatus */}
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isActivo
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-slate-200 text-slate-700 border border-slate-300'
+                        }`}>
+                          {emp.estatus}
+                        </span>
+                      </td>
+
+                      {/* Nombre Completo */}
+                      <td className="py-2.5 px-4 font-bold text-slate-900">
+                        <div className="flex items-center gap-1.5">
+                          <span>{emp.nombreCompleto}</span>
+                          {emp.edad && (
+                            <span className="text-[10px] text-slate-400 font-normal">({emp.edad}a)</span>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400 text-[11px]">-</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => setDetailEmp(emp)}
-                          className="p-1 rounded-lg hover:bg-slate-200 text-slate-600"
-                          title="Ver detalle"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(emp)}
-                          className="p-1 rounded-lg hover:bg-slate-200 text-slate-600"
-                          title="Editar"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+
+                      {/* Puesto */}
+                      <td className="py-2.5 px-3 text-slate-600 font-medium">
+                        {emp.puesto}
+                      </td>
+
+                      {/* Departamento */}
+                      <td className="py-2.5 px-3">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-bold border border-indigo-100">
+                          {emp.departamento}
+                        </span>
+                      </td>
+
+                      {/* Sueldo Base */}
+                      <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                        {emp.sueldoBaseTexto || fmt(emp.sueldoBase)}
+                      </td>
+
+                      {/* Tipo Salario */}
+                      <td className="py-2.5 px-3 text-center uppercase text-[10px] font-bold text-slate-500">
+                        {emp.tipoSalario}
+                      </td>
+
+                      {/* Antigüedad */}
+                      <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                        <div>{emp.antiguedad || '-'}</div>
+                        <div className="text-[10px] text-slate-400">Ing: {emp.fechaIngreso || 'N/D'}</div>
+                      </td>
+
+                      {/* WhatsApp / Teléfono */}
+                      <td className="py-2.5 px-3 text-slate-600">
+                        {emp.telefonoWhatsapp ? (
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={`https://wa.me/52${cleanPhone}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
+                              title="Enviar WhatsApp"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>{emp.telefonoWhatsapp}</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+
+                      {/* Contacto de Emergencia */}
+                      <td className="py-2.5 px-4">
+                        {emp.contactoEmergenciaNombre ? (
+                          <div className="space-y-0.5">
+                            <span className="font-bold text-rose-900 block leading-tight text-[11px]">
+                              {emp.contactoEmergenciaNombre}
+                            </span>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                              <span>({emp.contactoEmergenciaParentesco || 'Familiar'})</span>
+                              {emp.contactoEmergenciaTelefono && (
+                                <a
+                                  href={`tel:${cleanEmergPhone}`}
+                                  className="text-rose-700 hover:underline font-bold inline-flex items-center gap-0.5"
+                                  title="Llamar"
+                                >
+                                  <Phone className="w-2.5 h-2.5" />
+                                  <span>{emp.contactoEmergenciaTelefono}</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">-</span>
+                        )}
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          {/* Ver Expediente */}
+                          <button
+                            onClick={() => setDetailEmp(emp)}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 transition-colors"
+                            title="Ver expediente digital completo"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Editar Colaborador */}
+                          <button
+                            onClick={() => handleOpenEdit(emp)}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 transition-colors"
+                            title="Editar datos del colaborador"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Baja o Reactivar */}
+                          {isActivo ? (
+                            <button
+                              onClick={() => {
+                                setBajaEmp(emp);
+                                setFechaBajaInput(new Date().toLocaleDateString('es-MX'));
+                                setMotivoBajaInput('');
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
+                              title="Dar de baja"
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleReactivar(emp)}
+                              className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 transition-colors"
+                              title="Reactivar colaborador"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -824,11 +716,11 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
       {/* ================= MODAL: DETALLE EXPEDIENTE COMPLETO ================= */}
       {detailEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white font-black text-base flex items-center justify-center shadow-md">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md">
                   #{detailEmp.numeroEmpleado}
                 </div>
                 <div>
@@ -853,15 +745,15 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
               </button>
             </div>
 
-            {/* Grid de 3 Secciones */}
-            <div className="space-y-4 text-xs">
+            {/* Grid de Secciones */}
+            <div className="space-y-3.5 text-xs">
               {/* Sección 1: Datos Personales */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
-                <h4 className="text-[11px] font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <h4 className="text-[10px] font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5" />
                   1. Información Personal
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Nombres:</span>
                     <span className="font-bold text-slate-800">{detailEmp.nombre || '-'}</span>
@@ -884,12 +776,12 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
               </div>
 
               {/* Sección 2: Contacto & Emergencia */}
-              <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-2.5">
-                <h4 className="text-[11px] font-black uppercase text-rose-900 tracking-wider flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-2">
+                <h4 className="text-[10px] font-black uppercase text-rose-900 tracking-wider flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                  2. Contacto de Emergencia & Localización
+                  2. Contacto de Emergencia & WhatsApp
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Teléfono WhatsApp:</span>
                     <span className="font-bold text-slate-800">{detailEmp.telefonoWhatsapp || 'N/D'}</span>
@@ -899,7 +791,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                     <span className="font-bold text-slate-800 truncate block">{detailEmp.correoElectronico || 'N/D'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Persona de Contacto:</span>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Contacto de Emergencia:</span>
                     <span className="font-black text-rose-950">{detailEmp.contactoEmergenciaNombre || 'No registrado'}</span>
                   </div>
                   <div>
@@ -911,9 +803,9 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                     {detailEmp.contactoEmergenciaTelefono ? (
                       <a
                         href={`tel:${detailEmp.contactoEmergenciaTelefono}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs mt-1 hover:bg-rose-700 transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs mt-1 hover:bg-rose-700 transition-colors shadow-xs"
                       >
-                        <Phone className="w-3.5 h-3.5" />
+                        <Phone className="w-3 h-3" />
                         Llamar a {detailEmp.contactoEmergenciaTelefono}
                       </a>
                     ) : (
@@ -924,12 +816,12 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
               </div>
 
               {/* Sección 3: Datos Laborales */}
-              <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-2.5">
-                <h4 className="text-[11px] font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-2">
+                <h4 className="text-[10px] font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5">
                   <Briefcase className="w-3.5 h-3.5" />
                   3. Datos Laborales y Sueldo
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Sueldo Base:</span>
                     <span className="text-sm font-black text-emerald-800">{detailEmp.sueldoBaseTexto || fmt(detailEmp.sueldoBase)}</span>
@@ -976,7 +868,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
       {/* ================= MODAL: ALTA Y EDICIÓN DE COLABORADOR (PASO 2) ================= */}
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-8">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2.5 rounded-xl bg-indigo-100 text-indigo-700">
@@ -987,7 +879,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                     {editingEmp ? `Editar Colaborador #${editingEmp.numeroEmpleado}` : 'Registrar Nuevo Colaborador'}
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Los datos se guardarán automáticamente en la pestaña RH de Google Sheets.
+                    Los datos se sincronizarán directamente en la pestaña RH de Google Sheets.
                   </p>
                 </div>
               </div>
@@ -1001,11 +893,11 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
 
             <form onSubmit={handleSaveForm} className="space-y-4 text-xs">
               {/* Sección 1: Datos Personales */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
-                <span className="text-[11px] font-black uppercase text-indigo-900 tracking-wider block">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5">
+                <span className="text-[10px] font-black uppercase text-indigo-900 tracking-wider block">
                   1. Datos Personales
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Nombre (s) *</label>
                     <input
@@ -1062,11 +954,11 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
               </div>
 
               {/* Sección 2: Contacto & Emergencia */}
-              <div className="p-4 rounded-2xl bg-rose-50/50 border border-rose-200/80 space-y-3">
-                <span className="text-[11px] font-black uppercase text-rose-900 tracking-wider block">
+              <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200/80 space-y-2.5">
+                <span className="text-[10px] font-black uppercase text-rose-900 tracking-wider block">
                   2. Contacto & Emergencias
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Teléfono WhatsApp</label>
                     <input
@@ -1094,7 +986,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                       type="text"
                       value={formData.contactoEmergenciaNombre}
                       onChange={(e) => setFormData({ ...formData, contactoEmergenciaNombre: e.target.value })}
-                      placeholder="Ej. Sanjuana Pérez"
+                      placeholder="Ej. Familiar o cónyuge"
                       className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
@@ -1124,11 +1016,11 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
               </div>
 
               {/* Sección 3: Datos Laborales */}
-              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-3">
-                <span className="text-[11px] font-black uppercase text-indigo-900 tracking-wider block">
+              <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 space-y-2.5">
+                <span className="text-[10px] font-black uppercase text-indigo-900 tracking-wider block">
                   3. Datos Laborales & Nómina
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Número de Empleado</label>
                     <input
@@ -1161,6 +1053,8 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                       <option value="GERENCIA">GERENCIA</option>
                       <option value="RUTA">RUTA</option>
                       <option value="ADMINISTRACIÓN">ADMINISTRACIÓN</option>
+                      <option value="VENTAS">VENTAS</option>
+                      <option value="CHOFER">CHOFER</option>
                     </select>
                   </div>
 
@@ -1231,14 +1125,14 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                 <button
                   type="button"
                   onClick={() => setShowFormModal(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={formSaving}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+                  className="px-4.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {formSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                   <span>{formSaving ? 'Guardando en Sheets...' : editingEmp ? 'Actualizar Colaborador' : 'Crear Colaborador'}</span>
