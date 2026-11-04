@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Clock, Calendar, Search, RefreshCw, Download, CheckCircle2,
   AlertTriangle, Users, Award, ShieldAlert, Edit2, ChevronRight,
-  Sun, Moon, Coffee, X, Info
+  Archive, History, Lock, Unlock, ArrowRight, X, AlertCircle
 } from 'lucide-react';
 
 export interface ChecadaDia {
@@ -35,6 +35,28 @@ export interface EmpleadoChecada {
   };
 }
 
+export interface SemanaOption {
+  id: string;
+  semana: number;
+  anio: number;
+  periodo: string;
+  cerrada: boolean;
+  fechaCierre?: string;
+  esActiva: boolean;
+}
+
+export interface SemanaChecadas {
+  id: string;
+  semana: number;
+  anio: number;
+  fechaInicio: string;
+  fechaFin: string;
+  periodo: string;
+  cerrada: boolean;
+  fechaCierre?: string;
+  empleados: EmpleadoChecada[];
+}
+
 export interface ChecadasStats {
   totalEmpleados: number;
   totalFaltas: number;
@@ -61,7 +83,9 @@ const DIAS_LABEL: Record<DiaSemana, { nombre: string; color: string; badge: stri
 };
 
 export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
-  const [checadas, setChecadas] = useState<EmpleadoChecada[]>([]);
+  const [semanaActual, setSemanaActual] = useState<SemanaChecadas | null>(null);
+  const [semanasDisponibles, setSemanasDisponibles] = useState<SemanaOption[]>([]);
+  const [selectedSemanaId, setSelectedSemanaId] = useState<string>('');
   const [stats, setStats] = useState<ChecadasStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -94,16 +118,25 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
   } | null>(null);
   const [savingIncap, setSavingIncap] = useState(false);
 
-  // Fetch Checadas
-  const fetchChecadas = async () => {
+  // Modal de Confirmación de Archivar Semana
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  // Fetch Checadas (soporta cargar semana específica)
+  const fetchChecadas = async (semanaId?: string) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/rh/checadas', {
+      const url = semanaId ? `/api/rh/checadas?semanaId=${encodeURIComponent(semanaId)}` : '/api/rh/checadas';
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       if (data.success) {
-        setChecadas(data.checadas || []);
+        setSemanaActual(data.semanaActual || null);
+        setSemanasDisponibles(data.semanasDisponibles || []);
+        if (data.semanaActual?.id) {
+          setSelectedSemanaId(data.semanaActual.id);
+        }
         setStats(data.stats || null);
       }
     } catch (err) {
@@ -117,6 +150,12 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
     fetchChecadas();
   }, []);
 
+  // Cambiar de semana (histórico)
+  const handleSelectSemana = (id: string) => {
+    setSelectedSemanaId(id);
+    fetchChecadas(id);
+  };
+
   // Sync bajo demanda con Sheets
   const handleSyncSheets = async () => {
     setSyncing(true);
@@ -127,9 +166,8 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`¡Sincronización exitosa! Se cargaron ${data.count} colaboradores desde la hoja Checadas.`);
-        setChecadas(data.checadas || []);
-        setStats(data.stats || null);
+        alert(`¡Sincronización exitosa! Se actualizaron los datos desde la hoja Checadas e Histórico.`);
+        fetchChecadas(selectedSemanaId);
       } else {
         alert(data.error || 'Error al sincronizar Checadas');
       }
@@ -140,8 +178,35 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
     }
   };
 
+  // Archivar Semana Actual
+  const handleArchiveWeek = async () => {
+    setArchiving(true);
+    try {
+      const res = await fetch('/api/rh/checadas/archivar', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`¡Semana archivada con éxito! Se respaldó en Historico_Checadas en Google Sheets y se inició la siguiente semana.`);
+        setShowArchiveConfirm(false);
+        fetchChecadas(); // carga nueva semana activa
+      } else {
+        alert(data.error || 'Error al archivar semana');
+      }
+    } catch (err: any) {
+      alert(`Error de red: ${err.message}`);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   // Abrir modal de edición para un día
   const handleOpenEditDia = (emp: EmpleadoChecada, dia: DiaSemana) => {
+    if (semanaActual?.cerrada) {
+      alert('Esta semana ya fue archivada en el histórico. Los registros son de solo lectura.');
+      return;
+    }
     const d = emp.dias[dia];
     setEditModal({
       open: true,
@@ -178,7 +243,7 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
       const data = await res.json();
       if (data.success) {
         setEditModal(null);
-        fetchChecadas();
+        fetchChecadas(selectedSemanaId);
       } else {
         alert(data.error || 'Error al guardar checada');
       }
@@ -193,6 +258,10 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
   const handleSaveIncap = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!incapModal) return;
+    if (semanaActual?.cerrada) {
+      alert('Esta semana está archivada y es de solo lectura.');
+      return;
+    }
     setSavingIncap(true);
     try {
       const res = await fetch(`/api/rh/checadas/${incapModal.rowNumber}/incapacidades-vacaciones`, {
@@ -209,7 +278,7 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
       const data = await res.json();
       if (data.success) {
         setIncapModal(null);
-        fetchChecadas();
+        fetchChecadas(selectedSemanaId);
       } else {
         alert(data.error || 'Error al guardar');
       }
@@ -222,9 +291,9 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
 
   // Exportar a CSV
   const handleExportCSV = () => {
-    if (checadas.length === 0) return;
+    if (!semanaActual || semanaActual.empleados.length === 0) return;
     const headers = [
-      'Empleado', 'Jornada', 'Faltas', 'Jornada Incompleta', 'Incapacidades', 'Vacaciones', 'Tipo',
+      'Semana', 'Año', 'Periodo', 'Empleado', 'Tipo', 'Jornada', 'Faltas', 'Jor Incompleta', 'Incapacidades', 'Vacaciones',
       'Extras Total', 'Horas Totales',
       'Lun Tot', 'Lun Ext',
       'Mar Tot', 'Mar Ext',
@@ -233,14 +302,17 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
       'Vie Tot', 'Vie Ext',
       'Sab Tot', 'Sab Ext'
     ];
-    const rows = checadas.map(c => [
+    const rows = semanaActual.empleados.map(c => [
+      semanaActual.semana,
+      semanaActual.anio,
+      `"${semanaActual.periodo}"`,
       `"${c.nombre}"`,
+      c.tipoJornada,
       c.jornada,
       c.faltas,
       c.jornadaIncompleta,
       c.incapacidades,
       c.vacaciones,
-      c.tipoJornada,
       c.extrasSemana,
       c.totalHorasSemana,
       c.dias.lunes.total, c.dias.lunes.extras,
@@ -254,18 +326,22 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
     const encoded = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encoded);
-    link.setAttribute('download', `checadas_semana_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `checadas_${semanaActual.id}_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const empleadosList = semanaActual?.empleados || [];
+
   // Filtrado
-  const filteredChecadas = checadas.filter(c => {
+  const filteredChecadas = empleadosList.filter(c => {
     const matchesSearch = !search.trim() || c.nombre.toLowerCase().includes(search.toLowerCase());
     const matchesTipo = tipoJornadaFiltro === 'TODOS' || c.tipoJornada.toLowerCase() === tipoJornadaFiltro.toLowerCase();
     return matchesSearch && matchesTipo;
   });
+
+  const isSemanaCerrada = Boolean(semanaActual?.cerrada);
 
   return (
     <div className="space-y-4 pb-16">
@@ -278,35 +354,91 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg md:text-xl font-black text-slate-900 tracking-tight">Checadas & Asistencia</h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-                Lunes a Sábado
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                isSemanaCerrada
+                  ? 'bg-slate-100 text-slate-700 border-slate-300'
+                  : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              }`}>
+                {isSemanaCerrada ? 'Semana Archivada (Histórico)' : 'Semana Activa en Curso'}
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Control de entradas, salidas, faltas y horas extras sincronizadas con la pestaña Checadas de Google Sheets.
+              Control de asistencia, cálculo de faltas, horas extras y respaldo permanente en Google Sheets.
             </p>
           </div>
         </div>
 
-        {/* Acciones */}
+        {/* Acciones y Navegador Histórico */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Selector de Semana / Histórico */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
+            <History className="w-3.5 h-3.5 text-indigo-600" />
+            <select
+              value={selectedSemanaId}
+              onChange={(e) => handleSelectSemana(e.target.value)}
+              className="bg-transparent font-bold text-slate-900 focus:outline-none cursor-pointer"
+            >
+              {semanasDisponibles.map(sem => (
+                <option key={sem.id} value={sem.id}>
+                  {sem.esActiva ? '🟢 ' : '📁 '} Sem. {sem.semana} ({sem.periodo}) {sem.esActiva ? '- Activa' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all shadow-sm"
+            title="Exportar semana actual a CSV"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>CSV</span>
           </button>
+
           <button
             onClick={handleSyncSheets}
             disabled={syncing}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all disabled:opacity-50"
+            title="Sincronizar directamente con Google Sheets"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
             <span>{syncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
+
+          {/* Botón para Archivar Semana (Solo si es la activa) */}
+          {!isSemanaCerrada && (
+            <button
+              onClick={() => setShowArchiveConfirm(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition-all shadow-sm"
+              title="Guardar semana en el histórico y abrir la siguiente semana"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>Guardar en Histórico</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Banner de Semana Archivada */}
+      {isSemanaCerrada && (
+        <div className="bg-slate-100 border border-slate-300 rounded-xl p-3 flex items-center justify-between text-xs text-slate-700">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-slate-500" />
+            <span>
+              Estás visualizando el <strong>registro histórico de la Semana {semanaActual?.semana} ({semanaActual?.periodo})</strong>. Cerrada el {semanaActual?.fechaCierre || 'N/D'}.
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              const active = semanasDisponibles.find(s => s.esActiva);
+              if (active) handleSelectSemana(active.id);
+            }}
+            className="font-bold text-indigo-700 hover:underline"
+          >
+            Volver a semana activa ➔
+          </button>
+        </div>
+      )}
 
       {/* KPIs superiores */}
       {stats && (
@@ -343,11 +475,13 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
 
           <div className="bg-white p-3 rounded-xl border border-indigo-200/80 bg-indigo-50/20 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-[10px] font-bold uppercase text-indigo-800 block">Jornada Objetivo</span>
-              <div className="text-lg font-black text-indigo-950 mt-0.5">09:00 hrs/día</div>
+              <span className="text-[10px] font-bold uppercase text-indigo-800 block">Semana Seleccionada</span>
+              <div className="text-base font-black text-indigo-950 mt-0.5 truncate">
+                Sem. {semanaActual?.semana || '-'} ({semanaActual?.periodo || '-'})
+              </div>
             </div>
             <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
-              <Award className="w-4 h-4" />
+              <Calendar className="w-4 h-4" />
             </div>
           </div>
         </div>
@@ -442,7 +576,7 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                   <th className="py-2.5 px-2 text-center text-amber-700 bg-amber-50/40">Jue</th>
                   <th className="py-2.5 px-2 text-center text-slate-700 bg-slate-100/50">Vie</th>
                   <th className="py-2.5 px-2 text-center text-indigo-700 bg-indigo-50/40">Sáb</th>
-                  <th className="py-2.5 px-2 text-center">Ajustes</th>
+                  {!isSemanaCerrada && <th className="py-2.5 px-2 text-center">Ajustes</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -511,16 +645,18 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                         {emp.totalHorasSemana}
                       </td>
 
-                      {/* Días Resumidos (Total / Extras) - Click para editar */}
+                      {/* Días Resumidos (Total / Extras) - Click para editar si está activa */}
                       {(['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'] as DiaSemana[]).map(dia => {
                         const d = emp.dias[dia];
                         const isZero = !d.total || d.total === '0:00' || d.total === '0';
                         return (
                           <td
                             key={dia}
-                            onClick={() => handleOpenEditDia(emp, dia)}
-                            className="py-2.5 px-2 text-center cursor-pointer hover:bg-indigo-100/50 transition-colors"
-                            title={`Clic para registrar checadas de ${DIAS_LABEL[dia].nombre}`}
+                            onClick={() => !isSemanaCerrada && handleOpenEditDia(emp, dia)}
+                            className={`py-2.5 px-2 text-center transition-colors ${
+                              isSemanaCerrada ? '' : 'cursor-pointer hover:bg-indigo-100/50'
+                            }`}
+                            title={isSemanaCerrada ? 'Semana archivada' : `Clic para registrar checadas de ${DIAS_LABEL[dia].nombre}`}
                           >
                             <div className="text-[11px] font-mono leading-tight">
                               <span className={isZero ? 'text-slate-300' : 'font-bold text-slate-800'}>
@@ -535,21 +671,23 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                       })}
 
                       {/* Botón Ajustes Incapacidades / Vacaciones */}
-                      <td className="py-2.5 px-2 text-center">
-                        <button
-                          onClick={() => setIncapModal({
-                            open: true,
-                            rowNumber: emp.rowNumber,
-                            nombre: emp.nombre,
-                            incapacidades: emp.incapacidades,
-                            vacaciones: emp.vacaciones
-                          })}
-                          className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800"
-                          title="Ajustar Incapacidades o Días de Vacaciones"
-                        >
-                          <ShieldAlert className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
+                      {!isSemanaCerrada && (
+                        <td className="py-2.5 px-2 text-center">
+                          <button
+                            onClick={() => setIncapModal({
+                              open: true,
+                              rowNumber: emp.rowNumber,
+                              nombre: emp.nombre,
+                              incapacidades: emp.incapacidades,
+                              vacaciones: emp.vacaciones
+                            })}
+                            className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800"
+                            title="Ajustar Incapacidades o Días de Vacaciones"
+                          >
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -566,7 +704,7 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                 {DIAS_LABEL[viewDia].nombre}
               </span>
               <span className="text-xs text-slate-500">
-                Captura de checadas: Turno Mañana (Entrada 1 - Salida 1) y Turno Tarde / Regreso (Entrada 2 - Salida 2)
+                Turno Mañana (Entrada 1 - Salida 1) y Turno Tarde / Regreso (Entrada 2 - Salida 2)
               </span>
             </div>
           </div>
@@ -583,7 +721,7 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                   <th className="py-2.5 px-3 text-center">Salida 2 (Final)</th>
                   <th className="py-2.5 px-3 text-right">Horas Día</th>
                   <th className="py-2.5 px-3 text-right">Horas Extras</th>
-                  <th className="py-2.5 px-3 text-center">Capturar</th>
+                  {!isSemanaCerrada && <th className="py-2.5 px-3 text-center">Capturar</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -615,20 +753,72 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
                       <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
                         {d.extras && d.extras !== '0:00' && d.extras !== '0' ? `+${d.extras}` : '-'}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <button
-                          onClick={() => handleOpenEditDia(emp, viewDia)}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors flex items-center gap-1 mx-auto"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>Editar</span>
-                        </button>
-                      </td>
+                      {!isSemanaCerrada && (
+                        <td className="py-2.5 px-3 text-center">
+                          <button
+                            onClick={() => handleOpenEditDia(emp, viewDia)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors flex items-center gap-1 mx-auto"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>Editar</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL CONFIRMACIÓN: ARCHIVAR SEMANA ================= */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-indigo-100 text-indigo-700">
+                <Archive className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Guardar Semana en Histórico</h3>
+                <p className="text-xs text-slate-500">
+                  Semana {semanaActual?.semana} ({semanaActual?.periodo})
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 space-y-1.5 text-xs text-amber-900">
+              <div className="flex items-center gap-1.5 font-bold">
+                <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>¿Qué ocurrirá al guardar?</span>
+              </div>
+              <ul className="list-disc pl-5 space-y-1 text-[11px] text-amber-800">
+                <li>Se registrarán permanentemente todos los colaboradores con sus faltas y horas extras en la pestaña <strong>Historico_Checadas</strong> de Google Sheets.</li>
+                <li>Podrás consultar o exportar esta semana en cualquier momento desde el selector de histórico.</li>
+                <li>La hoja activa <strong>Checadas</strong> se limpiará para dar inicio a la siguiente semana laboral.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowArchiveConfirm(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleArchiveWeek}
+                disabled={archiving}
+                className="px-4.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {archiving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Archive className="w-3.5 h-3.5" />}
+                <span>{archiving ? 'Archivando...' : 'Confirmar y Guardar'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

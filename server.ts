@@ -80,9 +80,11 @@ import {
 import {
   initChecadasOnStartup,
   loadLocalChecadas,
+  loadStore,
   syncChecadasFromSheets,
   updateChecadaDay,
   updateIncapacidadesVacaciones,
+  archivarSemanaActual,
   getChecadasStats
 } from './server/checadasService.ts';
 
@@ -1653,22 +1655,71 @@ async function startServer() {
     }
   });
 
-  // GET Checadas (asistencia semanal)
+  // GET Checadas (asistencia semanal y navegador de histórico)
   app.get('/api/rh/checadas', requireAuth, async (req: AuthRequest, res) => {
     try {
       const isAllowed = await checkRHAccess(req);
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Checadas" });
 
-      let checadas = loadLocalChecadas();
-      if (checadas.length === 0) {
-        const synced = await syncChecadasFromSheets();
-        checadas = synced.empleados;
+      const store = loadStore();
+      const semanaId = (req.query.semanaId as string) || store.semanaActiva.id;
+
+      let targetSemana = store.semanaActiva;
+      if (semanaId && semanaId !== store.semanaActiva.id) {
+        const found = store.historico.find(s => s.id === semanaId);
+        if (found) targetSemana = found;
       }
-      const stats = getChecadasStats(checadas);
-      res.json({ success: true, count: checadas.length, checadas, stats });
+
+      // Si no hay colaboradores en semana activa, intentar sync
+      if (targetSemana.empleados.length === 0) {
+        const synced = await syncChecadasFromSheets();
+        targetSemana = synced.semanaActiva;
+      }
+
+      const semanasDisponibles = [
+        {
+          id: store.semanaActiva.id,
+          semana: store.semanaActiva.semana,
+          anio: store.semanaActiva.anio,
+          periodo: store.semanaActiva.periodo,
+          cerrada: false,
+          esActiva: true
+        },
+        ...store.historico.map(h => ({
+          id: h.id,
+          semana: h.semana,
+          anio: h.anio,
+          periodo: h.periodo,
+          cerrada: true,
+          fechaCierre: h.fechaCierre,
+          esActiva: false
+        }))
+      ];
+
+      const stats = getChecadasStats(targetSemana.empleados);
+      res.json({
+        success: true,
+        semanaActual: targetSemana,
+        semanasDisponibles,
+        stats
+      });
     } catch (err: any) {
       console.error('[checadasService] Error en GET /api/rh/checadas:', err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Archivar Semana actual y abrir siguiente semana
+  app.post('/api/rh/checadas/archivar', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para archivar Checadas" });
+
+      const result = await archivarSemanaActual();
+      res.json({ success: true, semanaArchivada: result.semanaArchivada, nuevaSemanaActiva: result.nuevaSemanaActiva });
+    } catch (err: any) {
+      console.error('[checadasService] Error en POST /api/rh/checadas/archivar:', err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
@@ -1713,8 +1764,8 @@ async function startServer() {
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Checadas" });
 
       const result = await syncChecadasFromSheets();
-      const stats = getChecadasStats(result.empleados);
-      res.json({ success: true, count: result.count, checadas: result.empleados, stats });
+      const stats = getChecadasStats(result.semanaActiva.empleados);
+      res.json({ success: true, semanaActiva: result.semanaActiva, historicoCount: result.historico.length, stats });
     } catch (err: any) {
       console.error('[checadasService] Error en POST /api/rh/checadas/sync:', err);
       res.status(500).json({ error: err.message });

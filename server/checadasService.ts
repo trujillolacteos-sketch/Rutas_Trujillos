@@ -37,6 +37,23 @@ export interface EmpleadoChecada {
   };
 }
 
+export interface SemanaChecadas {
+  id: string; // e.g. "2026-W45"
+  semana: number;
+  anio: number;
+  fechaInicio: string; // YYYY-MM-DD
+  fechaFin: string; // YYYY-MM-DD
+  periodo: string; // "02-nov al 07-nov"
+  cerrada: boolean;
+  fechaCierre?: string;
+  empleados: EmpleadoChecada[];
+}
+
+export interface ChecadasStore {
+  semanaActiva: SemanaChecadas;
+  historico: SemanaChecadas[];
+}
+
 export interface ChecadasStats {
   totalEmpleados: number;
   totalFaltas: number;
@@ -49,102 +66,234 @@ function getStorePath(): string {
   return path.resolve(process.cwd(), CHECADAS_STORE_FILE);
 }
 
-export function loadLocalChecadas(): EmpleadoChecada[] {
+// Calcular detalles de la semana según fecha
+export function getWeekDetails(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+
+  const curr = new Date(date);
+  const day = curr.getDay(); // 0: Dom, 1: Lun
+  const diffToMonday = curr.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(curr.getFullYear(), curr.getMonth(), diffToMonday);
+  const saturday = new Date(monday);
+  saturday.setDate(monday.getDate() + 5);
+
+  const fmtDate = (dt: Date) => dt.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+  const periodo = `${fmtDate(monday)} al ${fmtDate(saturday)}`;
+
+  return {
+    id: `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`,
+    semana: weekNo,
+    anio: d.getUTCFullYear(),
+    fechaInicio: monday.toISOString().slice(0, 10),
+    fechaFin: saturday.toISOString().slice(0, 10),
+    periodo
+  };
+}
+
+export function loadStore(): ChecadasStore {
   try {
     const p = getStorePath();
     if (fs.existsSync(p)) {
       const raw = fs.readFileSync(p, 'utf8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed.semanaActiva) return parsed;
+      if (Array.isArray(parsed)) {
+        // Migración de formato antiguo plano
+        const initialWeek = getWeekDetails();
+        return {
+          semanaActiva: {
+            ...initialWeek,
+            cerrada: false,
+            empleados: parsed
+          },
+          historico: []
+        };
+      }
     }
   } catch (err) {
-    console.warn('[checadasService] Error reading local store:', err);
+    console.warn('[checadasService] Error reading store, initializing default:', err);
   }
-  return [];
+
+  const initialWeek = getWeekDetails();
+  return {
+    semanaActiva: {
+      ...initialWeek,
+      cerrada: false,
+      empleados: []
+    },
+    historico: []
+  };
 }
 
-export function saveLocalChecadas(data: EmpleadoChecada[]): void {
+export function saveStore(store: ChecadasStore): void {
   try {
-    fs.writeFileSync(getStorePath(), JSON.stringify(data, null, 2), 'utf8');
+    fs.writeFileSync(getStorePath(), JSON.stringify(store, null, 2), 'utf8');
   } catch (err) {
-    console.error('[checadasService] Error saving local store:', err);
+    console.error('[checadasService] Error saving store:', err);
   }
 }
 
-const DAY_COLS: Record<string, { startCol: string; endCol: string; colIndices: number[] }> = {
-  lunes: { startCol: 'J', endCol: 'M', colIndices: [9, 10, 11, 12] },
-  martes: { startCol: 'P', endCol: 'S', colIndices: [15, 16, 17, 18] },
-  miercoles: { startCol: 'V', endCol: 'Y', colIndices: [21, 22, 23, 24] },
-  jueves: { startCol: 'AB', endCol: 'AE', colIndices: [27, 28, 29, 30] },
-  viernes: { startCol: 'AH', endCol: 'AK', colIndices: [33, 34, 35, 36] },
-  sabado: { startCol: 'AN', endCol: 'AQ', colIndices: [39, 40, 41, 42] }
+export function loadLocalChecadas(): EmpleadoChecada[] {
+  const store = loadStore();
+  return store.semanaActiva?.empleados || [];
+}
+
+const DAY_COLS: Record<string, { startCol: string; endCol: string }> = {
+  lunes: { startCol: 'J', endCol: 'M' },
+  martes: { startCol: 'P', endCol: 'S' },
+  miercoles: { startCol: 'V', endCol: 'Y' },
+  jueves: { startCol: 'AB', endCol: 'AE' },
+  viernes: { startCol: 'AH', endCol: 'AK' },
+  sabado: { startCol: 'AN', endCol: 'AQ' }
 };
 
-export async function syncChecadasFromSheets(): Promise<{ count: number; empleados: EmpleadoChecada[] }> {
+// Sincronizar Semana Activa desde hoja Checadas y cargar histórico desde Historico_Checadas
+export async function syncChecadasFromSheets(): Promise<{
+  semanaActiva: SemanaChecadas;
+  historico: SemanaChecadas[];
+}> {
   const token = await getGoogleAccessToken();
+  const store = loadStore();
+
   if (!token) {
-    console.warn('[checadasService] No Google token available, returning local store');
-    return { count: 0, empleados: loadLocalChecadas() };
+    console.warn('[checadasService] No Google token available');
+    return { semanaActiva: store.semanaActiva, historico: store.historico };
   }
 
-  // Fetch formatted values
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Checadas!A1:AS50?valueRenderOption=FORMATTED_VALUE`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error('[checadasService] Error fetching Checadas:', errText);
-    return { count: 0, empleados: loadLocalChecadas() };
-  }
-
-  const data = await res.json();
-  const rows: string[][] = data.values || [];
-  const empleados: EmpleadoChecada[] = [];
-
-  // Rows 3+ are employees (index 2+)
-  for (let idx = 2; idx < rows.length; idx++) {
-    const r = rows[idx];
-    const nombre = (r[0] || '').trim();
-    if (!nombre) continue;
-
-    const rowNumber = idx + 1; // 1-based
-
-    const parseDay = (start: number): ChecadaDia => ({
-      entrada1: (r[start] || '').trim(),
-      salida1: (r[start + 1] || '').trim(),
-      entrada2: (r[start + 2] || '').trim(),
-      salida2: (r[start + 3] || '').trim(),
-      total: (r[start + 4] || '0:00').trim(),
-      extras: (r[start + 5] || '0:00').trim()
+  // 1. Fetch Checadas (Semana Activa)
+  try {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Checadas!A1:AS50?valueRenderOption=FORMATTED_VALUE`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
 
-    empleados.push({
-      rowNumber,
-      nombre,
-      jornada: (r[1] || '58:00').trim(),
-      faltas: parseInt(r[2], 10) || 0,
-      jornadaIncompleta: (r[3] || '').trim(),
-      incapacidades: parseInt(r[4], 10) || 0,
-      vacaciones: parseInt(r[5], 10) || 0,
-      tipoJornada: (r[6] || 'jornada').trim(),
-      extrasSemana: (r[7] || '0:00').trim(),
-      totalHorasSemana: (r[8] || '0:00').trim(),
-      dias: {
-        lunes: parseDay(9),
-        martes: parseDay(15),
-        miercoles: parseDay(21),
-        jueves: parseDay(27),
-        viernes: parseDay(33),
-        sabado: parseDay(39)
+    if (res.ok) {
+      const data = await res.json();
+      const rows: string[][] = data.values || [];
+      const empleados: EmpleadoChecada[] = [];
+
+      for (let idx = 2; idx < rows.length; idx++) {
+        const r = rows[idx];
+        const nombre = (r[0] || '').trim();
+        if (!nombre) continue;
+
+        const rowNumber = idx + 1;
+        const parseDay = (start: number): ChecadaDia => ({
+          entrada1: (r[start] || '').trim(),
+          salida1: (r[start + 1] || '').trim(),
+          entrada2: (r[start + 2] || '').trim(),
+          salida2: (r[start + 3] || '').trim(),
+          total: (r[start + 4] || '0:00').trim(),
+          extras: (r[start + 5] || '0:00').trim()
+        });
+
+        empleados.push({
+          rowNumber,
+          nombre,
+          jornada: (r[1] || '58:00').trim(),
+          faltas: parseInt(r[2], 10) || 0,
+          jornadaIncompleta: (r[3] || '').trim(),
+          incapacidades: parseInt(r[4], 10) || 0,
+          vacaciones: parseInt(r[5], 10) || 0,
+          tipoJornada: (r[6] || 'jornada').trim(),
+          extrasSemana: (r[7] || '0:00').trim(),
+          totalHorasSemana: (r[8] || '0:00').trim(),
+          dias: {
+            lunes: parseDay(9),
+            martes: parseDay(15),
+            miercoles: parseDay(21),
+            jueves: parseDay(27),
+            viernes: parseDay(33),
+            sabado: parseDay(39)
+          }
+        });
       }
-    });
+
+      const weekInfo = getWeekDetails();
+      store.semanaActiva = {
+        ...weekInfo,
+        cerrada: false,
+        empleados
+      };
+    }
+  } catch (err) {
+    console.error('[checadasService] Error syncing Checadas active:', err);
   }
 
-  saveLocalChecadas(empleados);
-  return { count: empleados.length, empleados };
+  // 2. Fetch Historico_Checadas from Sheets
+  try {
+    const histRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/'Historico_Checadas'!A2:AW2000?valueRenderOption=FORMATTED_VALUE`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (histRes.ok) {
+      const histData = await histRes.json();
+      const rows: string[][] = histData.values || [];
+      const semanasMap = new Map<string, SemanaChecadas>();
+
+      rows.forEach((r, idx) => {
+        const semana = parseInt(r[0], 10);
+        const anio = parseInt(r[1], 10);
+        const periodo = (r[2] || '').trim();
+        const nombre = (r[3] || '').trim();
+        if (!semana || !anio || !nombre) return;
+
+        const id = `${anio}-W${String(semana).padStart(2, '0')}`;
+        if (!semanasMap.has(id)) {
+          semanasMap.set(id, {
+            id,
+            semana,
+            anio,
+            fechaInicio: '',
+            fechaFin: '',
+            periodo,
+            cerrada: true,
+            fechaCierre: (r[48] || '').trim(),
+            empleados: []
+          });
+        }
+
+        const sem = semanasMap.get(id)!;
+        sem.empleados.push({
+          rowNumber: idx + 2,
+          nombre,
+          tipoJornada: (r[4] || 'jornada').trim(),
+          jornada: (r[5] || '58:00').trim(),
+          faltas: parseInt(r[6], 10) || 0,
+          jornadaIncompleta: (r[7] || '').trim(),
+          incapacidades: parseInt(r[8], 10) || 0,
+          vacaciones: parseInt(r[9], 10) || 0,
+          extrasSemana: (r[10] || '0:00').trim(),
+          totalHorasSemana: (r[11] || '0:00').trim(),
+          dias: {
+            lunes: { entrada1: r[12] || '', salida1: r[13] || '', entrada2: r[14] || '', salida2: r[15] || '', total: r[16] || '0:00', extras: r[17] || '0:00' },
+            martes: { entrada1: r[18] || '', salida1: r[19] || '', entrada2: r[20] || '', salida2: r[21] || '', total: r[22] || '0:00', extras: r[23] || '0:00' },
+            miercoles: { entrada1: r[24] || '', salida1: r[25] || '', entrada2: r[26] || '', salida2: r[27] || '', total: r[28] || '0:00', extras: r[29] || '0:00' },
+            jueves: { entrada1: r[30] || '', salida1: r[31] || '', entrada2: r[32] || '', salida2: r[33] || '', total: r[34] || '0:00', extras: r[35] || '0:00' },
+            viernes: { entrada1: r[36] || '', salida1: r[37] || '', entrada2: r[38] || '', salida2: r[39] || '', total: r[40] || '0:00', extras: r[41] || '0:00' },
+            sabado: { entrada1: r[42] || '', salida1: r[43] || '', entrada2: r[44] || '', salida2: r[45] || '', total: r[46] || '0:00', extras: r[47] || '0:00' }
+          }
+        });
+      });
+
+      // Merge into historico
+      const sheetsHistorico = Array.from(semanasMap.values());
+      // Ordenar más reciente primero
+      sheetsHistorico.sort((a, b) => (b.anio * 100 + b.semana) - (a.anio * 100 + a.semana));
+      store.historico = sheetsHistorico;
+    }
+  } catch (err) {
+    console.error('[checadasService] Error syncing Historico_Checadas:', err);
+  }
+
+  saveStore(store);
+  return { semanaActiva: store.semanaActiva, historico: store.historico };
 }
 
+// Actualizar Checada de un Día en la semana activa
 export async function updateChecadaDay(
   rowNumber: number,
   dia: 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado',
@@ -179,11 +328,12 @@ export async function updateChecadaDay(
     throw new Error(`Error al actualizar Google Sheets: ${errText}`);
   }
 
-  // Re-fetch sheet to get updated calculated values
+  // Refrescar y guardar
   const synced = await syncChecadasFromSheets();
-  return synced.empleados.find(e => e.rowNumber === rowNumber) || null;
+  return synced.semanaActiva.empleados.find(e => e.rowNumber === rowNumber) || null;
 }
 
+// Actualizar Incapacidades / Vacaciones en la semana activa
 export async function updateIncapacidadesVacaciones(
   rowNumber: number,
   incapacidades: number,
@@ -211,7 +361,136 @@ export async function updateIncapacidadesVacaciones(
   }
 
   const synced = await syncChecadasFromSheets();
-  return synced.empleados.find(e => e.rowNumber === rowNumber) || null;
+  return synced.semanaActiva.empleados.find(e => e.rowNumber === rowNumber) || null;
+}
+
+// Archivar la semana actual a Historico_Checadas y preparar nueva semana
+export async function archivarSemanaActual(): Promise<{
+  semanaArchivada: SemanaChecadas;
+  nuevaSemanaActiva: SemanaChecadas;
+}> {
+  const token = await getGoogleAccessToken();
+  if (!token) throw new Error('No se pudo autenticar con Google Sheets');
+
+  // 1. Asegurar que los datos de la semana activa estén frescos desde Google Sheets
+  const fresh = await syncChecadasFromSheets();
+  const currentWeek = fresh.semanaActiva;
+  const fechaCierre = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+
+  // 2. Preparar filas para Historico_Checadas en Google Sheets
+  const rowsToAppend = currentWeek.empleados.map(emp => [
+    currentWeek.semana,
+    currentWeek.anio,
+    currentWeek.periodo,
+    emp.nombre,
+    emp.tipoJornada,
+    emp.jornada,
+    emp.faltas,
+    emp.jornadaIncompleta,
+    emp.incapacidades,
+    emp.vacaciones,
+    emp.extrasSemana,
+    emp.totalHorasSemana,
+    emp.dias.lunes.entrada1, emp.dias.lunes.salida1, emp.dias.lunes.entrada2, emp.dias.lunes.salida2, emp.dias.lunes.total, emp.dias.lunes.extras,
+    emp.dias.martes.entrada1, emp.dias.martes.salida1, emp.dias.martes.entrada2, emp.dias.martes.salida2, emp.dias.martes.total, emp.dias.martes.extras,
+    emp.dias.miercoles.entrada1, emp.dias.miercoles.salida1, emp.dias.miercoles.entrada2, emp.dias.miercoles.salida2, emp.dias.miercoles.total, emp.dias.miercoles.extras,
+    emp.dias.jueves.entrada1, emp.dias.jueves.salida1, emp.dias.jueves.entrada2, emp.dias.jueves.salida2, emp.dias.jueves.total, emp.dias.jueves.extras,
+    emp.dias.viernes.entrada1, emp.dias.viernes.salida1, emp.dias.viernes.entrada2, emp.dias.viernes.salida2, emp.dias.viernes.total, emp.dias.viernes.extras,
+    emp.dias.sabado.entrada1, emp.dias.sabado.salida1, emp.dias.sabado.entrada2, emp.dias.sabado.salida2, emp.dias.sabado.total, emp.dias.sabado.extras,
+    fechaCierre
+  ]);
+
+  console.log(`[checadasService] Archivando ${rowsToAppend.length} registros en Historico_Checadas...`);
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/'Historico_Checadas'!A:AW:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const appendRes = await fetch(appendUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ values: rowsToAppend })
+  });
+
+  if (!appendRes.ok) {
+    const errText = await appendRes.text();
+    console.error('[checadasService] Error appending to Historico_Checadas:', errText);
+    throw new Error(`Error al respaldar histórico en Google Sheets: ${errText}`);
+  }
+
+  // 3. Limpiar celdas de captura en la hoja Checadas para la nueva semana:
+  // Limpiar columnas E:F (Incapacidades / Vacaciones) y J:M, P:S, V:Y, AB:AE, AH:AK, AN:AQ
+  const clearRanges = [
+    `Checadas!E3:F50`,
+    `Checadas!J3:M50`,
+    `Checadas!P3:S50`,
+    `Checadas!V3:Y50`,
+    `Checadas!AB3:AE50`,
+    `Checadas!AH3:AK50`,
+    `Checadas!AN3:AQ50`
+  ];
+
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values:batchClear`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ ranges: clearRanges })
+  });
+
+  // 4. Calcular detalles de la siguiente semana
+  const nextMonday = new Date();
+  nextMonday.setDate(nextMonday.getDate() + 7);
+  const nextWeekDetails = getWeekDetails(nextMonday);
+
+  // Actualizar A1 de Checadas con el título de la nueva semana
+  await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Checadas!A1?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ values: [[`Semana ${nextWeekDetails.semana} - ${nextWeekDetails.anio} (${nextWeekDetails.periodo})`]] })
+  });
+
+  // 5. Actualizar store local
+  const store = loadStore();
+  const archivedWeek: SemanaChecadas = {
+    ...currentWeek,
+    cerrada: true,
+    fechaCierre
+  };
+
+  store.historico.unshift(archivedWeek);
+
+  // Reset semana activa
+  store.semanaActiva = {
+    ...nextWeekDetails,
+    cerrada: false,
+    empleados: currentWeek.empleados.map(e => ({
+      ...e,
+      faltas: e.tipoJornada === 'Gerencia' ? 0 : 7,
+      jornadaIncompleta: e.tipoJornada === 'jornada' ? '0:00' : '',
+      incapacidades: 0,
+      vacaciones: 0,
+      extrasSemana: '0:00',
+      totalHorasSemana: '0:00',
+      dias: {
+        lunes: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' },
+        martes: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' },
+        miercoles: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' },
+        jueves: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' },
+        viernes: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' },
+        sabado: { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' }
+      }
+    }))
+  };
+
+  saveStore(store);
+  return {
+    semanaArchivada: archivedWeek,
+    nuevaSemanaActiva: store.semanaActiva
+  };
 }
 
 export function getChecadasStats(empleados: EmpleadoChecada[]): ChecadasStats {
@@ -235,10 +514,10 @@ export function getChecadasStats(empleados: EmpleadoChecada[]): ChecadasStats {
 }
 
 export async function initChecadasOnStartup(): Promise<void> {
-  console.log('[checadasService] Inicializando servicio de Checadas...');
+  console.log('[checadasService] Inicializando servicio de Checadas e Histórico...');
   try {
     const res = await syncChecadasFromSheets();
-    console.log(`[checadasService] Inicializados ${res.count} registros de checadas.`);
+    console.log(`[checadasService] Checadas activa: ${res.semanaActiva.id} (${res.semanaActiva.empleados.length} colaboradores). Histórico: ${res.historico.length} semanas previas.`);
   } catch (err) {
     console.warn('[checadasService] Advertencia al sincronizar checadas en arranque:', err);
   }
