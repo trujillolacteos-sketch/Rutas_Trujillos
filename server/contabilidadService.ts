@@ -1054,32 +1054,11 @@ export function calculateEstadoResultados(params: {
   };
 }
 
-export interface CajaEfectivoDetalle {
-  id: string;
-  nombre: string;
-  saldo: number;
-  totalEntradas: number;
-  totalSalidas: number;
-  activa: boolean;
-  cerrada: boolean;
-  etiqueta?: string;
-  descripcion?: string;
-}
-
 export interface CajaChicaBalanceResponse {
-  // Saldo total de efectivo: SOLO considera cajas activas (excluye Manzanillo)
+  // Saldo de Caja Chica: únicamente conceptos "Efectivo"
   saldoTotalEfectivo: number;
-  saldoTotalEfectivoActivo: number;
-  saldoEfectivoMatriz: number;
-  saldoEfectivoManzanillo: number; // Histórico dato muerto
-  saldoHistoricoCerrado: number; // Suma de cajas cerradas
-  saldoBancoBanorte: number;
-  saldoLiquidezTotal: number; // saldoTotalEfectivoActivo + saldoBancoBanorte
-  cajasEfectivo: CajaEfectivoDetalle[];
-  cajasActivas: CajaEfectivoDetalle[];
-  cajasCerradas: CajaEfectivoDetalle[];
-  totalEntradasHistoricas: number; // De cajas activas
-  totalSalidasHistoricas: number; // De cajas activas
+  totalEntradasHistoricas: number;
+  totalSalidasHistoricas: number;
   hoy: {
     entradas: number;
     salidas: number;
@@ -1122,50 +1101,8 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   const curMes = MESES[now.getMonth()];
   const curYear = now.getFullYear();
 
-  // Función para identificar cuentas cerradas (Dato Muerto: Manzanillo)
-  const isAccountClosed = (cf: string) => {
-    const s = cf.trim().toLowerCase();
-    return s.includes('manzanillo');
-  };
-
-  // Mapa dinámico de cajas de efectivo: key -> metadata
-  const cashAccountsMap = new Map<string, {
-    id: string;
-    nombre: string;
-    entradas: number;
-    salidas: number;
-    activa: boolean;
-    cerrada: boolean;
-    etiqueta?: string;
-    descripcion?: string;
-  }>();
-
-  // Preset 1: Efectivo Matriz (Activa Principal)
-  cashAccountsMap.set('efectivo', {
-    id: 'efectivo',
-    nombre: 'Efectivo (Quesería Matriz)',
-    entradas: 0,
-    salidas: 0,
-    activa: true,
-    cerrada: false,
-    etiqueta: 'Matriz Principal'
-  });
-
-  // Preset 2: Efectivo Manzanillo (Tienda Cerrada / Dato Muerto)
-  cashAccountsMap.set('efectivo manzanillo', {
-    id: 'efectivo manzanillo',
-    nombre: 'Efectivo Manzanillo',
-    entradas: 0,
-    salidas: 0,
-    activa: false,
-    cerrada: true,
-    etiqueta: 'Tienda Cerrada (Dato Muerto)',
-    descripcion: 'Tienda cerrada permanentemente. Excluida del arqueo activo y de la liquidez.'
-  });
-
-  let saldoBancoBanorte = 0;
-  let totalEntradasActivas = 0;
-  let totalSalidasActivas = 0;
+  let totalEntradas = 0;
+  let totalSalidas = 0;
 
   let hoyEntradas = 0;
   let hoySalidas = 0;
@@ -1179,124 +1116,55 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   let mesSalidas = 0;
   let mesMovs = 0;
 
-  const activeCashMovs: MovimientoContable[] = [];
+  const cashMovs: MovimientoContable[] = [];
 
   movs.forEach(m => {
-    const cfRaw = (m.cuentaFiscal || '').trim();
-    const cfLower = cfRaw.toLowerCase();
+    const cf = (m.cuentaFiscal || '').trim().toLowerCase();
+    // Exclusivamente los movimientos que sean "efectivo"
+    if (cf !== 'efectivo') return;
+
     const monto = Math.abs(Number(m.monto) || 0);
     const tipo = (m.tipoMovimiento || '').toLowerCase();
 
-    // 1. Banco Banorte
-    if (cfLower === 'banorte') {
-      if (tipo === 'entrada') saldoBancoBanorte += monto;
-      else if (tipo === 'salida') saldoBancoBanorte -= monto;
-      return;
-    }
+    cashMovs.push(m);
 
-    // 2. Filtrar únicamente cuentas que representen Efectivo / Caja
-    const isCashAccount = cfLower === 'efectivo' || 
-                          cfLower.startsWith('efectivo') || 
-                          cfLower.includes('caja') || 
-                          cfLower.includes('manzanillo');
-    if (!isCashAccount) return;
-
-    const closed = isAccountClosed(cfLower);
-
-    // Registro dinámico pensando a futuro si se agregan más cajas/sucursales
-    if (!cashAccountsMap.has(cfLower)) {
-      const cleanName = cfRaw.charAt(0).toUpperCase() + cfRaw.slice(1);
-      cashAccountsMap.set(cfLower, {
-        id: cfLower,
-        nombre: cleanName,
-        entradas: 0,
-        salidas: 0,
-        activa: !closed,
-        cerrada: closed,
-        etiqueta: closed ? 'Tienda Cerrada (Dato Muerto)' : 'Caja de Efectivo'
-      });
-    }
-
-    const acct = cashAccountsMap.get(cfLower)!;
     if (tipo === 'entrada') {
-      acct.entradas += monto;
+      totalEntradas += monto;
     } else if (tipo === 'salida') {
-      acct.salidas += monto;
+      totalSalidas += monto;
     }
 
-    // SOLO las cajas activas suman al flujo de caja chica, arqueo físico y kpis actuales
-    if (acct.activa) {
-      activeCashMovs.push(m);
+    // Hoy
+    if (m.fecha === todayStr) {
+      hoyMovs++;
+      if (tipo === 'entrada') hoyEntradas += monto;
+      else if (tipo === 'salida') hoySalidas += monto;
+    }
 
-      if (tipo === 'entrada') {
-        totalEntradasActivas += monto;
-      } else if (tipo === 'salida') {
-        totalSalidasActivas += monto;
-      }
+    // Semana Actual
+    if (m.año === curYear && m.semanaNum === curSemNum) {
+      semanaMovs++;
+      if (tipo === 'entrada') semanaEntradas += monto;
+      else if (tipo === 'salida') semanaSalidas += monto;
+    }
 
-      // Hoy
-      if (m.fecha === todayStr) {
-        hoyMovs++;
-        if (tipo === 'entrada') hoyEntradas += monto;
-        else if (tipo === 'salida') hoySalidas += monto;
-      }
-
-      // Semana Actual
-      if (m.año === curYear && m.semanaNum === curSemNum) {
-        semanaMovs++;
-        if (tipo === 'entrada') semanaEntradas += monto;
-        else if (tipo === 'salida') semanaSalidas += monto;
-      }
-
-      // Mes Actual
-      if (m.año === curYear && (m.mes || '').toLowerCase().trim() === curMes) {
-        mesMovs++;
-        if (tipo === 'entrada') mesEntradas += monto;
-        else if (tipo === 'salida') mesSalidas += monto;
-      }
+    // Mes Actual
+    if (m.año === curYear && (m.mes || '').toLowerCase().trim() === curMes) {
+      mesMovs++;
+      if (tipo === 'entrada') mesEntradas += monto;
+      else if (tipo === 'salida') mesSalidas += monto;
     }
   });
 
-  // Construir lista estructurada de tipos de efectivo
-  const cajasEfectivo: CajaEfectivoDetalle[] = Array.from(cashAccountsMap.values()).map(a => {
-    const saldo = Number((a.entradas - a.salidas).toFixed(2));
-    return {
-      id: a.id,
-      nombre: a.nombre,
-      saldo,
-      totalEntradas: Number(a.entradas.toFixed(2)),
-      totalSalidas: Number(a.salidas.toFixed(2)),
-      activa: a.activa,
-      cerrada: a.cerrada,
-      etiqueta: a.etiqueta,
-      descripcion: a.descripcion
-    };
-  });
+  const saldoTotalEfectivo = Number((totalEntradas - totalSalidas).toFixed(2));
 
-  const cajasActivas = cajasEfectivo.filter(c => c.activa);
-  const cajasCerradas = cajasEfectivo.filter(c => c.cerrada);
-
-  const matrizAcct = cashAccountsMap.get('efectivo');
-  const manzanilloAcct = cashAccountsMap.get('efectivo manzanillo');
-
-  const saldoEfectivoMatriz = Number(((matrizAcct?.entradas || 0) - (matrizAcct?.salidas || 0)).toFixed(2));
-  const saldoEfectivoManzanillo = Number(((manzanilloAcct?.entradas || 0) - (manzanilloAcct?.salidas || 0)).toFixed(2));
-
-  // El saldo total de efectivo SOLO suma cajas ACTIVAS (Manzanillo NO se suma!)
-  const saldoTotalEfectivoActivo = Number(cajasActivas.reduce((acc, c) => acc + c.saldo, 0).toFixed(2));
-  const saldoHistoricoCerrado = Number(cajasCerradas.reduce((acc, c) => acc + c.saldo, 0).toFixed(2));
-
-  const saldoBanco = Number(saldoBancoBanorte.toFixed(2));
-  // La liquidez operativa solo suma el efectivo activo + banco
-  const saldoLiquidezTotal = Number((saldoTotalEfectivoActivo + saldoBanco).toFixed(2));
-
-  // Ordenar movimientos activos desc
-  activeCashMovs.sort((a, b) => {
+  // Ordenar movimientos de efectivo desc
+  cashMovs.sort((a, b) => {
     if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
     return (b.rowNumber || 0) - (a.rowNumber || 0);
   });
 
-  const ultimosMovimientosEfectivo = activeCashMovs.slice(0, 10).map(m => ({
+  const ultimosMovimientosEfectivo = cashMovs.slice(0, 10).map(m => ({
     id: m.id,
     fecha: m.fecha,
     cuentaMenor: m.cuentaMenor,
@@ -1308,18 +1176,9 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   }));
 
   return {
-    saldoTotalEfectivo: saldoTotalEfectivoActivo,
-    saldoTotalEfectivoActivo,
-    saldoEfectivoMatriz,
-    saldoEfectivoManzanillo,
-    saldoHistoricoCerrado,
-    saldoBancoBanorte: saldoBanco,
-    saldoLiquidezTotal,
-    cajasEfectivo,
-    cajasActivas,
-    cajasCerradas,
-    totalEntradasHistoricas: Number(totalEntradasActivas.toFixed(2)),
-    totalSalidasHistoricas: Number(totalSalidasActivas.toFixed(2)),
+    saldoTotalEfectivo,
+    totalEntradasHistoricas: Number(totalEntradas.toFixed(2)),
+    totalSalidasHistoricas: Number(totalSalidas.toFixed(2)),
     hoy: {
       entradas: Number(hoyEntradas.toFixed(2)),
       salidas: Number(hoySalidas.toFixed(2)),
