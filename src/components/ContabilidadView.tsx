@@ -40,21 +40,28 @@ interface ContabilidadViewProps {
 }
 
 const CUENTAS_MENORES = [
-  { value: 'Ruta', label: 'Ruta', tipoDefault: 'Entrada', group: 'Ingresos' },
-  { value: 'Venta directa', label: 'Venta directa', tipoDefault: 'Entrada', group: 'Ingresos' },
-  { value: 'Manzanillo Ruta 6', label: 'Manzanillo Ruta 6', tipoDefault: 'Entrada', group: 'Ingresos' },
-  { value: 'Ventas Manzanillo', label: 'Ventas Manzanillo', tipoDefault: 'Entrada', group: 'Ingresos' },
-  { value: 'Gastos', label: 'Gastos generales', tipoDefault: 'Salida', group: 'Egresos' },
-  { value: 'Gastos Manzanillo', label: 'Gastos Manzanillo', tipoDefault: 'Salida', group: 'Egresos' },
-  { value: 'Gastos Rutas', label: 'Gastos Rutas', tipoDefault: 'Salida', group: 'Egresos' },
-  { value: 'Insumos', label: 'Insumos y Materias', tipoDefault: 'Salida', group: 'Egresos' },
-  { value: 'Rancho', label: 'Rancho', tipoDefault: 'Salida', group: 'Egresos' },
+  // Ingresos Activos
+  { value: 'Ruta', label: 'Ruta', tipoDefault: 'Entrada', group: 'Ingresos Activos' },
+  { value: 'Venta directa', label: 'Venta directa', tipoDefault: 'Entrada', group: 'Ingresos Activos' },
+  // Egresos y Gastos Activos
+  { value: 'Gastos', label: 'Gastos generales', tipoDefault: 'Salida', group: 'Egresos Activos' },
+  { value: 'Gastos Rutas', label: 'Gastos Rutas', tipoDefault: 'Salida', group: 'Egresos Activos' },
+  { value: 'Insumos', label: 'Insumos y Materias', tipoDefault: 'Salida', group: 'Egresos Activos' },
+  { value: 'Rancho', label: 'Rancho (Abonos a Leche)', tipoDefault: 'Salida', group: 'Egresos Activos' },
+  // Nómina Activa
   { value: 'Nómina', label: 'Nómina', tipoDefault: 'Salida', group: 'Nómina' },
-  { value: 'Nómina Manzanillo', label: 'Nómina Manzanillo', tipoDefault: 'Salida', group: 'Nómina' },
+  // Materia Prima
   { value: 'leche', label: 'Leche (Materia Prima)', tipoDefault: 'Salida', group: 'Materia Prima' },
+  // Traspasos de Tesorería (No P&L)
+  { value: 'Depósito Bancario', label: 'Depósito Bancario / Traspaso', tipoDefault: 'Salida', group: 'Traspasos (No P&L)' },
+  // Administrativos
   { value: 'Crédito', label: 'Crédito', tipoDefault: 'Salida', group: 'Administrativos' },
   { value: 'Diferencia en calculo', label: 'Diferencia en cálculo', tipoDefault: 'Salida', group: 'Administrativos' },
-  { value: 'Depósito Bancario', label: 'Depósito Bancario / Traspaso', tipoDefault: 'Salida', group: 'Traspasos (No P&L)' }
+  // Histórico - Tienda Manzanillo Cerrada (Dato Muerto)
+  { value: 'Manzanillo Ruta 6', label: 'Manzanillo Ruta 6 (Histórico Cerrado)', tipoDefault: 'Entrada', group: 'Histórico - Manzanillo (Cerrada)' },
+  { value: 'Ventas Manzanillo', label: 'Ventas Manzanillo (Histórico Cerrado)', tipoDefault: 'Entrada', group: 'Histórico - Manzanillo (Cerrada)' },
+  { value: 'Gastos Manzanillo', label: 'Gastos Manzanillo (Histórico Cerrado)', tipoDefault: 'Salida', group: 'Histórico - Manzanillo (Cerrada)' },
+  { value: 'Nómina Manzanillo', label: 'Nómina Manzanillo (Histórico Cerrado)', tipoDefault: 'Salida', group: 'Histórico - Manzanillo (Cerrada)' }
 ];
 
 const CUENTAS_FISCALES = [
@@ -130,10 +137,44 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   // Balance Caja Chica (Efectivo Físico) & Tesorería
   const [cajaChica, setCajaChica] = useState<{
     saldoTotalEfectivo: number;
+    saldoTotalEfectivoActivo?: number;
     saldoEfectivoMatriz: number;
     saldoEfectivoManzanillo: number;
+    saldoHistoricoCerrado?: number;
     saldoBancoBanorte: number;
     saldoLiquidezTotal: number;
+    cajasEfectivo?: Array<{
+      id: string;
+      nombre: string;
+      saldo: number;
+      totalEntradas: number;
+      totalSalidas: number;
+      activa: boolean;
+      cerrada: boolean;
+      etiqueta?: string;
+      descripcion?: string;
+    }>;
+    cajasActivas?: Array<{
+      id: string;
+      nombre: string;
+      saldo: number;
+      totalEntradas: number;
+      totalSalidas: number;
+      activa: boolean;
+      cerrada: boolean;
+      etiqueta?: string;
+    }>;
+    cajasCerradas?: Array<{
+      id: string;
+      nombre: string;
+      saldo: number;
+      totalEntradas: number;
+      totalSalidas: number;
+      activa: boolean;
+      cerrada: boolean;
+      etiqueta?: string;
+      descripcion?: string;
+    }>;
     totalEntradasHistoricas: number;
     totalSalidasHistoricas: number;
     hoy: { entradas: number; salidas: number; flujoNeto: number; movimientos: number };
@@ -156,7 +197,7 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   const [showDepositoModal, setShowDepositoModal] = useState(false);
   const [depositoFecha, setDepositoFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [depositoMonto, setDepositoMonto] = useState('');
-  const [depositoCuentaOrigen, setDepositoCuentaOrigen] = useState<'Efectivo' | 'Efectivo manzanillo'>('Efectivo');
+  const [depositoCuentaOrigen, setDepositoCuentaOrigen] = useState<string>('Efectivo');
   const [depositoCuentaDestino, setDepositoCuentaDestino] = useState('Banorte');
   const [depositoFolio, setDepositoFolio] = useState('');
   const [depositoMotivo, setDepositoMotivo] = useState('');
@@ -664,29 +705,34 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                     onChange={(e) => handleCuentaMenorChange(e.target.value)}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold bg-white"
                   >
-                    <optgroup label="Ingresos (Entradas)">
+                    <optgroup label="Ingresos Activos (Entradas)">
                       <option value="Ruta">Ruta</option>
                       <option value="Venta directa">Venta directa</option>
-                      <option value="Manzanillo Ruta 6">Manzanillo Ruta 6</option>
-                      <option value="Ventas Manzanillo">Ventas Manzanillo</option>
                     </optgroup>
-                    <optgroup label="Egresos y Gastos (Salidas)">
+                    <optgroup label="Egresos y Gastos Activos (Salidas)">
                       <option value="Gastos">Gastos generales</option>
-                      <option value="Gastos Manzanillo">Gastos Manzanillo</option>
                       <option value="Gastos Rutas">Gastos Rutas</option>
                       <option value="Insumos">Insumos y Materias</option>
                       <option value="Rancho">Rancho (Abonos a Leche)</option>
                     </optgroup>
-                    <optgroup label="Nómina (Salidas)">
+                    <optgroup label="Nómina Activa (Salidas)">
                       <option value="Nómina">Nómina</option>
-                      <option value="Nómina Manzanillo">Nómina Manzanillo</option>
                     </optgroup>
                     <optgroup label="Materia Prima Leche">
                       <option value="leche">Leche (Litros × Precio a Crédito)</option>
                     </optgroup>
+                    <optgroup label="Traspasos de Tesorería (No P&L)">
+                      <option value="Depósito Bancario">Depósito Bancario / Traspaso</option>
+                    </optgroup>
                     <optgroup label="Administrativos">
                       <option value="Crédito">Crédito</option>
                       <option value="Diferencia en calculo">Diferencia en cálculo</option>
+                    </optgroup>
+                    <optgroup label="Histórico (Tienda Manzanillo Cerrada - Dato Muerto)">
+                      <option value="Manzanillo Ruta 6">Manzanillo Ruta 6 (Cerrada)</option>
+                      <option value="Ventas Manzanillo">Ventas Manzanillo (Cerrada)</option>
+                      <option value="Gastos Manzanillo">Gastos Manzanillo (Cerrada)</option>
+                      <option value="Nómina Manzanillo">Nómina Manzanillo (Cerrada)</option>
                     </optgroup>
                   </select>
                 </div>
@@ -807,9 +853,24 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                           : 'border-slate-200 focus:ring-emerald-500 bg-white'
                       }`}
                     >
-                      {CUENTAS_FISCALES.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
+                      <optgroup label="Cajas de Efectivo Activas">
+                        <option value="Efectivo">Efectivo (Quesería Matriz)</option>
+                        {(cajaChica?.cajasActivas || [])
+                          .filter(c => c.id !== 'efectivo')
+                          .map(c => (
+                            <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                          ))
+                        }
+                      </optgroup>
+                      <optgroup label="Bancos y Cuentas">
+                        <option value="Banorte">Banorte (Cuenta Bancaria)</option>
+                        <option value="Crédito">Crédito (Abonos Proveedores / Rancho)</option>
+                      </optgroup>
+                      <optgroup label="Histórico (Tienda Cerrada - Dato Muerto)">
+                        <option value="Efectivo manzanillo" disabled>
+                          Efectivo Manzanillo (Cerrada - No disponible para captura)
+                        </option>
+                      </optgroup>
                     </select>
                   </div>
                   {cuentaMenor.toLowerCase() === 'leche' && (
@@ -873,17 +934,17 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                 </button>
               </div>
 
-              {/* Saldos de Tesorería: Caja Chica & Banco */}
+              {/* Saldos de Tesorería: Cajas Activas & Banco */}
               <div className="space-y-2.5">
-                {/* 1. Caja Chica (Efectivo Físico) */}
-                <div className="p-4 rounded-xl bg-white/10 border border-white/15 space-y-1">
+                {/* 1. Caja Chica (Efectivo Físico Activo) */}
+                <div className="p-4 rounded-xl bg-white/10 border border-white/15 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
                       <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                      Efectivo en Caja Chica
+                      Efectivo en Caja Activa
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                      Físico
+                      Operativo
                     </span>
                   </div>
                   <div className={`text-2xl font-black ${
@@ -891,15 +952,33 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                   }`}>
                     {fmt(cajaChica?.saldoTotalEfectivo)}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-white/10 text-[11px]">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">🏢 Matriz</span>
+                  <p className="text-[10px] text-slate-400">
+                    Arqueo disponible en operación actual (excluye tiendas cerradas).
+                  </p>
+
+                  {/* Desglose de Tipos de Efectivo Activos */}
+                  <div className="pt-2 mt-2 border-t border-white/10 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        🏢 Quesería Matriz
+                      </span>
                       <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoMatriz)}</span>
                     </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">🌴 Manzanillo</span>
-                      <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoManzanillo)}</span>
-                    </div>
+
+                    {/* Otras cajas de efectivo que se vayan sumando a futuro */}
+                    {(cajaChica?.cajasActivas || [])
+                      .filter(c => c.id !== 'efectivo')
+                      .map(c => (
+                        <div key={c.id} className="flex items-center justify-between">
+                          <span className="text-slate-300 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
+                            {c.nombre}
+                          </span>
+                          <span className="font-bold text-white">{fmt(c.saldo)}</span>
+                        </div>
+                      ))
+                    }
                   </div>
                 </div>
 
@@ -919,12 +998,12 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                   <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                     <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase mb-0.5">
                       <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Liquidez Total</span>
+                      <span>Liquidez Real</span>
                     </div>
                     <div className="text-sm font-black text-amber-300 truncate">
-                      {fmt(cajaChica?.saldoLiquidezTotal || ((cajaChica?.saldoTotalEfectivo || 0) + (cajaChica?.saldoBancoBanorte || 0)))}
+                      {fmt(cajaChica?.saldoLiquidezTotal || 0)}
                     </div>
-                    <span className="text-[9px] text-slate-400 block">Efectivo + Banco</span>
+                    <span className="text-[9px] text-slate-400 block">Efectivo Activo + Banco</span>
                   </div>
                 </div>
 
@@ -944,6 +1023,30 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                   <ArrowLeftRight className="w-4 h-4 text-emerald-200" />
                   <span>🏦 Depositar a Banco (Banorte)</span>
                 </button>
+              </div>
+
+              {/* 3. Archivo Histórico: Manzanillo (Tienda Cerrada / Dato Muerto) */}
+              <div className="p-3.5 rounded-xl bg-slate-800/90 border border-slate-700/80 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                    🌴 Manzanillo (Tienda Cerrada)
+                  </span>
+                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 font-bold border border-slate-600">
+                    Dato Muerto
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm font-black text-slate-400">
+                    {fmt(cajaChica?.saldoEfectivoManzanillo)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 italic">
+                    Excluido de arqueo y liquidez
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-snug border-t border-slate-700/60 pt-1.5">
+                  El histórico de movimientos permanece intacto en Google Sheets y en la bitácora sin distorsionar la tesorería activa.
+                </p>
               </div>
 
               {/* Flujos del Período */}
@@ -1482,7 +1585,12 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="Efectivo">Efectivo (Matriz) - Disp: {fmt(cajaChica?.saldoEfectivoMatriz)}</option>
-                    <option value="Efectivo manzanillo">Efectivo Manzanillo - Disp: {fmt(cajaChica?.saldoEfectivoManzanillo)}</option>
+                    {(cajaChica?.cajasActivas || [])
+                      .filter(c => c.id !== 'efectivo')
+                      .map(c => (
+                        <option key={c.id} value={c.nombre}>{c.nombre} - Disp: {fmt(c.saldo)}</option>
+                      ))
+                    }
                   </select>
                 </div>
 
