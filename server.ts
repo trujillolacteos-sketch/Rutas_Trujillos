@@ -77,6 +77,15 @@ import {
   reactivarEmpleado
 } from './server/rhService.ts';
 
+import {
+  initChecadasOnStartup,
+  loadLocalChecadas,
+  syncChecadasFromSheets,
+  updateChecadaDay,
+  updateIncapacidadesVacaciones,
+  getChecadasStats
+} from './server/checadasService.ts';
+
 const PAYROLLS_FILE = 'payrolls_store.json';
 
 export function loadLocalPayrolls(): any[] {
@@ -230,6 +239,11 @@ async function initPersistentDatabase() {
     await initContabilidadOnStartup();
     try {
       await initRHOnStartup();
+      try {
+        await initChecadasOnStartup();
+      } catch (checadasErr: any) {
+        console.warn("Google Sheets Checadas notice (continuing with local state):", checadasErr.message);
+      }
     } catch (rhErr: any) {
       console.warn("Google Sheets RH notice (continuing with local state):", rhErr.message);
     }
@@ -1635,6 +1649,74 @@ async function startServer() {
       res.json({ success: true, count: result.count, empleados: result.empleados, stats });
     } catch (err: any) {
       console.error('[rhService] Error en POST /api/rh/sync-sheets:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET Checadas (asistencia semanal)
+  app.get('/api/rh/checadas', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Checadas" });
+
+      let checadas = loadLocalChecadas();
+      if (checadas.length === 0) {
+        const synced = await syncChecadasFromSheets();
+        checadas = synced.empleados;
+      }
+      const stats = getChecadasStats(checadas);
+      res.json({ success: true, count: checadas.length, checadas, stats });
+    } catch (err: any) {
+      console.error('[checadasService] Error en GET /api/rh/checadas:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PUT Actualizar Checada de un Día para un Empleado
+  app.put('/api/rh/checadas/:row/dia', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar Checadas" });
+
+      const rowNumber = parseInt(req.params.row, 10);
+      const { dia, entrada1, salida1, entrada2, salida2 } = req.body;
+      if (!dia) return res.status(400).json({ error: "Día requerido" });
+
+      const updated = await updateChecadaDay(rowNumber, dia, { entrada1, salida1, entrada2, salida2 });
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      console.error('[checadasService] Error en PUT /api/rh/checadas/:row/dia:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PUT Actualizar Incapacidades y Vacaciones
+  app.put('/api/rh/checadas/:row/incapacidades-vacaciones', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar Checadas" });
+
+      const rowNumber = parseInt(req.params.row, 10);
+      const { incapacidades, vacaciones } = req.body;
+      const updated = await updateIncapacidadesVacaciones(rowNumber, Number(incapacidades) || 0, Number(vacaciones) || 0);
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      console.error('[checadasService] Error en PUT /api/rh/checadas/:row/incapacidades-vacaciones:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST Sincronizar Checadas bajo demanda
+  app.post('/api/rh/checadas/sync', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Checadas" });
+
+      const result = await syncChecadasFromSheets();
+      const stats = getChecadasStats(result.empleados);
+      res.json({ success: true, count: result.count, checadas: result.empleados, stats });
+    } catch (err: any) {
+      console.error('[checadasService] Error en POST /api/rh/checadas/sync:', err);
       res.status(500).json({ error: err.message });
     }
   });
