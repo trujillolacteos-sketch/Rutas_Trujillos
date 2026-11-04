@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck, Calculator } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck, Calculator, FileText } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -26,6 +26,7 @@ import ContabilidadView from './components/ContabilidadView';
 import EstadoResultadosView from './components/EstadoResultadosView';
 import RecursosHumanosView from './components/RecursosHumanosView';
 import ChecadasView from './components/ChecadasView';
+import { NominaRecibosView } from './components/NominaRecibosView';
 import { auth } from './lib/firebase';
 
 
@@ -47,7 +48,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases' | 'supplies_inventory' | 'production_kpis' | 'estado_resultados' | 'contabilidad' | 'recursos_humanos' | 'checadas'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases' | 'supplies_inventory' | 'production_kpis' | 'estado_resultados' | 'contabilidad' | 'recursos_humanos' | 'checadas' | 'nomina'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -320,7 +321,8 @@ function App() {
 
   const showRecursosHumanos = !isAuxiliarContable && (isAdmin || isGerencia || role === 'rh' || hasExtraMenu('recursos_humanos') || hasExtraMenu('rh'));
   const showChecadas = showRecursosHumanos;
-  const showGroupRH = showRecursosHumanos || showChecadas;
+  const showNomina = showRecursosHumanos || hasExtraMenu('nomina');
+  const showGroupRH = showRecursosHumanos || showChecadas || showNomina;
 
   const showZones = !isAuxiliarContable && (isAdmin || hasExtraMenu('zones'));
   const showSettings = !isAuxiliarContable && (isAdmin || hasExtraMenu('settings'));
@@ -858,6 +860,20 @@ function App() {
                   <span>Checadas</span>
                 </button>
               )}
+
+              {showNomina && (
+                <button 
+                  onClick={() => setActiveTab('nomina')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'nomina' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <FileText className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'nomina' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Nómina & Recibos</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -967,6 +983,7 @@ function App() {
               {activeTab === 'purchases' && showPurchases && <PurchasesView role={role} user={user} state={state} />}
               {activeTab === 'recursos_humanos' && showRecursosHumanos && <RecursosHumanosView token={token!} role={role} user={user} />}
               {activeTab === 'checadas' && showChecadas && <ChecadasView token={token!} role={role} user={user} />}
+              {activeTab === 'nomina' && showNomina && <NominaRecibosView token={token!} role={role} user={user} />}
             </ErrorBoundary>
           )}
         </div>

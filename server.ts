@@ -88,6 +88,14 @@ import {
   getChecadasStats
 } from './server/checadasService.ts';
 
+import {
+  loadNominaStore,
+  sincronizarNominaSemanal,
+  updateEmpleadoAjustes,
+  markWhatsAppEnviado,
+  archivarSemanaNomina
+} from './server/nominaService.ts';
+
 const PAYROLLS_FILE = 'payrolls_store.json';
 
 export function loadLocalPayrolls(): any[] {
@@ -243,6 +251,12 @@ async function initPersistentDatabase() {
       await initRHOnStartup();
       try {
         await initChecadasOnStartup();
+        try {
+          await sincronizarNominaSemanal(false);
+          console.log("[nominaService] Nómina semanal inicializada.");
+        } catch (nomErr: any) {
+          console.warn("Nómina notice (continuing with local state):", nomErr.message);
+        }
       } catch (checadasErr: any) {
         console.warn("Google Sheets Checadas notice (continuing with local state):", checadasErr.message);
       }
@@ -1769,6 +1783,121 @@ async function startServer() {
     } catch (err: any) {
       console.error('[checadasService] Error en POST /api/rh/checadas/sync:', err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ==========================================
+  // NÓMINA & RECIBOS DIGITALES
+  // ==========================================
+
+  // GET Nómina (semana activa o semana histórica)
+  app.get('/api/rh/nomina', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Nómina" });
+
+      const store = loadNominaStore();
+      const semanaId = (req.query.semanaId as string) || store.semanaActiva.id;
+
+      let targetSemana = store.semanaActiva;
+      if (semanaId && semanaId !== store.semanaActiva.id) {
+        const found = store.historico.find(s => s.id === semanaId);
+        if (found) targetSemana = found;
+      }
+
+      // Si la semana activa no tiene empleados, inicializarla desde Checadas/RH
+      if (targetSemana.empleados.length === 0) {
+        targetSemana = await sincronizarNominaSemanal(false);
+      }
+
+      const semanasDisponibles = [
+        {
+          id: store.semanaActiva.id,
+          semanaNum: store.semanaActiva.semanaNum,
+          anio: store.semanaActiva.anio,
+          periodo: store.semanaActiva.periodo,
+          cerrada: false,
+          esActiva: true
+        },
+        ...store.historico.map(h => ({
+          id: h.id,
+          semanaNum: h.semanaNum,
+          anio: h.anio,
+          periodo: h.periodo,
+          cerrada: true,
+          fechaCierre: h.fechaCierre,
+          esActiva: false
+        }))
+      ];
+
+      res.json({
+        success: true,
+        semanaActual: targetSemana,
+        semanasDisponibles,
+        totales: targetSemana.totales
+      });
+    } catch (err: any) {
+      console.error('[nominaService] Error en GET /api/rh/nomina:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Recalcular / Sincronizar Nómina con Checadas y RH
+  app.post('/api/rh/nomina/recalcular', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para recalcular Nómina" });
+
+      const forzar = req.body?.forzar === true;
+      const semana = await sincronizarNominaSemanal(forzar);
+      res.json({ success: true, semanaActual: semana, totales: semana.totales });
+    } catch (err: any) {
+      console.error('[nominaService] Error en POST /api/rh/nomina/recalcular:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PUT Actualizar ajustes variables de un colaborador (Gasolina, Tienda, Bonos, etc.)
+  app.put('/api/rh/nomina/:row', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar Nómina" });
+
+      const rowNumber = parseInt(req.params.row, 10);
+      const updated = updateEmpleadoAjustes(rowNumber, req.body);
+      const store = loadNominaStore();
+      res.json({ success: true, empleado: updated, totales: store.semanaActiva.totales });
+    } catch (err: any) {
+      console.error('[nominaService] Error en PUT /api/rh/nomina/:row:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Marcar Recibo como enviado por WhatsApp
+  app.post('/api/rh/nomina/whatsapp-enviado/:row', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado" });
+
+      const rowNumber = parseInt(req.params.row, 10);
+      const updated = markWhatsAppEnviado(rowNumber, req.body?.enviado !== false);
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Archivar Nómina de la semana en Histórico y Google Sheets/Drive
+  app.post('/api/rh/nomina/archivar', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para archivar Nómina" });
+
+      const result = await archivarSemanaNomina();
+      res.json(result);
+    } catch (err: any) {
+      console.error('[nominaService] Error en POST /api/rh/nomina/archivar:', err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
