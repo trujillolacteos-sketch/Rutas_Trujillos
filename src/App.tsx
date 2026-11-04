@@ -24,6 +24,7 @@ import SuppliesInventoryView from './components/SuppliesInventoryView';
 import ProductionKpisView from './components/ProductionKpisView';
 import ContabilidadView from './components/ContabilidadView';
 import EstadoResultadosView from './components/EstadoResultadosView';
+import RecursosHumanosView from './components/RecursosHumanosView';
 import { auth } from './lib/firebase';
 
 
@@ -45,7 +46,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases' | 'supplies_inventory' | 'production_kpis' | 'estado_resultados' | 'contabilidad' | 'recursos_humanos'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -316,6 +317,9 @@ function App() {
   const showContabilidad = isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('contabilidad');
   const showGroupAdmin = showSalesReports || showCommissions || showEstadoResultados || showContabilidad;
 
+  const showRecursosHumanos = !isAuxiliarContable && (isAdmin || isGerencia || role === 'rh' || hasExtraMenu('recursos_humanos') || hasExtraMenu('rh'));
+  const showGroupRH = showRecursosHumanos;
+
   const showZones = !isAuxiliarContable && (isAdmin || hasExtraMenu('zones'));
   const showSettings = !isAuxiliarContable && (isAdmin || hasExtraMenu('settings'));
   const showGroupSystem = showZones || showSettings;
@@ -333,6 +337,8 @@ function App() {
       if (activeTab !== 'contabilidad' && activeTab !== 'estado_resultados') {
         setActiveTab('contabilidad');
       }
+    } else if (user?.role === 'rh') {
+      setActiveTab('recursos_humanos');
     } else if (user?.role === 'produccion_linea') {
       setActiveTab('production_lines');
     } else if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
@@ -815,6 +821,30 @@ function App() {
             <div className="w-px h-6 bg-slate-200 my-auto shrink-0 md:hidden" />
           )}
 
+          {/* GRUPO RH: RECURSOS HUMANOS */}
+          {showGroupRH && (
+            <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
+              <div className="hidden md:flex items-center gap-1.5 px-3 pt-1 pb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                <Users className="w-3.5 h-3.5" />
+                <span>Recursos Humanos</span>
+              </div>
+
+              {showRecursosHumanos && (
+                <button 
+                  onClick={() => setActiveTab('recursos_humanos')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'recursos_humanos' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <Users className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'recursos_humanos' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Padrón RH</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* GRUPO 4: SISTEMA Y AJUSTES */}
           {showGroupSystem && (
             <div className="flex md:flex-col items-center md:items-stretch gap-1 md:gap-1 md:pt-2 md:border-t md:border-slate-100">
@@ -919,6 +949,7 @@ function App() {
               {activeTab === 'supplies_inventory' && showSupplies && <SuppliesInventoryView role={role} user={user} state={state} />}
               {activeTab === 'production_kpis' && showProductionKpis && <ProductionKpisView role={role} user={user} state={state} />}
               {activeTab === 'purchases' && showPurchases && <PurchasesView role={role} user={user} state={state} />}
+              {activeTab === 'recursos_humanos' && showRecursosHumanos && <RecursosHumanosView token={token!} role={role} user={user} />}
             </ErrorBoundary>
           )}
         </div>

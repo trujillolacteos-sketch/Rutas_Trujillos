@@ -65,6 +65,18 @@ import {
   getCajaChicaBalance
 } from './server/contabilidadService.ts';
 
+import {
+  initRHOnStartup,
+  loadLocalRH,
+  syncRHFromSheets,
+  getRHStats,
+  getNextNumeroEmpleado,
+  createEmpleado,
+  updateEmpleado,
+  darDeBajaEmpleado,
+  reactivarEmpleado
+} from './server/rhService.ts';
+
 const PAYROLLS_FILE = 'payrolls_store.json';
 
 export function loadLocalPayrolls(): any[] {
@@ -216,6 +228,11 @@ async function initPersistentDatabase() {
   // Google Sheets Contabilidad Persistence & Sync (Módulo Contabilidad)
   try {
     await initContabilidadOnStartup();
+    try {
+      await initRHOnStartup();
+    } catch (rhErr: any) {
+      console.warn("Google Sheets RH notice (continuing with local state):", rhErr.message);
+    }
   } catch (contErr: any) {
     console.warn("Google Sheets Contabilidad notice (continuing with local state):", contErr.message);
   }
@@ -1464,6 +1481,161 @@ async function startServer() {
     } catch (err: any) {
       console.error('[contabilidad] Error en POST /api/contabilidad/deposito-banco:', err);
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ==========================================
+  // RECURSOS HUMANOS (Google Sheets & Local Store)
+  // ==========================================
+  const checkRHAccess = async (req: AuthRequest): Promise<boolean> => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (['admin', 'gerencia', 'rh'].includes(role)) return true;
+      if (req.user?.uid === 'local-admin' || req.user?.uid?.startsWith('local-')) return true;
+      const st = loadState();
+      const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email || (u.id && String(u.id) === req.user!.uid));
+      if (localUser?.role && ['admin', 'gerencia', 'rh'].includes(localUser.role)) return true;
+      if (localUser?.extraMenus && Array.isArray(localUser.extraMenus) && (localUser.extraMenus.includes('recursos_humanos') || localUser.extraMenus.includes('rh'))) {
+        if (localUser.extraMenusExpiresAt) {
+          const today = new Date().toISOString().slice(0, 10);
+          if (today > localUser.extraMenusExpiresAt) return false;
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // GET Empleados (con filtros y estadísticas)
+  app.get('/api/rh/empleados', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Recursos Humanos" });
+
+      let empleados = loadLocalRH();
+      if (empleados.length === 0) {
+        const synced = await syncRHFromSheets();
+        empleados = synced.empleados;
+      }
+
+      const { search, estatus, departamento, puesto, tipoSalario } = req.query as Record<string, string>;
+      let filtered = [...empleados];
+
+      if (estatus && estatus !== 'TODOS') {
+        filtered = filtered.filter(e => e.estatus === estatus);
+      }
+      if (departamento && departamento !== 'TODOS') {
+        filtered = filtered.filter(e => e.departamento?.toUpperCase().includes(departamento.toUpperCase()));
+      }
+      if (puesto && puesto !== 'TODOS') {
+        filtered = filtered.filter(e => e.puesto?.toUpperCase().includes(puesto.toUpperCase()));
+      }
+      if (tipoSalario && tipoSalario !== 'TODOS') {
+        filtered = filtered.filter(e => e.tipoSalario?.toLowerCase() === tipoSalario.toLowerCase());
+      }
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        filtered = filtered.filter(e =>
+          e.nombreCompleto.toLowerCase().includes(q) ||
+          String(e.numeroEmpleado).includes(q) ||
+          (e.telefonoWhatsapp && e.telefonoWhatsapp.includes(q)) ||
+          (e.puesto && e.puesto.toLowerCase().includes(q)) ||
+          (e.curp && e.curp.toLowerCase().includes(q))
+        );
+      }
+
+      const stats = getRHStats(empleados);
+      res.json({ success: true, count: filtered.length, empleados: filtered, stats });
+    } catch (err: any) {
+      console.error('[rhService] Error en GET /api/rh/empleados:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET Siguiente Número de Empleado
+  app.get('/api/rh/next-numero', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado" });
+      const nextNumero = getNextNumeroEmpleado();
+      res.json({ success: true, nextNumero });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Nuevo Empleado (Paso 2: Alta sincronizada con Google Sheets)
+  app.post('/api/rh/empleados', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para registrar colaboradores" });
+
+      const newEmp = await createEmpleado(req.body);
+      res.json({ success: true, empleado: newEmp });
+    } catch (err: any) {
+      console.error('[rhService] Error en POST /api/rh/empleados:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PUT Editar Empleado (Paso 2: Edición sincronizada)
+  app.put('/api/rh/empleados/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar colaboradores" });
+
+      const updated = await updateEmpleado(req.params.id, req.body);
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      console.error('[rhService] Error en PUT /api/rh/empleados/:id:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST Baja de Empleado (Paso 2: Baja con fecha)
+  app.post('/api/rh/empleados/:id/baja', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para dar de baja colaboradores" });
+
+      const { fechaBaja, motivo } = req.body;
+      const updated = await darDeBajaEmpleado(req.params.id, fechaBaja, motivo);
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      console.error('[rhService] Error en POST /api/rh/empleados/:id/baja:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST Reactivar Empleado
+  app.post('/api/rh/empleados/:id/reactivar', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para reactivar colaboradores" });
+
+      const { fechaIngreso } = req.body;
+      const updated = await reactivarEmpleado(req.params.id, fechaIngreso);
+      res.json({ success: true, empleado: updated });
+    } catch (err: any) {
+      console.error('[rhService] Error en POST /api/rh/empleados/:id/reactivar:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST Sincronizar bajo demanda desde Google Sheets
+  app.post('/api/rh/sync-sheets', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Recursos Humanos" });
+
+      const result = await syncRHFromSheets();
+      const stats = getRHStats(result.empleados);
+      res.json({ success: true, count: result.count, empleados: result.empleados, stats });
+    } catch (err: any) {
+      console.error('[rhService] Error en POST /api/rh/sync-sheets:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 
