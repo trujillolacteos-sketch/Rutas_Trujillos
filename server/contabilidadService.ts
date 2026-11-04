@@ -351,6 +351,72 @@ export async function createMovimiento(data: {
   }
 }
 
+export async function createDepositoBancario(params: {
+  fecha?: string;
+  monto: number;
+  cuentaOrigen?: string;
+  cuentaDestino?: string;
+  folio?: string;
+  motivo?: string;
+  autoriza?: string;
+}): Promise<{
+  success: boolean;
+  message: string;
+  salida?: MovimientoContable;
+  entrada?: MovimientoContable;
+}> {
+  const monto = Math.abs(Number(params.monto) || 0);
+  if (monto <= 0) {
+    return { success: false, message: 'El monto a depositar debe ser mayor a cero' };
+  }
+  const fecha = params.fecha || new Date().toISOString().slice(0, 10);
+  const cuentaOrigen = params.cuentaOrigen || 'Efectivo';
+  const cuentaDestino = params.cuentaDestino || 'Banorte';
+  const folio = params.folio ? params.folio.trim() : '';
+  const autoriza = params.autoriza || 'Auxiliar Contable';
+
+  const motivoSalida = params.motivo?.trim()
+    ? `${params.motivo.trim()} (Depósito a ${cuentaDestino}${folio ? ' - Ficha: ' + folio : ''})`
+    : `Depósito a cuenta ${cuentaDestino}${folio ? ' - Ficha: ' + folio : ''}`;
+
+  const motivoEntrada = params.motivo?.trim()
+    ? `${params.motivo.trim()} (Depósito desde ${cuentaOrigen}${folio ? ' - Ficha: ' + folio : ''})`
+    : `Depósito en efectivo desde ${cuentaOrigen}${folio ? ' - Ficha: ' + folio : ''}`;
+
+  // 1. Salida de Efectivo (descarga de Caja Chica)
+  const resSalida = await createMovimiento({
+    fecha,
+    empresa: 'Quesería',
+    tipoMovimiento: 'Salida',
+    cuentaMenor: 'Depósito Bancario',
+    monto,
+    motivo: motivoSalida,
+    autoriza,
+    cuentaFiscal: cuentaOrigen,
+    folio
+  });
+
+  // 2. Entrada a Banco (abono a cuenta bancaria Banorte)
+  const resEntrada = await createMovimiento({
+    fecha,
+    empresa: 'Quesería',
+    tipoMovimiento: 'Entrada',
+    cuentaMenor: 'Depósito Bancario',
+    monto,
+    motivo: motivoEntrada,
+    autoriza,
+    cuentaFiscal: cuentaDestino,
+    folio
+  });
+
+  return {
+    success: true,
+    message: `Depósito bancario de $${monto.toLocaleString('es-MX', { minimumFractionDigits: 2 })} registrado con éxito (Salida de ${cuentaOrigen} y Entrada a ${cuentaDestino}). No afecta el Estado de Resultados.`,
+    salida: resSalida.movimiento,
+    entrada: resEntrada.movimiento
+  };
+}
+
 export function deleteLocalMovimiento(id: string): { success: boolean; message: string } {
   try {
     let local = loadLocalContabilidad();
@@ -985,6 +1051,8 @@ export interface CajaChicaBalanceResponse {
   saldoTotalEfectivo: number;
   saldoEfectivoMatriz: number;
   saldoEfectivoManzanillo: number;
+  saldoBancoBanorte: number;
+  saldoLiquidezTotal: number;
   totalEntradasHistoricas: number;
   totalSalidasHistoricas: number;
   hoy: {
@@ -1033,6 +1101,7 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   let totalSalidasHistoricas = 0;
   let saldoEfectivoMatriz = 0;
   let saldoEfectivoManzanillo = 0;
+  let saldoBancoBanorte = 0;
 
   let hoyEntradas = 0;
   let hoySalidas = 0;
@@ -1052,11 +1121,19 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
     const cf = (m.cuentaFiscal || '').trim().toLowerCase();
     const isEfectivoMatriz = cf === 'efectivo';
     const isEfectivoManzanillo = cf === 'efectivo manzanillo';
+    const isBanorte = cf === 'banorte';
+
+    const monto = Math.abs(Number(m.monto) || 0);
+    const tipo = (m.tipoMovimiento || '').toLowerCase();
+
+    if (isBanorte) {
+      if (tipo === 'entrada') saldoBancoBanorte += monto;
+      else if (tipo === 'salida') saldoBancoBanorte -= monto;
+    }
+
     if (!isEfectivoMatriz && !isEfectivoManzanillo) return;
 
     cashMovs.push(m);
-    const monto = Math.abs(Number(m.monto) || 0);
-    const tipo = (m.tipoMovimiento || '').toLowerCase();
 
     if (tipo === 'entrada') {
       totalEntradasHistoricas += monto;
@@ -1091,6 +1168,8 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   });
 
   const saldoTotalEfectivo = Number((totalEntradasHistoricas - totalSalidasHistoricas).toFixed(2));
+  const saldoBanco = Number(saldoBancoBanorte.toFixed(2));
+  const saldoLiquidezTotal = Number((saldoTotalEfectivo + saldoBanco).toFixed(2));
 
   // Sort cash movements by date desc, then rowNumber desc
   cashMovs.sort((a, b) => {
@@ -1113,6 +1192,8 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
     saldoTotalEfectivo,
     saldoEfectivoMatriz: Number(saldoEfectivoMatriz.toFixed(2)),
     saldoEfectivoManzanillo: Number(saldoEfectivoManzanillo.toFixed(2)),
+    saldoBancoBanorte: saldoBanco,
+    saldoLiquidezTotal,
     totalEntradasHistoricas: Number(totalEntradasHistoricas.toFixed(2)),
     totalSalidasHistoricas: Number(totalSalidasHistoricas.toFixed(2)),
     hoy: {

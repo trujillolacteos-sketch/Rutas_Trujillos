@@ -56,6 +56,7 @@ import {
 import {
   initContabilidadOnStartup,
   createMovimiento,
+  createDepositoBancario,
   deleteLocalMovimiento,
   calculateContabilidadBalances,
   calculateEstadoResultados,
@@ -1434,6 +1435,35 @@ async function startServer() {
     } catch (err: any) {
       console.error('[contabilidad] Error en GET /api/contabilidad/caja-chica:', err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST Depósito a Banco (Traspaso Efectivo -> Banco sin alterar Estado de Resultados)
+  app.post('/api/contabilidad/deposito-banco', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkContabilidadAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para registrar depósitos bancarios" });
+
+      const { fecha, monto, cuentaOrigen, cuentaDestino, folio, motivo } = req.body;
+      const autoriza = req.user?.displayName || req.user?.email || 'Auxiliar Contable';
+
+      const result = await createDepositoBancario({
+        fecha,
+        monto: Number(monto) || 0,
+        cuentaOrigen,
+        cuentaDestino,
+        folio,
+        motivo,
+        autoriza
+      });
+
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error('[contabilidad] Error en POST /api/contabilidad/deposito-banco:', err);
+      res.status(500).json({ success: false, message: err.message });
     }
   });
 

@@ -4,7 +4,8 @@ import {
   Calendar, Building, CheckCircle2, RefreshCw, Search, Filter, 
   ArrowUpRight, ArrowDownLeft, Download, Trash2, PieChart, Layers, 
   Milk, User, CreditCard, ChevronLeft, ChevronRight, FileSpreadsheet,
-  AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight, Wallet
+  AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight, Wallet,
+  Landmark, ArrowLeftRight, X
 } from 'lucide-react';
 import EstadoResultadosView from './EstadoResultadosView';
 
@@ -52,7 +53,8 @@ const CUENTAS_MENORES = [
   { value: 'Nómina Manzanillo', label: 'Nómina Manzanillo', tipoDefault: 'Salida', group: 'Nómina' },
   { value: 'leche', label: 'Leche (Materia Prima)', tipoDefault: 'Salida', group: 'Materia Prima' },
   { value: 'Crédito', label: 'Crédito', tipoDefault: 'Salida', group: 'Administrativos' },
-  { value: 'Diferencia en calculo', label: 'Diferencia en cálculo', tipoDefault: 'Salida', group: 'Administrativos' }
+  { value: 'Diferencia en calculo', label: 'Diferencia en cálculo', tipoDefault: 'Salida', group: 'Administrativos' },
+  { value: 'Depósito Bancario', label: 'Depósito Bancario / Traspaso', tipoDefault: 'Salida', group: 'Traspasos (No P&L)' }
 ];
 
 const CUENTAS_FISCALES = [
@@ -125,11 +127,13 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   const [filterSearch, setFilterSearch] = useState<string>('');
   const [syncingSheets, setSyncingSheets] = useState(false);
 
-  // Balance Caja Chica (Efectivo Físico)
+  // Balance Caja Chica (Efectivo Físico) & Tesorería
   const [cajaChica, setCajaChica] = useState<{
     saldoTotalEfectivo: number;
     saldoEfectivoMatriz: number;
     saldoEfectivoManzanillo: number;
+    saldoBancoBanorte: number;
+    saldoLiquidezTotal: number;
     totalEntradasHistoricas: number;
     totalSalidasHistoricas: number;
     hoy: { entradas: number; salidas: number; flujoNeto: number; movimientos: number };
@@ -148,6 +152,18 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   } | null>(null);
   const [loadingCajaChica, setLoadingCajaChica] = useState(false);
 
+  // Modal Depósito a Banco (Banorte)
+  const [showDepositoModal, setShowDepositoModal] = useState(false);
+  const [depositoFecha, setDepositoFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [depositoMonto, setDepositoMonto] = useState('');
+  const [depositoCuentaOrigen, setDepositoCuentaOrigen] = useState<'Efectivo' | 'Efectivo manzanillo'>('Efectivo');
+  const [depositoCuentaDestino, setDepositoCuentaDestino] = useState('Banorte');
+  const [depositoFolio, setDepositoFolio] = useState('');
+  const [depositoMotivo, setDepositoMotivo] = useState('');
+  const [submittingDeposito, setSubmittingDeposito] = useState(false);
+  const [depositoError, setDepositoError] = useState<string | null>(null);
+  const [depositoSuccess, setDepositoSuccess] = useState<string | null>(null);
+
   const loadCajaChica = async () => {
     setLoadingCajaChica(true);
     try {
@@ -164,6 +180,55 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       console.error('Error cargando caja chica:', err);
     } finally {
       setLoadingCajaChica(false);
+    }
+  };
+
+  const handleCreateDeposito = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDepositoError(null);
+    setDepositoSuccess(null);
+    const m = parseFloat(depositoMonto);
+    if (!m || m <= 0) {
+      setDepositoError('Ingresa un monto válido a depositar (mayor a cero)');
+      return;
+    }
+    setSubmittingDeposito(true);
+    try {
+      const res = await fetch('/api/contabilidad/deposito-banco', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          fecha: depositoFecha,
+          monto: m,
+          cuentaOrigen: depositoCuentaOrigen,
+          cuentaDestino: depositoCuentaDestino,
+          folio: depositoFolio,
+          motivo: depositoMotivo
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || data.error || 'Error al procesar depósito bancario');
+      }
+      setDepositoSuccess(data.message || 'Depósito bancario registrado con éxito.');
+      setDepositoMonto('');
+      setDepositoFolio('');
+      setDepositoMotivo('');
+      await loadCajaChica();
+      if (activeSubTab === 'bitacora') {
+        loadMovimientos(1);
+      }
+      setTimeout(() => {
+        setShowDepositoModal(false);
+        setDepositoSuccess(null);
+      }, 2200);
+    } catch (err: any) {
+      setDepositoError(err.message || 'Error al conectar con el servidor');
+    } finally {
+      setSubmittingDeposito(false);
     }
   };
 
@@ -808,26 +873,77 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                 </button>
               </div>
 
-              {/* Saldo Principal Físico */}
-              <div className="p-4 rounded-xl bg-white/10 border border-white/15 space-y-1">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide">
-                  Efectivo Físico Disponible (Total)
-                </span>
-                <div className={`text-2xl font-black ${
-                  (cajaChica?.saldoTotalEfectivo || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                }`}>
-                  {fmt(cajaChica?.saldoTotalEfectivo)}
-                </div>
-                <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-white/10 text-[11px]">
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">🏢 Quesería Matriz</span>
-                    <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoMatriz)}</span>
+              {/* Saldos de Tesorería: Caja Chica & Banco */}
+              <div className="space-y-2.5">
+                {/* 1. Caja Chica (Efectivo Físico) */}
+                <div className="p-4 rounded-xl bg-white/10 border border-white/15 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                      Efectivo en Caja Chica
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                      Físico
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-slate-400 block text-[10px]">🌴 Efectivo Manzanillo</span>
-                    <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoManzanillo)}</span>
+                  <div className={`text-2xl font-black ${
+                    (cajaChica?.saldoTotalEfectivo || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}>
+                    {fmt(cajaChica?.saldoTotalEfectivo)}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 mt-2 border-t border-white/10 text-[11px]">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">🏢 Matriz</span>
+                      <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoMatriz)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">🌴 Manzanillo</span>
+                      <span className="font-bold text-white">{fmt(cajaChica?.saldoEfectivoManzanillo)}</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* 2. Banco Banorte & Liquidez Consolidada */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase mb-0.5">
+                      <Landmark className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Banorte</span>
+                    </div>
+                    <div className="text-sm font-black text-sky-300 truncate">
+                      {fmt(cajaChica?.saldoBancoBanorte || 0)}
+                    </div>
+                    <span className="text-[9px] text-slate-400 block">Cuenta Bancaria</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase mb-0.5">
+                      <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Liquidez Total</span>
+                    </div>
+                    <div className="text-sm font-black text-amber-300 truncate">
+                      {fmt(cajaChica?.saldoLiquidezTotal || ((cajaChica?.saldoTotalEfectivo || 0) + (cajaChica?.saldoBancoBanorte || 0)))}
+                    </div>
+                    <span className="text-[9px] text-slate-400 block">Efectivo + Banco</span>
+                  </div>
+                </div>
+
+                {/* Botón de Depósito a Banco */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDepositoMonto('');
+                    setDepositoFolio('');
+                    setDepositoMotivo('');
+                    setDepositoError(null);
+                    setDepositoSuccess(null);
+                    setShowDepositoModal(true);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 border border-emerald-400/30 active:scale-[0.98]"
+                >
+                  <ArrowLeftRight className="w-4 h-4 text-emerald-200" />
+                  <span>🏦 Depositar a Banco (Banorte)</span>
+                </button>
               </div>
 
               {/* Flujos del Período */}
@@ -1238,6 +1354,202 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
       {/* ========================================================= */}
       {activeSubTab === 'estado_resultados' && (
         <EstadoResultadosView token={token} role={role} user={user} />
+      )}
+
+      {/* Modal: Depósito de Efectivo a Banco (Banorte) */}
+      {showDepositoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-white/10 rounded-2xl border border-white/20">
+                  <Landmark className="w-6 h-6 text-emerald-300" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Traspaso / Depósito a Banco</h3>
+                  <p className="text-xs text-emerald-200/80">Descarga Caja Chica y abona a cuenta Banorte</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDepositoModal(false)}
+                className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Informational Banner */}
+            <div className="bg-emerald-50 border-b border-emerald-100 p-3.5 text-xs text-emerald-950 flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Movimiento Contable Neutro (Sin impacto en P&L)</p>
+                <p className="text-[11px] text-emerald-800 mt-0.5">
+                  Genera una <strong>Salida de Efectivo</strong> y una <strong>Entrada a Banorte</strong> con cuenta <em>'Depósito Bancario'</em>. Cuadra exactamente el arqueo físico y el saldo bancario <strong>sin alterar ventas ni costos/gastos</strong> en el Estado de Resultados.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleCreateDeposito} className="p-6 space-y-4">
+              {depositoError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{depositoError}</span>
+                </div>
+              )}
+
+              {depositoSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>{depositoSuccess}</span>
+                </div>
+              )}
+
+              {/* Fecha y Monto */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Fecha del Depósito *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={depositoFecha}
+                    onChange={(e) => setDepositoFecha(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Monto a Depositar ($ MXN) *
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      placeholder="0.00"
+                      value={depositoMonto}
+                      onChange={(e) => setDepositoMonto(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-base font-black rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones de Monto Rápido */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+                  Montos rápidos sugeridos:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[5000, 10000, 20000, 50000].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setDepositoMonto(String(amt))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 transition-colors"
+                    >
+                      ${amt.toLocaleString()}
+                    </button>
+                  ))}
+                  {(cajaChica?.saldoEfectivoMatriz || 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setDepositoMonto(String(cajaChica?.saldoEfectivoMatriz || 0))}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition-colors"
+                      title="Depositar todo el saldo registrado en Matriz"
+                    >
+                      Todo Matriz (${Number(cajaChica?.saldoEfectivoMatriz || 0).toLocaleString()})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Cuenta Origen y Cuenta Destino */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Caja Origen (Salida de Efectivo) *
+                  </label>
+                  <select
+                    value={depositoCuentaOrigen}
+                    onChange={(e) => setDepositoCuentaOrigen(e.target.value as any)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="Efectivo">Efectivo (Matriz) - Disp: {fmt(cajaChica?.saldoEfectivoMatriz)}</option>
+                    <option value="Efectivo manzanillo">Efectivo Manzanillo - Disp: {fmt(cajaChica?.saldoEfectivoManzanillo)}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Cuenta Destino (Abono) *
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value="Banorte (Cuenta Bancaria)"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-100 font-bold text-slate-700"
+                  />
+                </div>
+              </div>
+
+              {/* Folio / Ficha & Motivo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Folio / Ficha de Depósito (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Ficha 883921 / Cajero Banorte"
+                    value={depositoFolio}
+                    onChange={(e) => setDepositoFolio(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Motivo o Referencia (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Venta de ruta semanal a Banorte"
+                    value={depositoMotivo}
+                    onChange={(e) => setDepositoMotivo(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Acciones */}
+              <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDepositoModal(false)}
+                  disabled={submittingDeposito}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingDeposito}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                  <span>{submittingDeposito ? 'Registrando en Sheets...' : 'Confirmar Depósito a Banorte'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
