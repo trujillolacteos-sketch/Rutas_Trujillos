@@ -551,35 +551,48 @@ export function calculateContabilidadBalances(targetYear?: number): Contabilidad
     if (w < 1 || w > 53) return;
     const col = semanasMap.get(w)!;
     const cta = (m.cuentaMenor || '').trim().toLowerCase();
+    const tipo = (m.tipoMovimiento || '').toLowerCase();
     const monto = Math.abs(Number(m.monto) || 0);
 
+    const isSalida = tipo === 'salida';
+    const isEntrada = tipo === 'entrada';
+
+    // Para egresos: Salida suma al gasto (+), Entrada resta como ajuste/reembolso (-)
+    const egresoNeto = isSalida ? monto : (isEntrada ? -monto : 0);
+    // Para ingresos: Entrada suma a la venta (+), Salida resta como devolución/ajuste (-)
+    const ingresoNeto = isEntrada ? monto : (isSalida ? -monto : 0);
+
     // Ingresos
-    if (cta === 'ruta') col.ruta += monto;
-    else if (cta === 'manzanillo ruta 6') col.manzanilloRuta6 += monto;
-    else if (cta === 'ventas manzanillo') col.ventasManzanillo += monto;
-    else if (cta === 'venta directa') col.ventaDirecta += monto;
+    if (cta === 'ruta') col.ruta += ingresoNeto;
+    else if (cta === 'manzanillo ruta 6') col.manzanilloRuta6 += ingresoNeto;
+    else if (cta === 'ventas manzanillo') col.ventasManzanillo += ingresoNeto;
+    else if (cta === 'venta directa') col.ventaDirecta += ingresoNeto;
 
     // Egresos
-    else if (cta === 'gastos') col.gastos += monto;
-    else if (cta === 'gastos manzanillo') col.gastosManzanillo += monto;
-    else if (cta === 'gastos rutas') col.gastosRutas += monto;
-    else if (cta === 'insumos') col.insumos += monto;
-    else if (cta === 'rancho') col.rancho += monto;
+    else if (cta === 'gastos') col.gastos += egresoNeto;
+    else if (cta === 'gastos manzanillo') col.gastosManzanillo += egresoNeto;
+    else if (cta === 'gastos rutas') col.gastosRutas += egresoNeto;
+    else if (cta === 'insumos') col.insumos += egresoNeto;
+    else if (cta === 'rancho') col.rancho += egresoNeto;
 
     // Nóminas
-    else if (cta === 'nómina' || cta === 'nomina') col.nomina += monto;
-    else if (cta === 'nómina manzanillo' || cta === 'nomina manzanillo') col.nominaManzanillo += monto;
+    else if (cta === 'nómina' || cta === 'nomina') col.nomina += egresoNeto;
+    else if (cta === 'nómina manzanillo' || cta === 'nomina manzanillo') col.nominaManzanillo += egresoNeto;
 
     // Leche
     else if (cta === 'leche') {
-      const imp = (m.litros && m.precioPorLitro) ? (m.litros * m.precioPorLitro) : monto;
-      col.leche += imp;
-      if (m.litros) col.litrosLeche += Number(m.litros) || 0;
+      const baseImp = (m.litros && m.precioPorLitro) ? (m.litros * m.precioPorLitro) : monto;
+      const lecheNeto = isSalida ? baseImp : (isEntrada ? -baseImp : baseImp);
+      col.leche += lecheNeto;
+      if (m.litros) {
+        const lts = Number(m.litros) || 0;
+        col.litrosLeche += isSalida ? lts : (isEntrada ? -lts : lts);
+      }
     }
 
     // Administrativos / Créditos
-    else if (cta === 'crédito' || cta === 'credito') col.credito += monto;
-    else if (cta === 'diferencia en calculo' || cta === 'diferencia en cálculo') col.diferenciaCalculo += (Number(m.totalNeto) || monto);
+    else if (cta === 'crédito' || cta === 'credito') col.credito += egresoNeto;
+    else if (cta === 'diferencia en calculo' || cta === 'diferencia en cálculo') col.diferenciaCalculo += (Number(m.totalNeto) || egresoNeto);
   });
 
   // Calculate totals and percentages per week
@@ -747,33 +760,46 @@ function aggregateMovimientos(movs: MovimientoContable[]) {
 
   movs.forEach(m => {
     const cta = (m.cuentaMenor || '').trim().toLowerCase();
+    const tipo = (m.tipoMovimiento || '').toLowerCase();
     const monto = Math.abs(Number(m.monto) || 0);
 
+    const isSalida = tipo === 'salida';
+    const isEntrada = tipo === 'entrada';
+
+    // Para egresos: Salida suma al gasto (+), Entrada resta como ajuste/reembolso (-)
+    const egresoNeto = isSalida ? monto : (isEntrada ? -monto : 0);
+    // Para ingresos: Entrada suma a la venta (+), Salida resta como devolución/ajuste (-)
+    const ingresoNeto = isEntrada ? monto : (isSalida ? -monto : 0);
+
     // Ingresos
-    if (cta === 'ruta') ruta += monto;
-    else if (cta === 'manzanillo ruta 6') manzanilloRuta6 += monto;
-    else if (cta === 'ventas manzanillo') ventasManzanillo += monto;
-    else if (cta === 'venta directa') ventaDirecta += monto;
+    if (cta === 'ruta') ruta += ingresoNeto;
+    else if (cta === 'manzanillo ruta 6') manzanilloRuta6 += ingresoNeto;
+    else if (cta === 'ventas manzanillo') ventasManzanillo += ingresoNeto;
+    else if (cta === 'venta directa') ventaDirecta += ingresoNeto;
 
     // Costos directos
-    else if (cta === 'insumos') insumos += monto;
+    else if (cta === 'insumos') insumos += egresoNeto;
     else if (cta === 'leche') {
-      const imp = (m.litros && m.precioPorLitro) ? (m.litros * m.precioPorLitro) : monto;
-      leche += imp;
-      if (m.litros) litrosLeche += Number(m.litros) || 0;
+      const baseImp = (m.litros && m.precioPorLitro) ? (m.litros * m.precioPorLitro) : monto;
+      const lecheNeto = isSalida ? baseImp : (isEntrada ? -baseImp : baseImp);
+      leche += lecheNeto;
+      if (m.litros) {
+        const lts = Number(m.litros) || 0;
+        litrosLeche += isSalida ? lts : (isEntrada ? -lts : lts);
+      }
     }
 
     // Gastos Operativos
-    else if (cta === 'gastos') gastos += monto;
-    else if (cta === 'gastos manzanillo') gastosManzanillo += monto;
-    else if (cta === 'gastos rutas') gastosRutas += monto;
-    else if (cta === 'rancho') rancho += monto;
-    else if (cta === 'nómina' || cta === 'nomina') nomina += monto;
-    else if (cta === 'nómina manzanillo' || cta === 'nomina manzanillo') nominaManzanillo += monto;
+    else if (cta === 'gastos') gastos += egresoNeto;
+    else if (cta === 'gastos manzanillo') gastosManzanillo += egresoNeto;
+    else if (cta === 'gastos rutas') gastosRutas += egresoNeto;
+    else if (cta === 'rancho') rancho += egresoNeto;
+    else if (cta === 'nómina' || cta === 'nomina') nomina += egresoNeto;
+    else if (cta === 'nómina manzanillo' || cta === 'nomina manzanillo') nominaManzanillo += egresoNeto;
 
     // Otros / Administrativos
-    else if (cta === 'crédito' || cta === 'credito') credito += monto;
-    else if (cta === 'diferencia en calculo' || cta === 'diferencia en cálculo') diferenciaCalculo += (Number(m.totalNeto) || monto);
+    else if (cta === 'crédito' || cta === 'credito') credito += egresoNeto;
+    else if (cta === 'diferencia en calculo' || cta === 'diferencia en cálculo') diferenciaCalculo += (Number(m.totalNeto) || egresoNeto);
   });
 
   const totalIngresos = Number((ruta + manzanilloRuta6 + ventasManzanillo + ventaDirecta).toFixed(2));
