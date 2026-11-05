@@ -129,6 +129,7 @@ export default function CommissionsView({
   const isOperator = role === 'operator';
   const operatorRoute = user?.username || "";
   const canEditRoutes = !isOperator;
+  const isRHOrAdmin = ['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role || '') || !role || canEditRoutes;
 
   const [commissions, setCommissions] = useState<any[]>([]);
   const [rhEmpleados, setRhEmpleados] = useState<RHEmpleadoSimple[]>([]);
@@ -959,7 +960,7 @@ export default function CommissionsView({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {isRHOrAdmin && (
+                    {canEditRoutes && (
                       <button
                         onClick={() => handleOpenAjustes(activeRouteItem)}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
