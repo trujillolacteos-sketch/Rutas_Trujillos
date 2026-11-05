@@ -901,7 +901,12 @@ export interface NominaRutaItem {
   fechaIngreso?: string;
   telefonoWhatsapp?: string;
   salarioBase: number;
+  ratePerson?: number;
+  rateCompany?: number;
+  comisionIndividuales?: number;
+  comisionEmpresas?: number;
   comisionRuta: number;
+  comisionMonto?: number;
   ventasPorDia: {
     lunes: VentaDiaRuta;
     martes: VentaDiaRuta;
@@ -913,6 +918,10 @@ export interface NominaRutaItem {
   totalVentaSemanalEfectivo: number;
   totalVentaSemanalBancos: number;
   totalVentaSemanal: number;
+  totalVentaIndividuales?: number;
+  totalVentaEmpresas?: number;
+  faltas?: number;
+  faltasMonto?: number;
   pagosPendientes: number;
   bonosExtras: number;
   prestamos: number;
@@ -930,6 +939,7 @@ export interface NominaRutaItem {
   periodoDePago: string;
   semana: string;
   linkWhatsApp: string;
+  whatsAppMsg?: string;
   whatsappEnviado: boolean;
 }
 
@@ -1044,16 +1054,21 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
     // Ventas por día y comisiones
     const routeTickets = weekCommissions.filter(c => c.routeId === r.id || c.routeName === routeName);
 
+    const ratePerson = Number(state?.settings?.commissionRatePerson ?? 2.0);
+    const rateCompany = Number(state?.settings?.commissionRateCompany ?? 1.0);
+
     const ventasPorDia = {
-      lunes: { efectivo: 0, transferencias: 0 },
-      martes: { efectivo: 0, transferencias: 0 },
-      miercoles: { efectivo: 0, transferencias: 0 },
-      jueves: { efectivo: 0, transferencias: 0 },
-      viernes: { efectivo: 0, transferencias: 0 },
-      sabado: { efectivo: 0, transferencias: 0 }
+      lunes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+      martes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+      miercoles: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+      jueves: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+      viernes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+      sabado: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 }
     };
 
     let totalComisionesTickets = 0;
+    let comisionInd = 0;
+    let comisionComp = 0;
     let sumEf = 0;
     let sumTrans = 0;
 
@@ -1067,22 +1082,31 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
 
       if (t.clientType === 'company') {
         ventasPorDia[diaKey].transferencias += amt;
+        ventasPorDia[diaKey].total = Number(((ventasPorDia[diaKey].total || 0) + amt).toFixed(2));
+        ventasPorDia[diaKey].tickets = (ventasPorDia[diaKey].tickets || 0) + 1;
         sumTrans += amt;
+        comisionComp += comm;
       } else {
         ventasPorDia[diaKey].efectivo += amt;
+        ventasPorDia[diaKey].total = Number(((ventasPorDia[diaKey].total || 0) + amt).toFixed(2));
+        ventasPorDia[diaKey].tickets = (ventasPorDia[diaKey].tickets || 0) + 1;
         sumEf += amt;
+        comisionInd += comm;
       }
     });
 
-    const totalVentaSemanal = sumEf + sumTrans;
+    const totalVentaSemanal = Number((sumEf + sumTrans).toFixed(2));
     const comisionRuta = adj.comisionRuta !== undefined 
       ? Number(adj.comisionRuta) 
-      : (totalComisionesTickets > 0 ? Number(totalComisionesTickets.toFixed(2)) : Number((totalVentaSemanal * 0.025).toFixed(2)));
+      : Number((comisionInd + comisionComp).toFixed(2));
 
     const bonosExtras = Number(adj.bonosExtras) || 0;
     const pagosPendientes = Number(adj.pagosPendientes) || 0;
     const prestamos = Number(adj.prestamos) || 0;
     const abonos = Number(adj.abonos) || 0;
+    const faltas = Number(adj.faltas) || 0;
+    const cuotaDiaria = salarioBase > 0 ? salarioBase / 6 : 0;
+    const faltasMonto = Number((faltas * cuotaDiaria).toFixed(2));
 
     const empKey = empleadoId ? String(empleadoId) : (empleadoNombre ? normalizeEmployeeName(empleadoNombre) : routeName);
     const saldoMaestro = store.saldosPrestamos?.[empKey] || (empleadoNombre ? store.saldosPrestamos?.[normalizeEmployeeName(empleadoNombre)] : 0) || 0;
@@ -1097,16 +1121,17 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
     const tienda = Number(adj.tienda) || 0;
     const cobrosPendientes = Number(adj.cobrosPendientes) || 0;
 
-    const percepciones = Number((salarioBase + comisionRuta + bonosExtras + pagosPendientes).toFixed(2));
-    const descuentos = Number((abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+    const percepciones = Number((salarioBase + comisionRuta + bonosExtras + pagosPendientes + prestamos).toFixed(2));
+    const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
     const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
 
     // WhatsApp Link
     let tel = (telefonoWhatsapp || '').replace(/\D/g, '');
     if (tel.length === 12 && tel.startsWith('52')) tel = tel.slice(2);
     let linkWhatsApp = '';
+    let whatsAppMsg = '';
     if (tel.length === 10) {
-      const msg = `🧀 *LÁCTEOS TRUJILLOS* 🧀\n📄 *RECIBO DE NÓMINA - VENTAS RUTA*\n\n` +
+      whatsAppMsg = `🧀 *LÁCTEOS TRUJILLOS* 🧀\n📄 *RECIBO DE NÓMINA - VENTAS RUTA*\n\n` +
         `👤 *Colaborador:* ${empleadoNombre || routeName}\n` +
         `🚛 *Ruta:* ${routeName}\n` +
         `💼 *Puesto:* Ventas-Ruta\n` +
@@ -1114,17 +1139,21 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
         `📆 *Fecha de Pago:* ${fechaPagoTexto}\n\n` +
         `💵 *DESGLOSE DE PERCEPCIONES:*\n` +
         `  • Sueldo Base: ${formatMoney(salarioBase)}\n` +
-        `  • Comisión Rutas: ${formatMoney(comisionRuta)} (Venta: ${formatMoney(totalVentaSemanal)})\n` +
+        `  • Comisiones Individuales (${ratePerson}%): ${formatMoney(comisionInd)} (Venta: ${formatMoney(sumEf)})\n` +
+        `  • Comisiones Empresas (${rateCompany}%): ${formatMoney(comisionComp)} (Venta: ${formatMoney(sumTrans)})\n` +
+        `  • Total Comisiones: ${formatMoney(comisionRuta)} (Venta Total: ${formatMoney(totalVentaSemanal)})\n` +
         (bonosExtras > 0 ? `  • Bonos Extras: ${formatMoney(bonosExtras)}\n` : '') +
         (pagosPendientes > 0 ? `  • Pagos Pendientes: ${formatMoney(pagosPendientes)}\n` : '') +
+        (prestamos > 0 ? `  • Préstamo Otorgado: ${formatMoney(prestamos)}\n` : '') +
         `  *TOTAL PERCEPCIONES: ${formatMoney(percepciones)}*\n\n` +
         `🔻 *DESGLOSE DE DEDUCCIONES:*\n` +
-        (abonos > 0 ? `  • Abono Préstamo: ${formatMoney(abonos)}\n` : '') +
-        (gasolina > 0 ? `  • Gasolina: ${formatMoney(gasolina)}\n` : '') +
-        (notasQueseria > 0 ? `  • Notas Quesería: ${formatMoney(notasQueseria)}\n` : '') +
-        (tienda > 0 ? `  • Tienda: ${formatMoney(tienda)}\n` : '') +
-        (cobrosPendientes > 0 ? `  • Cobros Pendientes: ${formatMoney(cobrosPendientes)}\n` : '') +
-        `  *TOTAL DEDUCCIONES: ${formatMoney(descuentos)}*\n\n` +
+        (faltas > 0 ? `  • Faltas (${faltas} d): -${formatMoney(faltasMonto)}\n` : '') +
+        (gasolina > 0 ? `  • Gasolina: -${formatMoney(gasolina)}\n` : '') +
+        (tienda > 0 ? `  • Tienda: -${formatMoney(tienda)}\n` : '') +
+        (notasQueseria > 0 ? `  • Notas Quesería: -${formatMoney(notasQueseria)}\n` : '') +
+        (cobrosPendientes > 0 ? `  • Cobros Pendientes: -${formatMoney(cobrosPendientes)}\n` : '') +
+        (abonos > 0 ? `  • Abono Préstamo: -${formatMoney(abonos)}\n` : '') +
+        `  *TOTAL DEDUCCIONES: -${formatMoney(descuentos)}*\n\n` +
         (saldoPrestamoAnterior > 0 || prestamos > 0 || abonos > 0
           ? `💳 *CONTROL DE PRÉSTAMO:*\n` +
             `  • Saldo Anterior: ${formatMoney(saldoPrestamoAnterior)}\n` +
@@ -1132,10 +1161,10 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
             (abonos > 0 ? `  • (-) Abono de Semana: -${formatMoney(abonos)}\n` : '') +
             `  • Saldo Pendiente: ${formatMoney(saldoPrestamoActual)}\n\n`
           : '') +
-        `💰 *NETO A PAGAR: ${formatMoney(pagoFinal)}*\n\n` +
+        `💰 *TOTAL A PAGAR: ${formatMoney(pagoFinal)}*\n\n` +
         `_Lácteos Trujillos - Comprobante Digital de Nómina_`;
 
-      linkWhatsApp = `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`;
+      linkWhatsApp = `https://wa.me/52${tel}?text=${encodeURIComponent(whatsAppMsg)}`;
     }
 
     return {
@@ -1147,11 +1176,20 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
       fechaIngreso,
       telefonoWhatsapp,
       salarioBase,
+      ratePerson,
+      rateCompany,
+      comisionIndividuales: Number(comisionInd.toFixed(2)),
+      comisionEmpresas: Number(comisionComp.toFixed(2)),
       comisionRuta,
+      comisionMonto: comisionRuta,
       ventasPorDia,
       totalVentaSemanalEfectivo: sumEf,
       totalVentaSemanalBancos: sumTrans,
       totalVentaSemanal,
+      totalVentaIndividuales: sumEf,
+      totalVentaEmpresas: sumTrans,
+      faltas,
+      faltasMonto,
       pagosPendientes,
       bonosExtras,
       prestamos,
@@ -1169,6 +1207,7 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
       periodoDePago: periodoTexto,
       semana: semanaTexto,
       linkWhatsApp,
+      whatsAppMsg,
       whatsappEnviado: adj.whatsappEnviado || false
     };
   });

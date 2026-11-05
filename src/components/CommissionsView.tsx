@@ -15,50 +15,71 @@ import {
   Check,
   X,
   AlertCircle,
-  ExternalLink,
   FileText,
   UserCheck,
   ChevronDown,
   ChevronUp,
-  Wallet
+  Wallet,
+  RotateCcw
 } from "lucide-react";
 import { AppState } from "../types";
 
-export interface NominaRutaItem {
-  routeId: string;
+export interface VentaDiaInfo {
+  efectivo: number;
+  transferencias: number;
+  total: number;
+  tickets: number;
+}
+
+export interface RutaNominaData {
+  routeId: string | number;
   routeName: string;
-  empleadoId?: string;
+  empleadoId?: string | number;
   empleadoNombre: string;
-  telefono?: string;
+  telefonoWhatsapp: string;
   salarioBase: number;
+  // Ventas
+  ventaIndividuales: number;
+  ventaEmpresas: number;
   totalVentaSemanal: number;
-  comisionRate: number;
-  comisionMonto: number;
+  // Comisiones según porcentaje
+  ratePerson: number;
+  rateCompany: number;
+  comisionIndividuales: number;
+  comisionEmpresas: number;
+  totalComisiones: number;
+  // Desglose por día
   ventasPorDia: {
-    lunes: { efectivo: number; transferencias: number; total: number; tickets: number };
-    martes: { efectivo: number; transferencias: number; total: number; tickets: number };
-    miercoles: { efectivo: number; transferencias: number; total: number; tickets: number };
-    jueves: { efectivo: number; transferencias: number; total: number; tickets: number };
-    viernes: { efectivo: number; transferencias: number; total: number; tickets: number };
-    sabado: { efectivo: number; transferencias: number; total: number; tickets: number };
-    domingo: { efectivo: number; transferencias: number; total: number; tickets: number };
+    lunes: VentaDiaInfo;
+    martes: VentaDiaInfo;
+    miercoles: VentaDiaInfo;
+    jueves: VentaDiaInfo;
+    viernes: VentaDiaInfo;
+    sabado: VentaDiaInfo;
+    domingo: VentaDiaInfo;
   };
+  // Ajustes
+  faltas: number;
+  faltasMonto: number;
   bonosExtras: number;
   pagosPendientes: number;
   prestamos: number;
-  faltas: number;
-  faltasMonto: number;
+  abonos: number;
   gasolina: number;
   tienda: number;
   notasQueseria: number;
   cobrosPendientes: number;
-  abonos: number;
+  // Saldos de préstamos
+  saldoPrestamoAnterior: number;
+  saldoPrestamoActual: number;
+  // Totales finales
   percepciones: number;
   descuentos: number;
   pagoFinal: number;
-  saldoPrestamoAnterior: number;
-  saldoPrestamoActual: number;
-  whatsAppMsg: string;
+  // Metadata
+  semana: string;
+  periodoDePago: string;
+  fechaDePago: string;
   linkWhatsApp: string;
 }
 
@@ -71,6 +92,7 @@ export interface RHEmpleadoSimple {
   sueldoBase: number;
   tipoSalario: string;
   telefono?: string;
+  telefonoWhatsapp?: string;
   status: 'activo' | 'baja';
 }
 
@@ -109,8 +131,8 @@ export default function CommissionsView({
   const isRHOrAdmin = ['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role || '') || !role;
 
   const [commissions, setCommissions] = useState<any[]>([]);
-  const [nominaRutas, setNominaRutas] = useState<NominaRutaItem[]>([]);
   const [rhEmpleados, setRhEmpleados] = useState<RHEmpleadoSimple[]>([]);
+  const [serverNominaRutas, setServerNominaRutas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -120,8 +142,8 @@ export default function CommissionsView({
   const [selectedWeek, setSelectedWeek] = useState<string>(currentWeekStr);
   const [activeTab, setActiveTab] = useState<string>(isOperator ? (operatorRoute || "Ruta 1") : "ALL");
 
-  // Modal para editar ajustes variables de la ruta
-  const [editingRuta, setEditingRuta] = useState<NominaRutaItem | null>(null);
+  // Modal para editar ajustes variables
+  const [editingRuta, setEditingRuta] = useState<RutaNominaData | null>(null);
   const [ajustesForm, setAjustesForm] = useState({
     bonosExtras: 0,
     pagosPendientes: 0,
@@ -136,10 +158,7 @@ export default function CommissionsView({
   });
   const [savingAjustes, setSavingAjustes] = useState(false);
 
-  // Modal para imprimir / ver recibo individual
-  const [viewingReceipt, setViewingReceipt] = useState<NominaRutaItem | null>(null);
-
-  // Colapsar tickets de Odoo
+  // Tickets de Odoo colapsable
   const [showTicketsTable, setShowTicketsTable] = useState(false);
 
   useEffect(() => {
@@ -177,7 +196,7 @@ export default function CommissionsView({
         setCommissions(Array.isArray(dataComm) ? dataComm : []);
       }
 
-      // 2. Cargar colaboradores de RH (para asignar choferes a rutas)
+      // 2. Cargar colaboradores de RH
       if (isRHOrAdmin) {
         try {
           const resRH = await apiFetch("/api/rh/empleados", { headers });
@@ -190,29 +209,23 @@ export default function CommissionsView({
         }
       }
 
-      // 3. Cargar nómina de rutas consolidada
-      await fetchNominaRutas();
+      // 3. Cargar nómina de rutas del backend
+      try {
+        const resNom = await apiFetch(`/api/rh/nomina-rutas?semanaId=${encodeURIComponent(selectedWeek)}`, { headers });
+        if (resNom.ok) {
+          const jsonNom = await resNom.json();
+          if (jsonNom.success && Array.isArray(jsonNom.rutas)) {
+            setServerNominaRutas(jsonNom.rutas);
+          }
+        }
+      } catch (nomErr) {
+        console.warn("Could not load server nomina rutas:", nomErr);
+      }
     } catch (e: any) {
       console.error(e);
       setErrorMsg(e.message || "Error al cargar datos");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchNominaRutas = async () => {
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = "Bearer " + token;
-      const res = await apiFetch(`/api/rh/nomina-rutas?semanaId=${encodeURIComponent(selectedWeek)}`, { headers });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.rutas)) {
-          setNominaRutas(json.rutas);
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching nomina rutas:", err);
     }
   };
 
@@ -234,15 +247,24 @@ export default function CommissionsView({
     }
   };
 
+  // Recarga forzada y purga de caché del navegador
+  const handleForceReload = () => {
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => caches.delete(name));
+      });
+    }
+    window.location.reload();
+  };
+
   // Asignar colaborador de RH a una ruta
-  const handleAssignEmpleado = async (routeId: string, empleadoNombre: string) => {
+  const handleAssignEmpleado = async (routeId: string | number, empleadoNombre: string) => {
     if (!isRHOrAdmin) return;
-    setAssigningRoute(routeId);
+    setAssigningRoute(String(routeId));
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = "Bearer " + token;
 
-      // Buscar si el empleado seleccionado existe en RH para tomar su sueldo
       const empObj = rhEmpleados.find(e => e.nombreCompleto === empleadoNombre);
       const updates: any = {
         empleadoNombre,
@@ -252,14 +274,14 @@ export default function CommissionsView({
         updates.salarioBase = empObj.sueldoBase;
       }
 
-      const res = await apiFetch(`/api/rh/nomina-rutas/${encodeURIComponent(routeId)}`, {
+      const res = await apiFetch(`/api/rh/nomina-rutas/${encodeURIComponent(String(routeId))}`, {
         method: "PUT",
         headers,
         body: JSON.stringify(updates)
       });
 
       if (res.ok) {
-        await fetchNominaRutas();
+        await fetchData();
       }
     } catch (err) {
       console.error("Error assigning employee to route:", err);
@@ -269,7 +291,7 @@ export default function CommissionsView({
   };
 
   // Abrir modal de ajustes de una ruta
-  const handleOpenAjustes = (r: NominaRutaItem) => {
+  const handleOpenAjustes = (r: RutaNominaData) => {
     setEditingRuta(r);
     setAjustesForm({
       bonosExtras: r.bonosExtras || 0,
@@ -293,7 +315,7 @@ export default function CommissionsView({
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = "Bearer " + token;
 
-      const res = await apiFetch(`/api/rh/nomina-rutas/${encodeURIComponent(editingRuta.routeId)}`, {
+      const res = await apiFetch(`/api/rh/nomina-rutas/${encodeURIComponent(String(editingRuta.routeId))}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
@@ -303,7 +325,7 @@ export default function CommissionsView({
       });
 
       if (res.ok) {
-        await fetchNominaRutas();
+        await fetchData();
         setEditingRuta(null);
       } else {
         const data = await res.json();
@@ -316,7 +338,7 @@ export default function CommissionsView({
     }
   };
 
-  // Toggle cliente tipo ticket de Odoo
+  // Cambiar tipo Persona / Empresa en ticket de Odoo
   const toggleClientType = async (id: number, clientId: number, currentType: string) => {
     if (isOperator) return;
     try {
@@ -334,7 +356,7 @@ export default function CommissionsView({
         body: JSON.stringify({ clientType: newType, clientId }),
       });
       if (res.ok) {
-        fetchNominaRutas();
+        fetchData();
       }
     } catch (e) {
       console.error(e);
@@ -342,42 +364,247 @@ export default function CommissionsView({
     }
   };
 
+  // CÁLCULO EXACTO DE NÓMINA POR RUTA CON PORCENTAJES ORIGINALES DE INDIVIDUALES Y EMPRESAS
+  const rateCompany = state?.settings?.commissionRateCompany ?? 1.0;
+  const ratePerson = state?.settings?.commissionRatePerson ?? 2.0;
+
+  const diasSemanaMap: Record<number, 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo'> = {
+    1: 'lunes',
+    2: 'martes',
+    3: 'miercoles',
+    4: 'jueves',
+    5: 'viernes',
+    6: 'sabado',
+    0: 'domingo'
+  };
+
+  const rutasList: RutaNominaData[] = useMemo(() => {
+    // Lista de rutas base desde state.routes o defaults
+    const authorizedRoutes = (state?.routes || []).filter(r => r.isAuthorized !== false);
+    const baseRoutes = authorizedRoutes.length > 0
+      ? authorizedRoutes
+      : [
+          { id: 1, name: 'Ruta 1' },
+          { id: 2, name: 'Ruta 2' },
+          { id: 3, name: 'Ruta 3' },
+          { id: 5, name: 'Ruta 4' },
+          { id: 9, name: 'Ruta 5' }
+        ];
+
+    // Asignaciones de choferes y sueldos de settings
+    const routeEmployees = state?.settings?.routeEmployees || {};
+    const baseSalaries = state?.settings?.baseSalaries || {};
+
+    return baseRoutes.map((r) => {
+      const routeName = r.name || `Ruta ${r.id}`;
+      const serverItem = serverNominaRutas.find(sn => String(sn.routeId) === String(r.id) || sn.routeName === routeName);
+
+      // Determinar chofer
+      const assignedEmpName = serverItem?.empleadoNombre || routeEmployees[routeName] || routeEmployees[String(r.id)] || '';
+      const rhMatch = assignedEmpName
+        ? rhEmpleados.find(e => e.nombreCompleto.toLowerCase().trim() === assignedEmpName.toLowerCase().trim())
+        : null;
+
+      const empleadoNombre = rhMatch ? rhMatch.nombreCompleto : assignedEmpName;
+      const empleadoId = rhMatch ? rhMatch.numeroEmpleado : undefined;
+      const telefonoWhatsapp = rhMatch?.telefonoWhatsapp || rhMatch?.telefono || serverItem?.telefonoWhatsapp || '';
+
+      // Sueldo base: configurado en la ruta o estipulado en RH
+      let salarioBase = 0;
+      if (serverItem && serverItem.salarioBase !== undefined && serverItem.salarioBase > 0) {
+        salarioBase = Number(serverItem.salarioBase);
+      } else if (rhMatch && rhMatch.sueldoBase > 0) {
+        salarioBase = Number(rhMatch.sueldoBase);
+      } else if (baseSalaries[routeName] !== undefined) {
+        salarioBase = Number(baseSalaries[routeName]);
+      } else if (baseSalaries[String(r.id)] !== undefined) {
+        salarioBase = Number(baseSalaries[String(r.id)]);
+      } else {
+        salarioBase = 2200; // Default operativo
+      }
+
+      // Ventas por día
+      const ventasPorDia: Record<string, VentaDiaInfo> = {
+        lunes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        martes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        miercoles: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        jueves: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        viernes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        sabado: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
+        domingo: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 }
+      };
+
+      let sumVentaInd = 0;
+      let sumVentaComp = 0;
+      let sumComisionInd = 0;
+      let sumComisionComp = 0;
+
+      // Filtrar tickets correspondientes a esta ruta y semana seleccionada
+      (commissions || []).forEach((c) => {
+        if (c.clientType === 'sin_cliente' || !c.clientId) return;
+        const cWeek = `Semana ${getWeekNumber(c.dateOrder)}`;
+        if (selectedWeek && selectedWeek !== "ALL" && cWeek !== selectedWeek) return;
+
+        // Validar si pertenece a la ruta
+        const matchRoute = c.routeId === r.id || String(c.routeId) === String(r.id) || c.routeName === routeName;
+        if (!matchRoute) return;
+
+        const d = new Date(c.dateOrder);
+        const dayIdx = isNaN(d.getTime()) ? 1 : d.getDay();
+        const diaKey = diasSemanaMap[dayIdx] || 'lunes';
+        const totalTicket = Number(c.orderTotal) || 0;
+        const commAmount = Number(c.commissionAmount) || 0;
+
+        if (c.clientType === 'company') {
+          ventasPorDia[diaKey].transferencias += totalTicket;
+          sumVentaComp += totalTicket;
+          sumComisionComp += commAmount;
+        } else {
+          ventasPorDia[diaKey].efectivo += totalTicket;
+          sumVentaInd += totalTicket;
+          sumComisionInd += commAmount;
+        }
+
+        ventasPorDia[diaKey].total += totalTicket;
+        ventasPorDia[diaKey].tickets += 1;
+      });
+
+      const totalVentaSemanal = Number((sumVentaInd + sumVentaComp).toFixed(2));
+      const totalComisiones = Number((sumComisionInd + sumComisionComp).toFixed(2));
+
+      // Ajustes variables
+      const bonosExtras = Number(serverItem?.bonosExtras) || 0;
+      const pagosPendientes = Number(serverItem?.pagosPendientes) || 0;
+      const prestamos = Number(serverItem?.prestamos) || 0;
+      const abonos = Number(serverItem?.abonos) || 0;
+      const faltas = Number(serverItem?.faltas) || 0;
+      const cuotaDiaria = salarioBase > 0 ? salarioBase / 6 : 0;
+      const faltasMonto = Number((faltas * cuotaDiaria).toFixed(2));
+      const gasolina = Number(serverItem?.gasolina) || 0;
+      const tienda = Number(serverItem?.tienda) || 0;
+      const notasQueseria = Number(serverItem?.notasQueseria) || 0;
+      const cobrosPendientes = Number(serverItem?.cobrosPendientes) || 0;
+
+      // Saldos de préstamos
+      const saldoPrestamoAnterior = Number(serverItem?.saldoPrestamoAnterior) || 0;
+      const saldoPrestamoActual = Math.max(0, Number((saldoPrestamoAnterior + prestamos - abonos).toFixed(2)));
+
+      // Percepciones y Deducciones
+      const percepciones = Number((salarioBase + totalComisiones + bonosExtras + pagosPendientes + prestamos).toFixed(2));
+      const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+      const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
+
+      // WhatsApp Message
+      let tel = (telefonoWhatsapp || '').replace(/\D/g, '');
+      if (tel.length === 12 && tel.startsWith('52')) tel = tel.slice(2);
+      let linkWhatsApp = '';
+      if (tel.length === 10) {
+        const msg = `🧀 *LÁCTEOS TRUJILLOS* 🧀\n📄 *RECIBO DE NÓMINA - VENTAS RUTA*\n\n` +
+          `👤 *Colaborador:* ${empleadoNombre || routeName}\n` +
+          `🚛 *Ruta:* ${routeName}\n` +
+          `💼 *Puesto:* Ventas-Ruta\n` +
+          `📅 *Periodo:* ${selectedWeek}\n` +
+          `📆 *Fecha de Pago:* ${new Date().toLocaleDateString('es-MX')}\n\n` +
+          `💵 *DESGLOSE DE PERCEPCIONES:*\n` +
+          `  • Sueldo Base: ${formatMoney(salarioBase)}\n` +
+          `  • Comisiones Individuales (${ratePerson}%): ${formatMoney(sumComisionInd)} (Venta: ${formatMoney(sumVentaInd)})\n` +
+          `  • Comisiones Empresas (${rateCompany}%): ${formatMoney(sumComisionComp)} (Venta: ${formatMoney(sumVentaComp)})\n` +
+          `  • Total Comisiones: ${formatMoney(totalComisiones)} (Venta Total: ${formatMoney(totalVentaSemanal)})\n` +
+          (bonosExtras > 0 ? `  • Bonos Extras: ${formatMoney(bonosExtras)}\n` : '') +
+          (pagosPendientes > 0 ? `  • Pagos Pendientes: ${formatMoney(pagosPendientes)}\n` : '') +
+          (prestamos > 0 ? `  • Préstamo Otorgado: ${formatMoney(prestamos)}\n` : '') +
+          `  *TOTAL PERCEPCIONES: ${formatMoney(percepciones)}*\n\n` +
+          `🔻 *DESGLOSE DE DEDUCCIONES:*\n` +
+          (faltas > 0 ? `  • Faltas (${faltas} d): -${formatMoney(faltasMonto)}\n` : '') +
+          (gasolina > 0 ? `  • Gasolina: -${formatMoney(gasolina)}\n` : '') +
+          (tienda > 0 ? `  • Tienda: -${formatMoney(tienda)}\n` : '') +
+          (notasQueseria > 0 ? `  • Notas Quesería: -${formatMoney(notasQueseria)}\n` : '') +
+          (cobrosPendientes > 0 ? `  • Cobros Pendientes: -${formatMoney(cobrosPendientes)}\n` : '') +
+          (abonos > 0 ? `  • Abono Préstamo: -${formatMoney(abonos)}\n` : '') +
+          `  *TOTAL DEDUCCIONES: -${formatMoney(descuentos)}*\n\n` +
+          (saldoPrestamoAnterior > 0 || prestamos > 0 || abonos > 0
+            ? `💳 *CONTROL DE PRÉSTAMO:*\n` +
+              `  • Saldo Anterior: ${formatMoney(saldoPrestamoAnterior)}\n` +
+              (prestamos > 0 ? `  • (+) Nuevo Préstamo: ${formatMoney(prestamos)}\n` : '') +
+              (abonos > 0 ? `  • (-) Abono de Semana: -${formatMoney(abonos)}\n` : '') +
+              `  • Saldo Pendiente: ${formatMoney(saldoPrestamoActual)}\n\n`
+            : '') +
+          `💰 *TOTAL A PAGAR: ${formatMoney(pagoFinal)}*\n\n` +
+          `_Lácteos Trujillos - Comprobante Digital de Nómina_`;
+
+        linkWhatsApp = `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`;
+      }
+
+      return {
+        routeId: r.id,
+        routeName,
+        empleadoId,
+        empleadoNombre,
+        telefonoWhatsapp,
+        salarioBase,
+        ventaIndividuales: Number(sumVentaInd.toFixed(2)),
+        ventaEmpresas: Number(sumVentaComp.toFixed(2)),
+        totalVentaSemanal,
+        ratePerson,
+        rateCompany,
+        comisionIndividuales: Number(sumComisionInd.toFixed(2)),
+        comisionEmpresas: Number(sumComisionComp.toFixed(2)),
+        totalComisiones,
+        ventasPorDia: ventasPorDia as any,
+        faltas,
+        faltasMonto,
+        bonosExtras,
+        pagosPendientes,
+        prestamos,
+        abonos,
+        gasolina,
+        tienda,
+        notasQueseria,
+        cobrosPendientes,
+        saldoPrestamoAnterior,
+        saldoPrestamoActual,
+        percepciones,
+        descuentos,
+        pagoFinal,
+        semana: selectedWeek,
+        periodoDePago: 'Lunes a Sábado',
+        fechaDePago: new Date().toLocaleDateString('es-MX'),
+        linkWhatsApp
+      };
+    });
+  }, [state?.routes, state?.settings, commissions, selectedWeek, rhEmpleados, serverNominaRutas, rateCompany, ratePerson]);
+
   // Totales de todas las rutas
   const summary = useMemo(() => {
-    let totalVentas = 0;
-    let totalComisiones = 0;
-    let totalPagos = 0;
-    let totalPrestamosSaldos = 0;
+    let ventas = 0;
+    let comisiones = 0;
+    let comInd = 0;
+    let comComp = 0;
+    let pagos = 0;
+    let deudaPrestamos = 0;
 
-    nominaRutas.forEach((r) => {
-      totalVentas += r.totalVentaSemanal || 0;
-      totalComisiones += r.comisionMonto || 0;
-      totalPagos += r.pagoFinal || 0;
-      totalPrestamosSaldos += r.saldoPrestamoActual || 0;
+    rutasList.forEach((r) => {
+      ventas += r.totalVentaSemanal;
+      comisiones += r.totalComisiones;
+      comInd += r.comisionIndividuales;
+      comComp += r.comisionEmpresas;
+      pagos += r.pagoFinal;
+      deudaPrestamos += r.saldoPrestamoActual;
     });
 
-    return { totalVentas, totalComisiones, totalPagos, totalPrestamosSaldos };
-  }, [nominaRutas]);
+    return { ventas, comisiones, comInd, comComp, pagos, deudaPrestamos };
+  }, [rutasList]);
 
-  // Empleados de RH activos y ruteros
+  // Colaboradores activos de RH
   const empleadosActivosRH = useMemo(() => {
     return rhEmpleados.filter(e => e.status !== 'baja');
   }, [rhEmpleados]);
 
-  // Ruta seleccionada para la vista individual
+  // Ruta activa seleccionada
   const activeRouteItem = useMemo(() => {
     if (activeTab === "ALL") return null;
-    return nominaRutas.find(r => r.routeName === activeTab || r.routeId === activeTab);
-  }, [nominaRutas, activeTab]);
-
-  if (loading && nominaRutas.length === 0) {
-    return (
-      <div className="p-12 text-center text-slate-500 font-medium">
-        <RefreshCw className="w-8 h-8 animate-spin mx-auto text-emerald-600 mb-3" />
-        Cargando nómina y comisiones de rutas...
-      </div>
-    );
-  }
+    return rutasList.find(r => r.routeName === activeTab || String(r.routeId) === String(activeTab));
+  }, [rutasList, activeTab]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-24">
@@ -414,9 +641,7 @@ export default function CommissionsView({
                 {isOperator ? `Nómina de Mi Ruta (${operatorRoute})` : 'Nómina y Comisiones de Rutas'}
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                {isOperator
-                  ? 'Desglose detallado de ventas por día, comisiones y recibo oficial de nómina.'
-                  : 'Gestión individual de nómina por chofer con formato oficial de recibo de ruta.'}
+                Sueldo base + comisiones por venta a individuales ({ratePerson}%) y empresas ({rateCompany}%) con formato oficial de recibo.
               </p>
             </div>
           </div>
@@ -449,48 +674,57 @@ export default function CommissionsView({
               {syncing ? "Sincronizando..." : "Sincronizar Odoo"}
             </button>
           )}
+
+          {/* Botón de recarga forzada de caché */}
+          <button
+            onClick={handleForceReload}
+            title="Recargar vista limpia y purgar caché"
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* KPI CARDS */}
+      {/* KPI CARDS (Comisiones divididas en Individuales y Empresas tal como estaban) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-3">
           <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Ventas Totales</p>
-            <p className="text-lg font-black text-slate-900">{formatMoney(summary.totalVentas)}</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase">Ventas Semanales</p>
+            <p className="text-lg font-black text-slate-900">{formatMoney(summary.ventas)}</p>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-3">
-          <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-            <Calculator className="w-5 h-5" />
+          <div className="p-2.5 bg-sky-50 text-sky-600 rounded-xl">
+            <Users className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Comisiones (2.5%)</p>
-            <p className="text-lg font-black text-emerald-700">{formatMoney(summary.totalComisiones)}</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase">Individuales ({ratePerson}%)</p>
+            <p className="text-lg font-black text-sky-700">{formatMoney(summary.comInd)}</p>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-3">
           <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-            <Wallet className="w-5 h-5" />
+            <Briefcase className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Pago Neto a Repartidores</p>
-            <p className="text-lg font-black text-indigo-700">{formatMoney(summary.totalPagos)}</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase">Empresas ({rateCompany}%)</p>
+            <p className="text-lg font-black text-indigo-700">{formatMoney(summary.comComp)}</p>
           </div>
         </div>
 
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-3">
-          <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
-            <Users className="w-5 h-5" />
+          <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+            <Wallet className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Deuda Préstamos Activa</p>
-            <p className="text-lg font-black text-amber-700">{formatMoney(summary.totalPrestamosSaldos)}</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase">Pago Neto Ruteros</p>
+            <p className="text-lg font-black text-emerald-700">{formatMoney(summary.pagos)}</p>
           </div>
         </div>
       </div>
@@ -510,9 +744,9 @@ export default function CommissionsView({
               <MapIcon className="w-4 h-4" />
               <span>Resumen General de Rutas</span>
             </button>
-            {nominaRutas.map((r) => (
+            {rutasList.map((r) => (
               <button
-                key={r.routeId}
+                key={String(r.routeId)}
                 onClick={() => setActiveTab(r.routeName)}
                 className={`px-5 py-3.5 font-bold text-xs whitespace-nowrap transition-colors flex items-center gap-2 border-b-2 ${
                   activeTab === r.routeName
@@ -533,7 +767,7 @@ export default function CommissionsView({
         )}
 
         <div className="p-6">
-          {/* VISTA 1: RESUMEN GENERAL (TABLA DE TODAS LAS RUTAS) */}
+          {/* VISTA 1: RESUMEN GENERAL (TABLA DE TODAS LAS RUTAS CON CÁLCULO INDIVIDUALES Y EMPRESAS) */}
           {activeTab === 'ALL' && !isOperator ? (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -542,7 +776,7 @@ export default function CommissionsView({
                     Nómina Consolidada por Ruta • {selectedWeek}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Asigna el colaborador del Padrón de RH directamente en el selector de cada fila.
+                    Asigna el colaborador del Padrón de RH en el selector para asociar su sueldo base y saldos.
                   </p>
                 </div>
               </div>
@@ -554,29 +788,31 @@ export default function CommissionsView({
                       <th className="p-3">Ruta</th>
                       <th className="p-3 min-w-[200px]">Chofer Asignado (RH)</th>
                       <th className="p-3 text-right">Sueldo Base</th>
-                      <th className="p-3 text-right">Venta Semanal</th>
-                      <th className="p-3 text-right">Comisión (2.5%)</th>
+                      <th className="p-3 text-right">Venta Total</th>
+                      <th className="p-3 text-right text-sky-800 bg-sky-50/50">Com. Ind ({ratePerson}%)</th>
+                      <th className="p-3 text-right text-indigo-800 bg-indigo-50/50">Com. Emp ({rateCompany}%)</th>
+                      <th className="p-3 text-right font-black">Total Comisiones</th>
                       <th className="p-3 text-right">Percepciones</th>
-                      <th className="p-3 text-right">Deducciones</th>
-                      <th className="p-3 text-right">Saldo Préstamo</th>
-                      <th className="p-3 text-right bg-emerald-50 text-emerald-900">Total a Pagar</th>
+                      <th className="p-3 text-right text-rose-700">Deducciones</th>
+                      <th className="p-3 text-right text-amber-800">Saldo Préstamo</th>
+                      <th className="p-3 text-right bg-emerald-50 text-emerald-900 font-black">Total a Pagar</th>
                       <th className="p-3 text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {nominaRutas.map((r) => (
-                      <tr key={r.routeId} className="hover:bg-slate-50/80 transition-colors">
+                    {rutasList.map((r) => (
+                      <tr key={String(r.routeId)} className="hover:bg-slate-50/80 transition-colors">
                         <td className="p-3 font-black text-slate-900 flex items-center gap-1.5">
                           <Truck className="w-3.5 h-3.5 text-emerald-600" />
                           <span>{r.routeName}</span>
                         </td>
                         <td className="p-3">
-                          {/* Selector directo de colaborador RH */}
+                          {/* Selector de colaborador de RH */}
                           <div className="relative">
                             <select
                               value={r.empleadoNombre || ""}
                               onChange={(e) => handleAssignEmpleado(r.routeId, e.target.value)}
-                              disabled={assigningRoute === r.routeId}
+                              disabled={assigningRoute === String(r.routeId)}
                               className={`w-full text-xs font-semibold rounded-lg px-2 py-1.5 border appearance-none outline-none focus:ring-2 focus:ring-emerald-500 ${
                                 r.empleadoNombre
                                   ? 'bg-emerald-50/40 text-emerald-900 border-emerald-300 font-bold'
@@ -599,8 +835,14 @@ export default function CommissionsView({
                         <td className="p-3 text-right font-mono font-bold text-slate-900">
                           {formatMoney(r.totalVentaSemanal)}
                         </td>
-                        <td className="p-3 text-right font-mono font-bold text-emerald-700">
-                          +{formatMoney(r.comisionMonto)}
+                        <td className="p-3 text-right font-mono font-bold text-sky-700 bg-sky-50/30">
+                          +{formatMoney(r.comisionIndividuales)}
+                        </td>
+                        <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
+                          +{formatMoney(r.comisionEmpresas)}
+                        </td>
+                        <td className="p-3 text-right font-mono font-black text-emerald-700">
+                          +{formatMoney(r.totalComisiones)}
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-slate-800">
                           {formatMoney(r.percepciones)}
@@ -797,7 +1039,7 @@ export default function CommissionsView({
                             <th className="p-2 border-r border-slate-300">Viernes</th>
                             <th className="p-2 border-r border-slate-300">Sábado</th>
                             <th className="p-2 border-r border-slate-300 bg-amber-50 text-amber-900">Total Venta</th>
-                            <th className="p-2 bg-emerald-50 text-emerald-900">Comisión (2.5%)</th>
+                            <th className="p-2 bg-emerald-50 text-emerald-900">Total Comisiones</th>
                           </tr>
                         </thead>
                         <tbody className="font-mono divide-y divide-slate-200">
@@ -842,7 +1084,7 @@ export default function CommissionsView({
                               {formatMoney(activeRouteItem.totalVentaSemanal)}
                             </td>
                             <td className="p-2.5 bg-emerald-50/60 font-black text-emerald-800">
-                              +{formatMoney(activeRouteItem.comisionMonto)}
+                              +{formatMoney(activeRouteItem.totalComisiones)}
                             </td>
                           </tr>
                         </tbody>
@@ -864,12 +1106,25 @@ export default function CommissionsView({
                             {formatMoney(activeRouteItem.salarioBase)}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-600">Comisión Rutas (2.5%):</span>
-                          <span className="font-mono font-bold text-emerald-700">
-                            +{formatMoney(activeRouteItem.comisionMonto)}
+                        <div className="flex justify-between items-center text-sky-800">
+                          <span>Comisión Individuales ({ratePerson}%):</span>
+                          <span className="font-mono font-bold">
+                            +{formatMoney(activeRouteItem.comisionIndividuales)}
                           </span>
                         </div>
+                        <div className="flex justify-between items-center text-indigo-800">
+                          <span>Comisión Empresas ({rateCompany}%):</span>
+                          <span className="font-mono font-bold">
+                            +{formatMoney(activeRouteItem.comisionEmpresas)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center font-bold text-emerald-700 bg-emerald-50/40 px-2 py-1 rounded">
+                          <span>Total Comisiones de Ruta:</span>
+                          <span className="font-mono">
+                            +{formatMoney(activeRouteItem.totalComisiones)}
+                          </span>
+                        </div>
+
                         {activeRouteItem.bonosExtras > 0 && (
                           <div className="flex justify-between items-center">
                             <span className="text-slate-600">Bonos Extras:</span>
@@ -1032,7 +1287,7 @@ export default function CommissionsView({
               </div>
             ) : (
               <div className="p-8 text-center text-slate-500">
-                Selecciona una ruta para consultar su recibo.
+                Selecciona una ruta para consultar su recibo individual.
               </div>
             )
           )}
@@ -1081,14 +1336,14 @@ export default function CommissionsView({
                       <td className="px-3 py-2">
                         {isOperator ? (
                           <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                            {c.clientType}
+                            {c.clientType === 'company' ? `Empresa (${rateCompany}%)` : `Individual (${ratePerson}%)`}
                           </span>
                         ) : (
                           <button
                             onClick={() => toggleClientType(c.id, c.clientId, c.clientType)}
                             className="text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200"
                           >
-                            {c.clientType === 'company' ? 'Empresa' : 'Individual'}
+                            {c.clientType === 'company' ? `Empresa (${rateCompany}%)` : `Individual (${ratePerson}%)`}
                           </button>
                         )}
                       </td>
