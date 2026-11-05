@@ -486,7 +486,9 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
         else if (deptFilter === 'GERENCIA') matchDept = e.tipoJornada === 'gerencia';
       }
 
-      const isNotRutero = (e.tipoJornada || '').toLowerCase() !== 'rutero';
+      const isNotRutero = (e.tipoJornada || '').toLowerCase() !== 'rutero' &&
+        !(e.puesto || '').toUpperCase().includes('RUTA') &&
+        !(e.departamento || '').toUpperCase().includes('RUTA');
       return isNotRutero && matchSearch && matchDept;
     });
   }, [semanaActual?.empleados, searchTerm, deptFilter]);

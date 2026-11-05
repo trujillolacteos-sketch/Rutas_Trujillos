@@ -338,9 +338,10 @@ export default function ChecadasView({ token, role, user }: ChecadasViewProps) {
 
   const empleadosList = semanaActual?.empleados || [];
 
-  // Filtrado (los ruteros no aparecen en checadas)
+  // Filtrado (los choferes/ruteros no aparecen en checadas)
   const filteredChecadas = empleadosList.filter(c => {
-    const isNotRutero = (c.tipoJornada || '').toLowerCase() !== 'rutero';
+    const tj = (c.tipoJornada || '').toLowerCase();
+    const isNotRutero = tj !== 'rutero' && !tj.includes('ruta');
     const matchesSearch = !search.trim() || c.nombre.toLowerCase().includes(search.toLowerCase());
     const matchesTipo = tipoJornadaFiltro === 'TODOS' || c.tipoJornada.toLowerCase() === tipoJornadaFiltro.toLowerCase();
     return isNotRutero && matchesSearch && matchesTipo;

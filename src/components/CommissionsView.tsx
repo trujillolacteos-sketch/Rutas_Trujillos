@@ -595,10 +595,31 @@ export default function CommissionsView({
     return { ventas, comisiones, comInd, comComp, pagos, deudaPrestamos };
   }, [rutasList]);
 
-  // Colaboradores activos de RH
-  const empleadosActivosRH = useMemo(() => {
-    return rhEmpleados.filter(e => e.status !== 'baja');
+  // Colaboradores de RH exclusivos para rutas: jornada 'rutero' o puesto/departamento 'ruta' / 'chofer'
+  const choferesRuterosRH = useMemo(() => {
+    return rhEmpleados.filter(e => {
+      if (e.status === 'baja') return false;
+      const tipo = (e.tipoSalario || '').toLowerCase().trim();
+      const puesto = (e.puesto || '').toLowerCase().trim();
+      const depto = (e.departamento || '').toLowerCase().trim();
+      
+      const isRutero = tipo === 'rutero';
+      const isRutaPuesto = puesto.includes('ruta') || puesto.includes('rutero') || puesto.includes('chofer') || puesto.includes('repartidor');
+      const isRutaDepto = depto.includes('ruta') || depto.includes('rutero');
+
+      return isRutero || isRutaPuesto || isRutaDepto;
+    });
   }, [rhEmpleados]);
+
+  // Obtener choferes disponibles para la ruta, conservando el actualmente asignado si ya tiene chofer
+  const getChoferesForRoute = (currentlyAssignedName?: string) => {
+    if (!currentlyAssignedName) return choferesRuterosRH;
+    const exists = choferesRuterosRH.some(c => c.nombreCompleto === currentlyAssignedName);
+    if (exists) return choferesRuterosRH;
+    const match = rhEmpleados.find(e => e.nombreCompleto === currentlyAssignedName);
+    if (match) return [match, ...choferesRuterosRH];
+    return choferesRuterosRH;
+  };
 
   // Ruta activa seleccionada
   const activeRouteItem = useMemo(() => {
@@ -820,9 +841,9 @@ export default function CommissionsView({
                               }`}
                             >
                               <option value="">-- Sin chofer asignado --</option>
-                              {empleadosActivosRH.map((emp) => (
+                              {getChoferesForRoute(r.empleadoNombre).map((emp) => (
                                 <option key={emp.id} value={emp.nombreCompleto}>
-                                  {emp.nombreCompleto} {emp.tipoSalario === 'rutero' ? '⭐ (Rutero)' : `(${emp.puesto || emp.tipoSalario})`}
+                                  {emp.nombreCompleto} {emp.tipoSalario === 'rutero' ? '⭐ (Rutero)' : `(${emp.puesto || 'Ruta'})`}
                                 </option>
                               ))}
                             </select>
@@ -991,10 +1012,10 @@ export default function CommissionsView({
                             onChange={(e) => handleAssignEmpleado(activeRouteItem.routeId, e.target.value)}
                             className="w-full text-xs font-black text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-500"
                           >
-                            <option value="">-- Asignar colaborador de RH --</option>
-                            {empleadosActivosRH.map((e) => (
+                            <option value="">-- Asignar chofer de ruta (RH) --</option>
+                            {getChoferesForRoute(activeRouteItem.empleadoNombre).map((e) => (
                               <option key={e.id} value={e.nombreCompleto}>
-                                {e.nombreCompleto} {e.tipoSalario === 'rutero' ? '⭐ (Rutero)' : ''}
+                                {e.nombreCompleto} {e.tipoSalario === 'rutero' ? '⭐ (Rutero)' : `(${e.puesto || 'Ruta'})`}
                               </option>
                             ))}
                           </select>

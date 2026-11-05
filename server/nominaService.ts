@@ -458,8 +458,14 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
     checadasMap.set(normalizeEmployeeName(c.nombre), c);
   });
 
-  // Nómina de Planta es alimentada EXCLUSIVAMENTE por los colaboradores con estatus ACTIVO en Padrón RH que NO sean ruteros
-  const activosPlanta = activosRH.filter(rhEmp => (rhEmp.tipoSalario || '').trim().toLowerCase() !== 'rutero');
+  // Nómina de Planta es alimentada EXCLUSIVAMENTE por los colaboradores con estatus ACTIVO en Padrón RH que NO sean choferes o ruteros
+  const activosPlanta = activosRH.filter(rhEmp => {
+    const ts = (rhEmp.tipoSalario || '').trim().toLowerCase();
+    const p = (rhEmp.puesto || '').trim().toLowerCase();
+    const d = (rhEmp.departamento || '').trim().toLowerCase();
+    const isRuteroOrRuta = ts === 'rutero' || p.includes('ruta') || p.includes('rutero') || p.includes('chofer') || d.includes('ruta') || d.includes('rutero');
+    return !isRuteroOrRuta;
+  });
   const empleadosNomina: NominaEmpleado[] = activosPlanta.map((rhEmp, index) => {
     const normKey = normalizeEmployeeName(rhEmp.nombreCompleto);
     const checada = checadasMap.get(normKey);
