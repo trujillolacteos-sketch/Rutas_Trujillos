@@ -19346,6 +19346,12 @@
         "estado_resultados"
       ],
       "extraMenusExpiresAt": null
+    },
+    {
+      "id": 1793813000000,
+      "username": "Recursos Humanos",
+      "role": "rh",
+      "password": "Rh.1234"
     }
   ],
   "trackingLogs": [

@@ -378,7 +378,8 @@ function loadState(): AppState {
     { username: 'Supervisor Planta', role: 'supervisor_produccion', password: 'Planta.1234' },
     { username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
     { username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' },
-    { username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' }
+    { username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' },
+    { username: 'Recursos Humanos', role: 'rh', password: 'Rh.1234' }
   ];
 
   let usersUpdated = false;
@@ -394,6 +395,7 @@ function loadState(): AppState {
   });
   if (usersUpdated) {
     saveState(state);
+    saveUsersToGoogleSheet(state.users).catch(e => console.error('[usersSheetService] Error saving default accounts:', e));
   }
 
   if (!state.stateVersion) {
@@ -1520,12 +1522,12 @@ async function startServer() {
   const checkRHAccess = async (req: AuthRequest): Promise<boolean> => {
     try {
       const role = await getUserRole(req.user!.uid);
-      if (['admin', 'gerencia', 'rh'].includes(role)) return true;
-      if (req.user?.uid === 'local-admin' || req.user?.uid?.startsWith('local-')) return true;
+      if (['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role)) return true;
+      if (req.user?.uid === 'local-admin' || req.user?.uid === 'local-rh' || req.user?.uid?.startsWith('local-')) return true;
       const st = loadState();
       const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email || (u.id && String(u.id) === req.user!.uid));
-      if (localUser?.role && ['admin', 'gerencia', 'rh'].includes(localUser.role)) return true;
-      if (localUser?.extraMenus && Array.isArray(localUser.extraMenus) && (localUser.extraMenus.includes('recursos_humanos') || localUser.extraMenus.includes('rh'))) {
+      if (localUser?.role && ['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(localUser.role)) return true;
+      if (localUser?.extraMenus && Array.isArray(localUser.extraMenus) && (localUser.extraMenus.includes('recursos_humanos') || localUser.extraMenus.includes('rh') || localUser.extraMenus.includes('checadas') || localUser.extraMenus.includes('nomina'))) {
         if (localUser.extraMenusExpiresAt) {
           const today = new Date().toISOString().slice(0, 10);
           if (today > localUser.extraMenusExpiresAt) return false;

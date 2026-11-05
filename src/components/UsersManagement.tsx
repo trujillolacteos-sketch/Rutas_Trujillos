@@ -45,7 +45,12 @@ export const AVAILABLE_MENUS = [
   { key: 'estado_resultados', label: 'Estado de Resultados', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
   { key: 'contabilidad', label: 'Contabilidad', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
 
-  // GRUPO 4: SISTEMA
+  // GRUPO 4: RECURSOS HUMANOS
+  { key: 'recursos_humanos', label: 'Padrón RH', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
+  { key: 'checadas', label: 'Checadas', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
+  { key: 'nomina', label: 'Nómina y Recibos', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
+
+  // GRUPO 5: SISTEMA
   { key: 'zones', label: 'Zonas', group: 'Sistema', color: 'text-slate-700 bg-slate-100 border-slate-300' },
   { key: 'settings', label: 'Ajustes', group: 'Sistema', color: 'text-slate-700 bg-slate-100 border-slate-300' }
 ];
@@ -203,6 +208,9 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
         return { label: 'Administrador', color: 'bg-rose-50 text-rose-700 border-rose-200' };
       case 'gerencia':
         return { label: 'Gerencia', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+      case 'rh':
+      case 'recursos_humanos':
+        return { label: 'Recursos Humanos', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
       case 'supervisor_rutas':
       case 'supervisor':
         return { label: 'Sup. Rutas', color: 'bg-blue-50 text-blue-700 border-blue-200' };
@@ -491,6 +499,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
               >
                 <option value="admin">Administrador (Total)</option>
                 <option value="gerencia">Gerencia (Rutas y Producción)</option>
+                <option value="rh">Recursos Humanos (Padrón, Checadas y Nómina)</option>
                 <option value="supervisor_rutas">Supervisor de Rutas</option>
                 <option value="supervisor_produccion">Supervisor de Producción</option>
                 <option value="produccion">Operador de Producción (Solo Planta)</option>
@@ -575,6 +584,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
                     >
                       <option value="admin">Administrador (Total)</option>
                       <option value="gerencia">Gerencia (Rutas y Producción)</option>
+                      <option value="rh">Recursos Humanos (Padrón, Checadas y Nómina)</option>
                       <option value="supervisor_rutas">Supervisor de Rutas</option>
                       <option value="supervisor_produccion">Supervisor de Producción</option>
                       <option value="produccion">Operador de Producción (Solo Planta)</option>

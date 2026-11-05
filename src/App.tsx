@@ -202,7 +202,8 @@ function App() {
       { id: 8, username: 'Operador Producción', role: 'produccion', password: 'Produccion.1234' },
       { id: 9, username: 'Operador Planta', role: 'produccion', password: 'Produccion.1234' },
       { id: 10, username: 'Operador Línea', role: 'produccion_linea', password: 'Linea.1234' },
-      { id: 11, username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' }
+      { id: 11, username: 'Auxiliar Contable', role: 'auxiliar_contable', password: 'Contable.1234' },
+      { id: 13, username: 'Recursos Humanos', role: 'rh', password: 'Rh.1234' }
     ];
 
     const usersList = (state?.users && state.users.length > 0) ? state.users : fallbackUsers;
@@ -253,14 +254,15 @@ function App() {
   const isProduccionLinea = user?.role === 'produccion_linea';
   const isOperator = user?.role === 'operator';
   const isAuxiliarContable = user?.role === 'auxiliar_contable';
+  const isRH = user?.role === 'rh' || user?.role === 'recursos_humanos';
 
-  const canAccessRoutes = (isAdmin || isGerencia || isSupervisorRutas) && !isAuxiliarContable;
-  const canAccessProduction = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
-  const canAccessProductionLines = (isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea) && !isAuxiliarContable;
-  const canAccessPurchases = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
-  const canAccessSupplies = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
-  const canAccessProductionKpis = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea) && !isAuxiliarContable;
-  const canManageCosts = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable;
+  const canAccessRoutes = (isAdmin || isGerencia || isSupervisorRutas) && !isAuxiliarContable && !isRH;
+  const canAccessProduction = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable && !isRH;
+  const canAccessProductionLines = (isAdmin || isGerencia || isSupervisorProduccion || isProduccionLinea) && !isAuxiliarContable && !isRH;
+  const canAccessPurchases = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable && !isRH;
+  const canAccessSupplies = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable && !isRH;
+  const canAccessProductionKpis = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion || isProduccionLinea) && !isAuxiliarContable && !isRH;
+  const canManageCosts = (isAdmin || isGerencia || isSupervisorProduccion || isProduccion) && !isAuxiliarContable && !isRH;
   const role = user?.role || 'user';
   // Sincronización en tiempo real del usuario activo con state.users
   useEffect(() => {
@@ -313,22 +315,22 @@ function App() {
   const showPurchases = !isAuxiliarContable && (canAccessPurchases || hasExtraMenu('purchases'));
   const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases;
 
-  const showSalesReports = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('sales_reports'));
-  const showCommissions = !isAuxiliarContable && ((canAccessRoutes || isOperator) || hasExtraMenu('commissions'));
-  const showEstadoResultados = isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad');
-  const showContabilidad = isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('contabilidad');
+  const showSalesReports = !isAuxiliarContable && !isRH && ((canAccessRoutes || isOperator) || hasExtraMenu('sales_reports'));
+  const showCommissions = !isAuxiliarContable && !isRH && ((canAccessRoutes || isOperator) || hasExtraMenu('commissions'));
+  const showEstadoResultados = !isRH && (isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad'));
+  const showContabilidad = !isRH && (isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('contabilidad'));
   const showGroupAdmin = showSalesReports || showCommissions || showEstadoResultados || showContabilidad;
 
-  const showRecursosHumanos = !isAuxiliarContable && (isAdmin || isGerencia || role === 'rh' || hasExtraMenu('recursos_humanos') || hasExtraMenu('rh'));
-  const showChecadas = showRecursosHumanos;
-  const showNomina = showRecursosHumanos || hasExtraMenu('nomina');
+  const showRecursosHumanos = !isAuxiliarContable && (isAdmin || isGerencia || isRH || hasExtraMenu('recursos_humanos') || hasExtraMenu('rh'));
+  const showChecadas = !isAuxiliarContable && (isAdmin || isGerencia || isRH || hasExtraMenu('checadas') || hasExtraMenu('rh'));
+  const showNomina = !isAuxiliarContable && (isAdmin || isGerencia || isRH || hasExtraMenu('nomina') || hasExtraMenu('rh'));
   const showGroupRH = showRecursosHumanos || showChecadas || showNomina;
 
-  const showZones = !isAuxiliarContable && (isAdmin || hasExtraMenu('zones'));
-  const showSettings = !isAuxiliarContable && (isAdmin || hasExtraMenu('settings'));
+  const showZones = !isAuxiliarContable && !isRH && (isAdmin || hasExtraMenu('zones'));
+  const showSettings = !isAuxiliarContable && !isRH && (isAdmin || hasExtraMenu('settings'));
   const showGroupSystem = showZones || showSettings;
 
-  const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'all'>('rutas');
+  const [loginMode, setLoginMode] = useState<'rutas' | 'produccion' | 'gerencia' | 'rh' | 'all'>('rutas');
 
   useEffect(() => {
     const preferred = localStorage.getItem('preferred_view');
@@ -341,8 +343,10 @@ function App() {
       if (activeTab !== 'contabilidad' && activeTab !== 'estado_resultados') {
         setActiveTab('contabilidad');
       }
-    } else if (user?.role === 'rh') {
-      setActiveTab('recursos_humanos');
+    } else if (user?.role === 'rh' || user?.role === 'recursos_humanos') {
+      if (activeTab !== 'recursos_humanos' && activeTab !== 'checadas' && activeTab !== 'nomina') {
+        setActiveTab('recursos_humanos');
+      }
     } else if (user?.role === 'produccion_linea') {
       setActiveTab('production_lines');
     } else if (user?.role === 'produccion' || user?.role === 'supervisor_produccion') {
@@ -365,6 +369,7 @@ function App() {
       { id: 5, username: 'Operador Producción', role: 'produccion' },
       { id: 6, username: 'Operador Línea', role: 'produccion_linea' },
       { id: 12, username: 'Auxiliar Contable', role: 'auxiliar_contable' },
+      { id: 13, username: 'Recursos Humanos', role: 'rh' },
       { id: 7, username: 'Ruta 1', role: 'operator' },
       { id: 8, username: 'Ruta 2', role: 'operator' },
       { id: 9, username: 'Ruta 3', role: 'operator' },
@@ -380,7 +385,10 @@ function App() {
         return ['supervisor_produccion', 'produccion', 'produccion_linea', 'gerencia', 'admin'].includes(u.role);
       }
       if (loginMode === 'gerencia') {
-        return ['gerencia', 'admin', 'auxiliar_contable'].includes(u.role);
+        return ['gerencia', 'admin', 'auxiliar_contable', 'rh'].includes(u.role);
+      }
+      if (loginMode === 'rh') {
+        return ['rh', 'gerencia', 'admin'].includes(u.role);
       }
       return true;
     });
@@ -401,12 +409,14 @@ function App() {
             {loginMode === 'produccion'
               ? 'Supervisión de Planta, Producción y Compras'
               : loginMode === 'gerencia'
-              ? 'Panel de Gerencia y Dirección General'
+              ? 'Panel de Gerencia, Administración y Finanzas'
+              : loginMode === 'rh'
+              ? 'Padrón de Empleados, Checadas y Nómina'
               : 'Supervisión de Rutas y Choferes'}
           </p>
 
           {/* Area Selector Tabs */}
-          <div className="grid grid-cols-4 gap-1 p-1 bg-slate-100 rounded-xl mb-4 text-[11px] font-bold">
+          <div className="grid grid-cols-5 gap-1 p-1 bg-slate-100 rounded-xl mb-4 text-[11px] font-bold">
             <button
               type="button"
               onClick={() => { setLoginMode('rutas'); setLoginForm({ username: '', password: '' }); }}
@@ -435,6 +445,16 @@ function App() {
               }`}
             >
               <span>Gerencia</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setLoginMode('rh'); setLoginForm({ username: '', password: '' }); }}
+              className={`py-1.5 px-1 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                loginMode === 'rh' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-3 h-3 shrink-0" />
+              <span>RH</span>
             </button>
             <button
               type="button"
@@ -489,7 +509,7 @@ function App() {
             <button 
               type="submit" 
               className={`w-full py-3 text-white rounded-xl font-bold transition-all shadow-md hover:shadow-lg active:scale-[0.98] text-xs ${
-                loginMode === 'produccion' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
+                loginMode === 'produccion' ? 'bg-emerald-600 hover:bg-emerald-700' : loginMode === 'rh' ? 'bg-indigo-600 hover:bg-indigo-700' : loginMode === 'gerencia' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
               Iniciar Sesión
