@@ -46,6 +46,7 @@ export const AVAILABLE_MENUS = [
   { key: 'contabilidad', label: 'Contabilidad', group: 'Finanzas', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
 
   // GRUPO 4: RECURSOS HUMANOS
+  { key: 'rh', label: 'Todo RH (Acceso Total)', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
   { key: 'recursos_humanos', label: 'Padrón RH', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
   { key: 'checadas', label: 'Checadas', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
   { key: 'nomina', label: 'Nómina y Recibos', group: 'Recursos Humanos', color: 'text-purple-700 bg-purple-50 border-purple-200' },
@@ -271,7 +272,7 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
       </p>
 
       {/* Grid of Menus by Group */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
         {/* Rutas */}
         <div className="space-y-1.5 p-2 rounded-lg bg-blue-50/50 border border-blue-100">
           <div className="flex items-center gap-1 text-[10px] font-black uppercase text-blue-700">
@@ -343,6 +344,33 @@ export default function UsersManagement({ state, setState }: { state: AppState; 
                     checked
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'hover:bg-emerald-100/70 text-slate-700'
+                  }`}
+                >
+                  {checked ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 text-slate-400" />}
+                  <span>{menu.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Recursos Humanos */}
+        <div className="space-y-1.5 p-2 rounded-lg bg-purple-50/50 border border-purple-100">
+          <div className="flex items-center gap-1 text-[10px] font-black uppercase text-purple-700">
+            <Users className="w-3 h-3" />
+            <span>Recursos Humanos</span>
+          </div>
+          <div className="space-y-1">
+            {AVAILABLE_MENUS.filter(m => m.group === 'Recursos Humanos').map(menu => {
+              const checked = editForm.extraMenus.includes(menu.key);
+              return (
+                <label
+                  key={menu.key}
+                  onClick={() => toggleMenu(menu.key)}
+                  className={`flex items-center gap-2 p-1.5 rounded-lg text-xs font-semibold cursor-pointer select-none transition-all ${
+                    checked
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'hover:bg-purple-100/70 text-slate-700'
                   }`}
                 >
                   {checked ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 text-slate-400" />}
