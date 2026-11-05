@@ -196,7 +196,10 @@ export async function syncChecadasFromSheets(): Promise<{
         extras: (r[start + 5] || '0:00').trim()
       });
 
-      const empleados: EmpleadoChecada[] = activosRH.map((rhEmp, index) => {
+      // Checadas debe ser alimentado SOLO por los activos de Planta (los ruteros no llevan checada)
+      const activosPlanta = activosRH.filter(rhEmp => (rhEmp.tipoSalario || '').trim().toLowerCase() !== 'rutero');
+
+      const empleados: EmpleadoChecada[] = activosPlanta.map((rhEmp, index) => {
         const rowNumber = index + 3; // En hoja Checadas los datos inician en fila 3
         const key = normalizeEmployeeName(rhEmp.nombreCompleto);
         const match = existingChecadasMap.get(key);

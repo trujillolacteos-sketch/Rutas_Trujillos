@@ -316,7 +316,7 @@ function App() {
   const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases;
 
   const showSalesReports = !isAuxiliarContable && !isRH && ((canAccessRoutes || isOperator) || hasExtraMenu('sales_reports'));
-  const showCommissions = !isAuxiliarContable && !isRH && ((canAccessRoutes || isOperator) || hasExtraMenu('commissions'));
+  const showCommissions = !isAuxiliarContable && (isAdmin || isGerencia || isRH || canAccessRoutes || isOperator || hasExtraMenu('commissions'));
   const showEstadoResultados = !isRH && (isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('estado_resultados') || hasExtraMenu('contabilidad'));
   const showContabilidad = !isRH && (isAdmin || isGerencia || isAuxiliarContable || hasExtraMenu('contabilidad'));
   const showGroupAdmin = showSalesReports || showCommissions || showEstadoResultados || showContabilidad;

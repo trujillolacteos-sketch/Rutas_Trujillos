@@ -3,6 +3,7 @@ import path from 'path';
 import { getGoogleAccessToken } from './googleCredentials.ts';
 import { loadLocalRH, getEmpleadosActivosRH, normalizeEmployeeName, EmpleadoRH } from './rhService.ts';
 import { loadStore as loadChecadasStore, SemanaChecadas, EmpleadoChecada, getWeekDetails } from './checadasService.ts';
+import { loadLocalCommissions } from './odooSync.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const NOMINA_STORE_FILE = 'nomina_store.json';
@@ -106,6 +107,7 @@ export interface NominaStore {
   semanaActiva: SemanaNomina;
   historico: SemanaNomina[];
   saldosPrestamos?: Record<string, number>; // Mapa maestro de saldos pendientes de préstamo por colaborador
+  rutasAjustes?: Record<string, Record<string, any>>; // [semanaKey][routeName]: ajustes manuales de rutas
 }
 
 function getStorePath(): string {
@@ -456,8 +458,9 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
     checadasMap.set(normalizeEmployeeName(c.nombre), c);
   });
 
-  // Nómina es alimentada EXCLUSIVAMENTE por los colaboradores con estatus ACTIVO en Padrón RH
-  const empleadosNomina: NominaEmpleado[] = activosRH.map((rhEmp, index) => {
+  // Nómina de Planta es alimentada EXCLUSIVAMENTE por los colaboradores con estatus ACTIVO en Padrón RH que NO sean ruteros
+  const activosPlanta = activosRH.filter(rhEmp => (rhEmp.tipoSalario || '').trim().toLowerCase() !== 'rutero');
+  const empleadosNomina: NominaEmpleado[] = activosPlanta.map((rhEmp, index) => {
     const normKey = normalizeEmployeeName(rhEmp.nombreCompleto);
     const checada = checadasMap.get(normKey);
     const manual = (rhEmp.numeroEmpleado ? manualAdjustmentsMap.get(`NUM_${rhEmp.numeroEmpleado}`) : null) || manualAdjustmentsMap.get(normKey);
@@ -626,10 +629,75 @@ export function markWhatsAppEnviado(identifier: string | number, enviado = true)
  */
 export async function archivarSemanaNomina(): Promise<{ success: boolean; semanaArchivada: SemanaNomina; sheetsSynced: boolean; driveSynced: boolean; message: string }> {
   const store = loadNominaStore();
-  const semanaActual = { ...store.semanaActiva };
+  const semanaActual = { ...store.semanaActiva, empleados: [...store.semanaActiva.empleados] };
 
   if (semanaActual.empleados.length === 0) {
     throw new Error('No hay empleados en la semana activa de nómina.');
+  }
+
+  // Integrar nómina de ruteros para archivarlos conjuntamente en el mismo histórico y recibos
+  try {
+    const ruterosNomina = getNominaRutas(semanaActual.semanaNum);
+    ruterosNomina.forEach((r, idx) => {
+      if (r.empleadoNombre || r.totalVentaSemanal > 0 || r.pagoFinal > 0) {
+        const empRuta: NominaEmpleado = {
+          rowNumber: semanaActual.empleados.length + idx + 2,
+          id: `RUTA_${String(r.routeId)}`,
+          numeroEmpleado: r.empleadoId,
+          nombreCompleto: r.empleadoNombre || r.routeName,
+          puesto: 'Ventas-Ruta',
+          departamento: 'RUTAS',
+          curp: r.curp || '',
+          fechaIngreso: r.fechaIngreso || '',
+          antiguedad: '',
+          telefonoWhatsapp: r.telefonoWhatsapp || '',
+          tipoJornada: 'rutero',
+          salarioBase: r.salarioBase,
+          horasTrabajadas: '00:00',
+          montoPorHoras: 0,
+          faltas: 0,
+          faltasMonto: 0,
+          horasJornadaIncompleta: '0:00',
+          montoJornadaIncompleta: 0,
+          extras: '0:00',
+          extrasMonto: 0,
+          incapacidades: 0,
+          vacacionesUtilizadas: 0,
+          pagosPendientes: r.pagosPendientes,
+          bonosExtras: r.bonosExtras,
+          prestamos: r.prestamos,
+          abonos: r.abonos,
+          saldoPrestamoAnterior: r.saldoPrestamoAnterior,
+          saldoPrestamoActual: r.saldoPrestamoActual,
+          gasolina: r.gasolina,
+          notasQueseria: r.notasQueseria,
+          tienda: r.tienda,
+          cobrosPendientes: r.cobrosPendientes,
+          percepciones: r.percepciones,
+          descuentos: r.descuentos,
+          pagoFinal: r.pagoFinal,
+          fechaDePago: semanaActual.fechaPago,
+          periodoDePago: semanaActual.periodo,
+          semana: `Semana ${semanaActual.semanaNum}`,
+          linkWhatsApp: r.linkWhatsApp,
+          whatsappEnviado: r.whatsappEnviado || false,
+          ventasPorDia: r.ventasPorDia,
+          totalVentaSemanal: r.totalVentaSemanal,
+          totalVentaSemanalEfectivo: r.totalVentaSemanalEfectivo,
+          totalVentaSemanalBancos: r.totalVentaSemanalBancos,
+          comisionRuta: r.comisionRuta
+        };
+
+        const existingIdx = semanaActual.empleados.findIndex(e => e.id === empRuta.id);
+        if (existingIdx >= 0) {
+          semanaActual.empleados[existingIdx] = empRuta;
+        } else {
+          semanaActual.empleados.push(empRuta);
+        }
+      }
+    });
+  } catch (ruteroErr) {
+    console.error('[archivarSemanaNomina] Error integrando ruteros:', ruteroErr);
   }
 
   const fechaCierre = new Date().toISOString();
@@ -818,4 +886,346 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
     driveSynced,
     message: `Semana ${semanaActual.semanaNum} archivada con éxito. ${sheetsSynced ? 'Sincronizado con Google Sheets.' : ''} ${driveSynced ? 'Copia respaldada en Google Drive.' : ''}`
   };
+}
+
+// ==========================================
+// CONTROL DE NÓMINA DE RUTAS (Ventas-Ruta)
+// ==========================================
+
+export interface NominaRutaItem {
+  routeId: number | string;
+  routeName: string;
+  empleadoId?: number;
+  empleadoNombre?: string;
+  curp?: string;
+  fechaIngreso?: string;
+  telefonoWhatsapp?: string;
+  salarioBase: number;
+  comisionRuta: number;
+  ventasPorDia: {
+    lunes: VentaDiaRuta;
+    martes: VentaDiaRuta;
+    miercoles: VentaDiaRuta;
+    jueves: VentaDiaRuta;
+    viernes: VentaDiaRuta;
+    sabado: VentaDiaRuta;
+  };
+  totalVentaSemanalEfectivo: number;
+  totalVentaSemanalBancos: number;
+  totalVentaSemanal: number;
+  pagosPendientes: number;
+  bonosExtras: number;
+  prestamos: number;
+  abonos: number;
+  saldoPrestamoAnterior: number;
+  saldoPrestamoActual: number;
+  gasolina: number;
+  notasQueseria: number;
+  tienda: number;
+  cobrosPendientes: number;
+  percepciones: number;
+  descuentos: number;
+  pagoFinal: number;
+  fechaDePago: string;
+  periodoDePago: string;
+  semana: string;
+  linkWhatsApp: string;
+  whatsappEnviado: boolean;
+}
+
+export function getWeekNumberFromDate(d: string | Date | number): number {
+  if (!d) return 0;
+  try {
+    const date = typeof d === 'string' && !d.includes('T') ? new Date(d + 'T00:00:00') : new Date(d);
+    date.setHours(0, 0, 0, 0);
+    const startOfYear = new Date(date.getFullYear(), 0, 1);
+    startOfYear.setHours(0, 0, 0, 0);
+    const pastDaysOfYear = Math.round((date.getTime() - startOfYear.getTime()) / 86400000);
+    return Math.floor((pastDaysOfYear + startOfYear.getDay()) / 7) + 1;
+  } catch {
+    return 0;
+  }
+}
+
+export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[] {
+  const store = loadNominaStore();
+  let targetSemanaNum = store.semanaActiva.semanaNum;
+  if (semanaNumOrId) {
+    if (typeof semanaNumOrId === 'number') targetSemanaNum = semanaNumOrId;
+    else {
+      const match = String(semanaNumOrId).match(/\d+/);
+      if (match) targetSemanaNum = parseInt(match[0], 10);
+    }
+  }
+
+  const semanaKey = `Semana_${targetSemanaNum}`;
+
+  // Cargar estado de rutas y configuración
+  let routes: any[] = [];
+  let routeEmployees: Record<string, string> = {};
+  let baseSalaries: Record<string, number> = {};
+  try {
+    if (fs.existsSync('data_store.json')) {
+      const parsed = JSON.parse(fs.readFileSync('data_store.json', 'utf8'));
+      routes = (parsed.routes || []).filter((r: any) => r.isAuthorized !== false);
+      routeEmployees = parsed.settings?.routeEmployees || {};
+      baseSalaries = parsed.settings?.baseSalaries || {};
+    }
+  } catch (e) {
+    console.error('[getNominaRutas] Error leyendo data_store.json:', e);
+  }
+
+  if (routes.length === 0) {
+    routes = [
+      { id: 1, name: 'Ruta 1' },
+      { id: 2, name: 'Ruta 2' },
+      { id: 3, name: 'Ruta 3' },
+      { id: 5, name: 'Ruta 4' },
+      { id: 9, name: 'Ruta 5' }
+    ];
+  }
+
+  // Cargar colaboradores de RH
+  let rhActivos: EmpleadoRH[] = [];
+  try {
+    rhActivos = getEmpleadosActivosRH();
+  } catch (e) {
+    console.error('[getNominaRutas] Error cargando RH:', e);
+  }
+
+  // Cargar comisiones
+  let allCommissions: any[] = [];
+  try {
+    allCommissions = loadLocalCommissions();
+  } catch (e) {
+    console.error('[getNominaRutas] Error cargando comisiones:', e);
+  }
+
+  // Filtrar comisiones de la semana
+  const weekCommissions = allCommissions.filter(c => {
+    if (c.clientType === 'sin_cliente' || !c.clientId) return false;
+    const w = getWeekNumberFromDate(c.dateOrder);
+    return w === targetSemanaNum;
+  });
+
+  const diasSemanaMap: Record<number, 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado'> = {
+    1: 'lunes',
+    2: 'martes',
+    3: 'miercoles',
+    4: 'jueves',
+    5: 'viernes',
+    6: 'sabado'
+  };
+
+  const semanaTexto = `Semana ${targetSemanaNum}`;
+  const periodoTexto = store.semanaActiva.periodo || 'Lunes a Sábado';
+  const fechaPagoTexto = store.semanaActiva.fechaPago || new Date().toLocaleDateString('es-MX');
+
+  return routes.map(r => {
+    const routeName = r.name || `Ruta ${r.id}`;
+    const adj = store.rutasAjustes?.[semanaKey]?.[routeName] || store.rutasAjustes?.[semanaKey]?.[String(r.id)] || {};
+
+    const assignedEmpName = adj.empleadoNombre || routeEmployees[routeName] || routeEmployees[String(r.id)] || '';
+    const rhMatch = assignedEmpName 
+      ? rhActivos.find(e => normalizeEmployeeName(e.nombreCompleto) === normalizeEmployeeName(assignedEmpName))
+      : null;
+
+    const empleadoNombre = rhMatch ? rhMatch.nombreCompleto : assignedEmpName;
+    const empleadoId = rhMatch ? rhMatch.numeroEmpleado : undefined;
+    const curp = rhMatch?.curp || '';
+    const fechaIngreso = rhMatch?.fechaIngreso || '';
+    const telefonoWhatsapp = rhMatch?.telefonoWhatsapp || adj.telefonoWhatsapp || '';
+
+    // Sueldo base: ajustado manualmente o tomado de RH o settings baseSalaries
+    const salarioBase = adj.salarioBase !== undefined 
+      ? Number(adj.salarioBase) 
+      : (rhMatch?.sueldoBase ? Number(rhMatch.sueldoBase) : (baseSalaries[routeName] || 0));
+
+    // Ventas por día y comisiones
+    const routeTickets = weekCommissions.filter(c => c.routeId === r.id || c.routeName === routeName);
+
+    const ventasPorDia = {
+      lunes: { efectivo: 0, transferencias: 0 },
+      martes: { efectivo: 0, transferencias: 0 },
+      miercoles: { efectivo: 0, transferencias: 0 },
+      jueves: { efectivo: 0, transferencias: 0 },
+      viernes: { efectivo: 0, transferencias: 0 },
+      sabado: { efectivo: 0, transferencias: 0 }
+    };
+
+    let totalComisionesTickets = 0;
+    let sumEf = 0;
+    let sumTrans = 0;
+
+    routeTickets.forEach(t => {
+      const d = new Date(t.dateOrder);
+      const dayIdx = isNaN(d.getTime()) ? 1 : d.getDay();
+      const diaKey = diasSemanaMap[dayIdx] || 'lunes';
+      const amt = Number(t.orderTotal) || 0;
+      const comm = Number(t.commissionAmount) || 0;
+      totalComisionesTickets += comm;
+
+      if (t.clientType === 'company') {
+        ventasPorDia[diaKey].transferencias += amt;
+        sumTrans += amt;
+      } else {
+        ventasPorDia[diaKey].efectivo += amt;
+        sumEf += amt;
+      }
+    });
+
+    const totalVentaSemanal = sumEf + sumTrans;
+    const comisionRuta = adj.comisionRuta !== undefined 
+      ? Number(adj.comisionRuta) 
+      : (totalComisionesTickets > 0 ? Number(totalComisionesTickets.toFixed(2)) : Number((totalVentaSemanal * 0.025).toFixed(2)));
+
+    const bonosExtras = Number(adj.bonosExtras) || 0;
+    const pagosPendientes = Number(adj.pagosPendientes) || 0;
+    const prestamos = Number(adj.prestamos) || 0;
+    const abonos = Number(adj.abonos) || 0;
+
+    const empKey = empleadoId ? String(empleadoId) : (empleadoNombre ? normalizeEmployeeName(empleadoNombre) : routeName);
+    const saldoMaestro = store.saldosPrestamos?.[empKey] || (empleadoNombre ? store.saldosPrestamos?.[normalizeEmployeeName(empleadoNombre)] : 0) || 0;
+    const saldoPrestamoAnterior = adj.saldoPrestamoAnterior !== undefined 
+      ? Number(adj.saldoPrestamoAnterior) 
+      : Number(saldoMaestro);
+
+    const saldoPrestamoActual = Math.max(0, Number((saldoPrestamoAnterior + prestamos - abonos).toFixed(2)));
+
+    const gasolina = Number(adj.gasolina) || 0;
+    const notasQueseria = Number(adj.notasQueseria) || 0;
+    const tienda = Number(adj.tienda) || 0;
+    const cobrosPendientes = Number(adj.cobrosPendientes) || 0;
+
+    const percepciones = Number((salarioBase + comisionRuta + bonosExtras + pagosPendientes).toFixed(2));
+    const descuentos = Number((abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+    const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
+
+    // WhatsApp Link
+    let tel = (telefonoWhatsapp || '').replace(/\D/g, '');
+    if (tel.length === 12 && tel.startsWith('52')) tel = tel.slice(2);
+    let linkWhatsApp = '';
+    if (tel.length === 10) {
+      const msg = `🧀 *LÁCTEOS TRUJILLOS* 🧀\n📄 *RECIBO DE NÓMINA - VENTAS RUTA*\n\n` +
+        `👤 *Colaborador:* ${empleadoNombre || routeName}\n` +
+        `🚛 *Ruta:* ${routeName}\n` +
+        `💼 *Puesto:* Ventas-Ruta\n` +
+        `📅 *Periodo:* ${semanaTexto} (${periodoTexto})\n` +
+        `📆 *Fecha de Pago:* ${fechaPagoTexto}\n\n` +
+        `💵 *DESGLOSE DE PERCEPCIONES:*\n` +
+        `  • Sueldo Base: ${formatMoney(salarioBase)}\n` +
+        `  • Comisión Rutas: ${formatMoney(comisionRuta)} (Venta: ${formatMoney(totalVentaSemanal)})\n` +
+        (bonosExtras > 0 ? `  • Bonos Extras: ${formatMoney(bonosExtras)}\n` : '') +
+        (pagosPendientes > 0 ? `  • Pagos Pendientes: ${formatMoney(pagosPendientes)}\n` : '') +
+        `  *TOTAL PERCEPCIONES: ${formatMoney(percepciones)}*\n\n` +
+        `🔻 *DESGLOSE DE DEDUCCIONES:*\n` +
+        (abonos > 0 ? `  • Abono Préstamo: ${formatMoney(abonos)}\n` : '') +
+        (gasolina > 0 ? `  • Gasolina: ${formatMoney(gasolina)}\n` : '') +
+        (notasQueseria > 0 ? `  • Notas Quesería: ${formatMoney(notasQueseria)}\n` : '') +
+        (tienda > 0 ? `  • Tienda: ${formatMoney(tienda)}\n` : '') +
+        (cobrosPendientes > 0 ? `  • Cobros Pendientes: ${formatMoney(cobrosPendientes)}\n` : '') +
+        `  *TOTAL DEDUCCIONES: ${formatMoney(descuentos)}*\n\n` +
+        (saldoPrestamoAnterior > 0 || prestamos > 0 || abonos > 0
+          ? `💳 *CONTROL DE PRÉSTAMO:*\n` +
+            `  • Saldo Anterior: ${formatMoney(saldoPrestamoAnterior)}\n` +
+            (prestamos > 0 ? `  • (+) Nuevo Préstamo: ${formatMoney(prestamos)}\n` : '') +
+            (abonos > 0 ? `  • (-) Abono de Semana: -${formatMoney(abonos)}\n` : '') +
+            `  • Saldo Pendiente: ${formatMoney(saldoPrestamoActual)}\n\n`
+          : '') +
+        `💰 *NETO A PAGAR: ${formatMoney(pagoFinal)}*\n\n` +
+        `_Lácteos Trujillos - Comprobante Digital de Nómina_`;
+
+      linkWhatsApp = `https://wa.me/52${tel}?text=${encodeURIComponent(msg)}`;
+    }
+
+    return {
+      routeId: r.id,
+      routeName,
+      empleadoId,
+      empleadoNombre,
+      curp,
+      fechaIngreso,
+      telefonoWhatsapp,
+      salarioBase,
+      comisionRuta,
+      ventasPorDia,
+      totalVentaSemanalEfectivo: sumEf,
+      totalVentaSemanalBancos: sumTrans,
+      totalVentaSemanal,
+      pagosPendientes,
+      bonosExtras,
+      prestamos,
+      abonos,
+      saldoPrestamoAnterior,
+      saldoPrestamoActual,
+      gasolina,
+      notasQueseria,
+      tienda,
+      cobrosPendientes,
+      percepciones,
+      descuentos,
+      pagoFinal,
+      fechaDePago: fechaPagoTexto,
+      periodoDePago: periodoTexto,
+      semana: semanaTexto,
+      linkWhatsApp,
+      whatsappEnviado: adj.whatsappEnviado || false
+    };
+  });
+}
+
+export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNumOrId?: string | number): NominaRutaItem {
+  const store = loadNominaStore();
+  let targetSemanaNum = store.semanaActiva.semanaNum;
+  if (semanaNumOrId) {
+    if (typeof semanaNumOrId === 'number') targetSemanaNum = semanaNumOrId;
+    else {
+      const match = String(semanaNumOrId).match(/\d+/);
+      if (match) targetSemanaNum = parseInt(match[0], 10);
+    }
+  }
+
+  const semanaKey = `Semana_${targetSemanaNum}`;
+  if (!store.rutasAjustes) store.rutasAjustes = {};
+  if (!store.rutasAjustes[semanaKey]) store.rutasAjustes[semanaKey] = {};
+
+  const currentAdj = store.rutasAjustes[semanaKey][routeIdentifier] || {};
+  const updatedAdj = { ...currentAdj, ...updates };
+  store.rutasAjustes[semanaKey][routeIdentifier] = updatedAdj;
+
+  // Si se asignó o cambió el empleado, guardarlo en settings de data_store.json para permanencia
+  if (updates.empleadoNombre !== undefined) {
+    try {
+      if (fs.existsSync('data_store.json')) {
+        const stateData = JSON.parse(fs.readFileSync('data_store.json', 'utf8'));
+        if (!stateData.settings) stateData.settings = {};
+        if (!stateData.settings.routeEmployees) stateData.settings.routeEmployees = {};
+        stateData.settings.routeEmployees[routeIdentifier] = updates.empleadoNombre;
+        fs.writeFileSync('data_store.json', JSON.stringify(stateData, null, 2), 'utf8');
+      }
+    } catch (e) {
+      console.error('[updateNominaRuta] Error guardando chofer en data_store.json:', e);
+    }
+  }
+
+  // Actualizar saldo maestro de préstamo
+  if (!store.saldosPrestamos) store.saldosPrestamos = {};
+  const empNombre = updates.empleadoNombre || currentAdj.empleadoNombre;
+  if (empNombre) {
+    const key = normalizeEmployeeName(empNombre);
+    const prestamos = updates.prestamos !== undefined ? Number(updates.prestamos) : (currentAdj.prestamos || 0);
+    const abonos = updates.abonos !== undefined ? Number(updates.abonos) : (currentAdj.abonos || 0);
+    const saldoAnt = updates.saldoPrestamoAnterior !== undefined 
+      ? Number(updates.saldoPrestamoAnterior) 
+      : (store.saldosPrestamos[key] || 0);
+    const nuevoSaldo = Math.max(0, Number((saldoAnt + prestamos - abonos).toFixed(2)));
+    store.saldosPrestamos[key] = nuevoSaldo;
+    updatedAdj.saldoPrestamoActual = nuevoSaldo;
+  }
+
+  saveNominaStore(store);
+
+  const allItems = getNominaRutas(targetSemanaNum);
+  const found = allItems.find(i => String(i.routeId) === String(routeIdentifier) || i.routeName === routeIdentifier);
+  return found || allItems[0];
 }

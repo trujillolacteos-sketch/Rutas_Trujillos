@@ -93,7 +93,9 @@ import {
   sincronizarNominaSemanal,
   updateEmpleadoAjustes,
   markWhatsAppEnviado,
-  archivarSemanaNomina
+  archivarSemanaNomina,
+  getNominaRutas,
+  updateNominaRuta
 } from './server/nominaService.ts';
 
 const PAYROLLS_FILE = 'payrolls_store.json';
@@ -1960,6 +1962,48 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       console.error('[nominaService] Error en POST /api/rh/nomina/archivar:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // GET Nómina Rutas consolidada (con formato reciboruta y desglose de tickets)
+  app.get('/api/rh/nomina-rutas', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isRHOrAdmin = ['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role) || req.user?.uid?.startsWith('local-');
+      const isOperator = role === 'operator';
+      if (!isRHOrAdmin && !isOperator) {
+        return res.status(403).json({ error: "No autorizado para consultar nómina de rutas" });
+      }
+
+      const semanaId = req.query.semanaId as string;
+      const rutas = getNominaRutas(semanaId);
+      res.json({ success: true, rutas });
+    } catch (err: any) {
+      console.error('[nominaService] Error en GET /api/rh/nomina-rutas:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // PUT Actualizar chofer o ajustes de nómina de una ruta específica
+  app.put('/api/rh/nomina-rutas/:routeId', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkRHAccess(req);
+      if (!isAllowed) return res.status(403).json({ error: "No autorizado para modificar nómina de rutas" });
+
+      const store = loadNominaStore();
+      if (store.semanaActiva.cerrada) {
+        return res.status(403).json({
+          error: "La semana de nómina está CERRADA. Por seguridad, no se puede modificar desde la aplicación."
+        });
+      }
+
+      const { routeId } = req.params;
+      const semanaId = req.body?.semanaId;
+      const updated = updateNominaRuta(routeId, req.body, semanaId);
+      res.json({ success: true, ruta: updated });
+    } catch (err: any) {
+      console.error('[nominaService] Error en PUT /api/rh/nomina-rutas/:routeId:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

@@ -535,6 +535,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
           <option value="fijo">Fijo</option>
           <option value="hora">Por Hora</option>
           <option value="gerencia">Gerencia</option>
+          <option value="rutero">Rutero (Ventas-Ruta)</option>
         </select>
       </div>
 
@@ -625,8 +626,16 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                       </td>
 
                       {/* Tipo Salario */}
-                      <td className="py-2.5 px-3 text-center uppercase text-[10px] font-bold text-slate-500">
-                        {emp.tipoSalario}
+                      <td className="py-2.5 px-3 text-center uppercase text-[10px] font-bold">
+                        <span className={`px-2 py-0.5 rounded-full border ${
+                          emp.tipoSalario === 'rutero' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                          emp.tipoSalario === 'gerencia' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                          emp.tipoSalario === 'fijo' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          emp.tipoSalario === 'hora' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {emp.tipoSalario}
+                        </span>
                       </td>
 
                       {/* Antigüedad */}
@@ -1102,6 +1111,7 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
                       <option value="fijo">Fijo</option>
                       <option value="hora">Por Hora</option>
                       <option value="gerencia">Gerencia</option>
+                      <option value="rutero">Rutero (Ventas-Ruta)</option>
                     </select>
                   </div>
                   <div>
