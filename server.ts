@@ -1538,6 +1538,20 @@ async function startServer() {
     }
   };
 
+  const checkGerenciaOrAdmin = async (req: AuthRequest): Promise<boolean> => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      if (['admin', 'gerencia'].includes(role)) return true;
+      if (req.user?.uid === 'local-admin' || req.user?.uid === 'local-gerencia') return true;
+      const st = loadState();
+      const localUser = (st.users || []).find((u: any) => u.username === req.user!.uid || u.email === req.user!.email || (u.id && String(u.id) === req.user!.uid));
+      if (localUser?.role && ['admin', 'gerencia'].includes(localUser.role)) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   // GET Empleados (con filtros y estadísticas)
   app.get('/api/rh/empleados', requireAuth, async (req: AuthRequest, res) => {
     try {
@@ -1681,11 +1695,11 @@ async function startServer() {
     }
   });
 
-  // POST Sincronizar bajo demanda desde Google Sheets
+  // POST Sincronizar bajo demanda desde Google Sheets (Exclusivo Gerencia y Admin)
   app.post('/api/rh/sync-sheets', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const isAllowed = await checkRHAccess(req);
-      if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Recursos Humanos" });
+      const isAllowed = await checkGerenciaOrAdmin(req);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrador pueden sincronizar con Google Sheets." });
 
       const result = await syncRHFromSheets();
       const stats = getRHStats(result.empleados);
@@ -1798,11 +1812,11 @@ async function startServer() {
     }
   });
 
-  // POST Sincronizar Checadas bajo demanda
+  // POST Sincronizar Checadas bajo demanda (Exclusivo Gerencia y Admin)
   app.post('/api/rh/checadas/sync', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const isAllowed = await checkRHAccess(req);
-      if (!isAllowed) return res.status(403).json({ error: "No autorizado para sincronizar Checadas" });
+      const isAllowed = await checkGerenciaOrAdmin(req);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrador pueden sincronizar con Google Sheets." });
 
       const result = await syncChecadasFromSheets();
       const stats = getChecadasStats(result.semanaActiva.empleados);
@@ -1869,11 +1883,11 @@ async function startServer() {
     }
   });
 
-  // POST Recalcular / Sincronizar Nómina con Checadas y RH
+  // POST Recalcular / Sincronizar Nómina con Checadas y RH (Exclusivo Gerencia y Admin)
   app.post('/api/rh/nomina/recalcular', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const isAllowed = await checkRHAccess(req);
-      if (!isAllowed) return res.status(403).json({ error: "No autorizado para recalcular Nómina" });
+      const isAllowed = await checkGerenciaOrAdmin(req);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrador pueden sincronizar o recalcular Nómina." });
 
       const forzar = req.body?.forzar === true;
       const semana = await sincronizarNominaSemanal(forzar);
@@ -1884,15 +1898,37 @@ async function startServer() {
     }
   });
 
+  // POST Sincronizar nómina desde Google Sheets (Exclusivo Gerencia y Admin)
+  app.post('/api/rh/nomina/sync-sheets', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const isAllowed = await checkGerenciaOrAdmin(req);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrador pueden sincronizar con Google Sheets." });
+
+      const semana = await sincronizarNominaSemanal(true);
+      res.json({ success: true, semanaActual: semana, totales: semana.totales });
+    } catch (err: any) {
+      console.error('[nominaService] Error en POST /api/rh/nomina/sync-sheets:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // PUT Actualizar ajustes variables de un colaborador (Gasolina, Tienda, Bonos, etc.)
   app.put('/api/rh/nomina/:row', requireAuth, async (req: AuthRequest, res) => {
     try {
       const isAllowed = await checkRHAccess(req);
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar Nómina" });
 
-      const updated = updateEmpleadoAjustes(req.params.row, req.body);
       const store = loadNominaStore();
-      res.json({ success: true, empleado: updated, totales: store.semanaActiva.totales });
+      // Bloqueo estricto: Una semana cerrada solo puede modificarse en Google Sheets y no en la app
+      if (store.semanaActiva.cerrada) {
+        return res.status(403).json({
+          error: "La semana de nómina está CERRADA. Por seguridad, no se puede modificar desde la aplicación. Las modificaciones deben realizarse directamente en Google Sheets y sincronizarse."
+        });
+      }
+
+      const updated = updateEmpleadoAjustes(req.params.row, req.body);
+      const updatedStore = loadNominaStore();
+      res.json({ success: true, empleado: updated, totales: updatedStore.semanaActiva.totales });
     } catch (err: any) {
       console.error('[nominaService] Error en PUT /api/rh/nomina/:row:', err);
       res.status(500).json({ error: err.message });

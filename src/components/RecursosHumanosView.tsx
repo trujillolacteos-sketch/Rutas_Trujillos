@@ -3,7 +3,7 @@ import {
   Users, UserPlus, Search, Phone, MessageSquare, AlertCircle,
   DollarSign, Briefcase, Download, RefreshCw,
   Edit2, UserX, UserCheck, Eye, X, CheckCircle2,
-  Calendar, FileSpreadsheet
+  Calendar, FileSpreadsheet, ExternalLink
 } from 'lucide-react';
 
 export interface EmpleadoRH {
@@ -50,6 +50,9 @@ interface RecursosHumanosViewProps {
 }
 
 export default function RecursosHumanosView({ token, role, user }: RecursosHumanosViewProps) {
+  const userRole = (role || user?.role || '').toLowerCase();
+  const isGerenciaOrAdmin = userRole === 'admin' || userRole === 'gerencia' || userRole === 'administrador';
+
   const [empleados, setEmpleados] = useState<EmpleadoRH[]>([]);
   const [stats, setStats] = useState<RHStats | null>(null);
   const [loading, setLoading] = useState(false);
@@ -378,15 +381,34 @@ export default function RecursosHumanosView({ token, role, user }: RecursosHuman
             <Download className="w-3.5 h-3.5 text-slate-500" />
             <span>CSV</span>
           </button>
-          <button
-            onClick={handleSyncSheets}
-            disabled={syncing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all disabled:opacity-50"
-            title="Sincronizar directamente con la pestaña RH de Google Sheets"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
-            <span>{syncing ? 'Sincronizando...' : 'Sincronizar'}</span>
-          </button>
+
+          {/* Procesos Google Sheets (Exclusivo Gerencia y Admin) */}
+          {isGerenciaOrAdmin && (
+            <>
+              <a
+                href="https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit#gid=1584300112"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-xs font-bold text-white transition-all shadow-sm"
+                title="Acceso exclusivo Gerencia/Admin: Abrir pestaña RH en Google Sheets"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Abrir Sheet</span>
+                <ExternalLink className="w-3 h-3 text-emerald-200" />
+              </a>
+
+              <button
+                onClick={handleSyncSheets}
+                disabled={syncing}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-800 transition-all disabled:opacity-50"
+                title="Sincronizar directamente con la pestaña RH de Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-emerald-600' : 'text-emerald-700'}`} />
+                <span>{syncing ? 'Sincronizando...' : 'Sincronizar Sheet'}</span>
+              </button>
+            </>
+          )}
+
           <button
             onClick={handleOpenCreate}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white transition-all shadow-sm"

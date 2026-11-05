@@ -49,6 +49,8 @@ export interface NominaEmpleado {
   // Deducciones adicionales
   prestamos: number;
   abonos: number;
+  saldoPrestamoAnterior?: number; // Saldo que debía antes de la semana
+  saldoPrestamoActual?: number;   // Saldo resultante = Math.max(0, saldoPrestamoAnterior + prestamos - abonos)
   gasolina: number;
   notasQueseria: number;
   tienda: number;
@@ -103,6 +105,7 @@ export interface SemanaNomina {
 export interface NominaStore {
   semanaActiva: SemanaNomina;
   historico: SemanaNomina[];
+  saldosPrestamos?: Record<string, number>; // Mapa maestro de saldos pendientes de préstamo por colaborador
 }
 
 function getStorePath(): string {
@@ -174,10 +177,16 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
     ? Math.round(extrasDec * horaNormal * 1.2)
     : 0;
 
-  // 5. Percepciones adicionales
+  // 5. Percepciones adicionales y Control de Saldos de Préstamos
   const bonosExtras = Number(emp.bonosExtras) || 0;
   const pagosPendientes = Number(emp.pagosPendientes) || 0;
   const prestamos = Number(emp.prestamos) || 0;
+  const abonos = Number(emp.abonos) || 0;
+
+  // Control de Saldos de Préstamos:
+  // Saldo Anterior + Nuevo Préstamo Otorgado - Abono Descontado
+  const saldoPrestamoAnterior = Number(emp.saldoPrestamoAnterior) || 0;
+  const saldoPrestamoActual = Math.max(0, Number((saldoPrestamoAnterior + prestamos - abonos).toFixed(2)));
 
   // Si es chofer de ruta, calcular comisión de ruta 2.5%
   let comisionRuta = Number(emp.comisionRuta) || 0;
@@ -213,7 +222,6 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
   const notasQueseria = Number(emp.notasQueseria) || 0;
   const tienda = Number(emp.tienda) || 0;
   const cobrosPendientes = Number(emp.cobrosPendientes) || 0;
-  const abonos = Number(emp.abonos) || 0;
 
   const descuentos = Number((
     faltasMonto +
@@ -252,6 +260,7 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
       (faltasMonto > 0 ? `  • Faltas (${faltas} días): ${formatMoney(faltasMonto)}\n` : '') +
       (montoJornadaIncompleta > 0 ? `  • Retardos / J. Incompleta (${horasJornadaIncompleta}): ${formatMoney(montoJornadaIncompleta)}\n` : '') +
       (abonos > 0 ? `  • Abono a Préstamo: ${formatMoney(abonos)}\n` : '') +
+      (saldoPrestamoActual > 0 ? `  💳 Saldo Pendiente Préstamo: ${formatMoney(saldoPrestamoActual)}\n` : (abonos > 0 ? `  💳 Préstamo Liquidado.\n` : '')) +
       (gasolina > 0 ? `  • Movilidad / Gasolina: ${formatMoney(gasolina)}\n` : '') +
       (tienda > 0 ? `  • Crédito Tienda: ${formatMoney(tienda)}\n` : '') +
       (notasQueseria > 0 ? `  • Notas Quesería: ${formatMoney(notasQueseria)}\n` : '') +
@@ -291,8 +300,10 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
     vacacionesUtilizadas: Number(emp.vacacionesUtilizadas) || 0,
     pagosPendientes,
     bonosExtras,
+    saldoPrestamoAnterior,
     prestamos,
     abonos,
+    saldoPrestamoActual,
     gasolina,
     notasQueseria,
     tienda,
@@ -351,6 +362,7 @@ export function loadNominaStore(): NominaStore {
       const raw = fs.readFileSync(p, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && parsed.semanaActiva) {
+        if (!parsed.saldosPrestamos) parsed.saldosPrestamos = {};
         return parsed;
       }
     }
@@ -380,7 +392,8 @@ export function loadNominaStore(): NominaStore {
         totalHorasExtrasMonto: 0
       }
     },
-    historico: []
+    historico: [],
+    saldosPrestamos: {}
   };
 
   saveNominaStore(store);
@@ -419,6 +432,7 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
       bonosExtras: Number(e.bonosExtras) || 0,
       prestamos: Number(e.prestamos) || 0,
       abonos: Number(e.abonos) || 0,
+      saldoPrestamoAnterior: Number(e.saldoPrestamoAnterior) || 0,
       gasolina: Number(e.gasolina) || 0,
       notasQueseria: Number(e.notasQueseria) || 0,
       tienda: Number(e.tienda) || 0,
@@ -461,13 +475,21 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
     const incapacidades = checada?.incapacidades || 0;
     const vacacionesUtilizadas = checada?.vacaciones || 0;
 
-    // Los 8 campos de llenado manual
+    // Los 8 campos de llenado manual y Control de Préstamos
     const pagosPendientes = manual?.pagosPendientes !== undefined 
       ? manual.pagosPendientes 
       : (esGerencia ? 5000 : 0);
     const bonosExtras = manual?.bonosExtras || 0;
     const prestamos = manual?.prestamos || 0;
     const abonos = manual?.abonos || 0;
+
+    // Saldo deudor anterior: del ajuste previo o del mapa maestro persistente
+    const empKey = rhEmp.numeroEmpleado ? String(rhEmp.numeroEmpleado) : normKey;
+    const saldoMaestro = store.saldosPrestamos?.[empKey] ?? store.saldosPrestamos?.[normKey] ?? 0;
+    const saldoPrestamoAnterior = manual?.saldoPrestamoAnterior !== undefined 
+      ? Number(manual.saldoPrestamoAnterior) 
+      : Number(saldoMaestro);
+
     const gasolina = manual?.gasolina || 0;
     const notasQueseria = manual?.notasQueseria || 0;
     const tienda = manual?.tienda || 0;
@@ -497,6 +519,7 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
       vacacionesUtilizadas,
       pagosPendientes,
       bonosExtras,
+      saldoPrestamoAnterior,
       prestamos,
       abonos,
       gasolina,
@@ -537,6 +560,12 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
  */
 export function updateEmpleadoAjustes(identifier: string | number, ajustes: Partial<NominaEmpleado>): NominaEmpleado {
   const store = loadNominaStore();
+
+  // REGLA DE ORO: Si la semana está cerrada, NO se puede modificar desde la aplicación
+  if (store.semanaActiva.cerrada) {
+    throw new Error('La semana de nómina está CERRADA. Por seguridad, no se puede modificar desde la aplicación. Las modificaciones deben realizarse directamente en Google Sheets y sincronizarse.');
+  }
+
   const idStr = String(identifier).trim();
   const numId = parseInt(idStr, 10);
   const empIndex = store.semanaActiva.empleados.findIndex(e =>
@@ -560,6 +589,11 @@ export function updateEmpleadoAjustes(identifier: string | number, ajustes: Part
   const recalculated = calcularEmpleadoNomina(merged, sueldoBase);
   store.semanaActiva.empleados[empIndex] = recalculated;
   store.semanaActiva.totales = calcularTotalesSemana(store.semanaActiva.empleados);
+
+  // Actualizar el saldo de préstamo maestro persistente para este colaborador
+  if (!store.saldosPrestamos) store.saldosPrestamos = {};
+  const empKey = recalculated.numeroEmpleado ? String(recalculated.numeroEmpleado) : normalizeEmployeeName(recalculated.nombreCompleto);
+  store.saldosPrestamos[empKey] = recalculated.saldoPrestamoActual || 0;
 
   saveNominaStore(store);
   return recalculated;
@@ -605,6 +639,13 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
   // 1. Guardar en histórico local
   store.historico.unshift(semanaActual);
 
+  // Actualizar mapa maestro de saldos de préstamos para arrastre a semanas futuras
+  if (!store.saldosPrestamos) store.saldosPrestamos = {};
+  semanaActual.empleados.forEach(emp => {
+    const key = emp.numeroEmpleado ? String(emp.numeroEmpleado) : normalizeEmployeeName(emp.nombreCompleto);
+    store.saldosPrestamos[key] = emp.saldoPrestamoActual || 0;
+  });
+
   // 2. Intentar guardar en Google Sheets en "nomina producción historico"
   let sheetsSynced = false;
   try {
@@ -643,11 +684,11 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
           'SalarioBase', 'Nombrecompleto', 'Faltas', 'HorasTrabajadas', 'Horasjornadaincompleta',
           'Tipodejornada', 'Extras', 'Montoporhoras', 'Faltasmonto', 'Montojornadasincompletas',
           'Extrasmonto', 'Incapacidades', 'vacacionesutilizadas', 'PAGOSPENDIENTES', 'BONOSEXTRAS',
-          'Prestamos', 'Abonos', 'GASOLINA', 'NOTASQUESERIA', 'TIENDA',
+          'Prestamos', 'Abonos', 'SaldoPrestamoActual', 'GASOLINA', 'NOTASQUESERIA', 'TIENDA',
           'COBROSPENDIENTES', 'Percepciones', 'Descuentos', 'PAGOFINAL', 'FECHADEPAGO',
           'Periododepago', 'semana', 'LinkWhatsApp', 'FechaCierre'
         ];
-        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/'${encodeURIComponent(sheetName)}'!A1:AC1?valueInputOption=USER_ENTERED`, {
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/'${encodeURIComponent(sheetName)}'!A1:AD1?valueInputOption=USER_ENTERED`, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -676,6 +717,7 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
         e.bonosExtras,
         e.prestamos,
         e.abonos,
+        e.saldoPrestamoActual || 0,
         e.gasolina,
         e.notasQueseria,
         e.tienda,
