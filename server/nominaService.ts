@@ -772,8 +772,8 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
         });
       }
 
-      // Preparar filas para insertar
-      const rowsToInsert = semanaActual.empleados.map(e => [
+      // Preparar filas para insertar: Nómina de Planta + Nómina de Rutas (conjuntamente en histórico)
+      const rowsPlanta = semanaActual.empleados.map(e => [
         e.salarioBase,
         e.nombreCompleto,
         e.faltas,
@@ -805,6 +805,49 @@ export async function archivarSemanaNomina(): Promise<{ success: boolean; semana
         e.linkWhatsApp ? `=HYPERLINK("${e.linkWhatsApp}","📱 WhatsApp")` : 'Sin WhatsApp',
         fechaCierre
       ]);
+
+      let rowsRutas: any[][] = [];
+      try {
+        const rutasNomina = getNominaRutas(semanaActual.semanaNum);
+        rowsRutas = rutasNomina
+          .filter(r => r.empleadoNombre && r.empleadoNombre.trim() !== '')
+          .map(r => [
+            r.salarioBase,
+            r.empleadoNombre,
+            r.faltas || 0,
+            '54:00',
+            '00:00',
+            'rutero',
+            '00:00',
+            0,
+            r.faltasMonto || 0,
+            0,
+            0,
+            0,
+            0,
+            r.pagosPendientes || 0,
+            r.bonosExtras || 0,
+            r.prestamos || 0,
+            r.abonos || 0,
+            r.saldoPrestamoActual || 0,
+            r.gasolina || 0,
+            r.notasQueseria || 0,
+            r.tienda || 0,
+            r.cobrosPendientes || 0,
+            r.percepciones,
+            r.descuentos,
+            r.pagoFinal,
+            r.fechaDePago,
+            r.periodoDePago,
+            r.semana,
+            r.linkWhatsApp ? `=HYPERLINK("${r.linkWhatsApp}","📱 WhatsApp")` : 'Sin WhatsApp',
+            fechaCierre
+          ]);
+      } catch (errRutas: any) {
+        console.warn('[archivarSemanaNomina] No se pudieron formatear rutas para histórico:', errRutas.message);
+      }
+
+      const rowsToInsert = [...rowsPlanta, ...rowsRutas];
 
       // Append filas a la hoja de histórico
       await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/'${encodeURIComponent(sheetName)}'!A2:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, {
@@ -1234,9 +1277,49 @@ export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNu
   if (!store.rutasAjustes) store.rutasAjustes = {};
   if (!store.rutasAjustes[semanaKey]) store.rutasAjustes[semanaKey] = {};
 
-  const currentAdj = store.rutasAjustes[semanaKey][routeIdentifier] || {};
+  const currentAdj = store.rutasAjustes[semanaKey][routeIdentifier] || 
+                     store.rutasAjustes[semanaKey][`Ruta ${routeIdentifier}`] || 
+                     store.rutasAjustes[semanaKey][String(routeIdentifier).replace('Ruta ', '')] || {};
   const updatedAdj = { ...currentAdj, ...updates };
+
+  // Si se asignó un colaborador, heredar deducciones/percepciones previas registradas para este empleado si no se han especificado
+  if (updates.empleadoNombre) {
+    const norm = normalizeEmployeeName(updates.empleadoNombre);
+    const existing = store.semanaActiva?.empleados?.find(e => normalizeEmployeeName(e.nombreCompleto) === norm);
+    if (existing) {
+      if (existing.notasQueseria && updatedAdj.notasQueseria === undefined) {
+        updatedAdj.notasQueseria = existing.notasQueseria;
+      }
+      if (existing.gasolina && updatedAdj.gasolina === undefined) {
+        updatedAdj.gasolina = existing.gasolina;
+      }
+      if (existing.tienda && updatedAdj.tienda === undefined) {
+        updatedAdj.tienda = existing.tienda;
+      }
+      if (existing.pagosPendientes && updatedAdj.pagosPendientes === undefined) {
+        updatedAdj.pagosPendientes = existing.pagosPendientes;
+      }
+      if (existing.bonosExtras && updatedAdj.bonosExtras === undefined) {
+        updatedAdj.bonosExtras = existing.bonosExtras;
+      }
+      if (existing.prestamos && updatedAdj.prestamos === undefined) {
+        updatedAdj.prestamos = existing.prestamos;
+      }
+      if (existing.abonos && updatedAdj.abonos === undefined) {
+        updatedAdj.abonos = existing.abonos;
+      }
+      if (existing.cobrosPendientes && updatedAdj.cobrosPendientes === undefined) {
+        updatedAdj.cobrosPendientes = existing.cobrosPendientes;
+      }
+    }
+  }
+
   store.rutasAjustes[semanaKey][routeIdentifier] = updatedAdj;
+  const numId = String(routeIdentifier).replace(/\D/g, '');
+  if (numId) {
+    store.rutasAjustes[semanaKey][numId] = updatedAdj;
+    store.rutasAjustes[semanaKey][`Ruta ${numId}`] = updatedAdj;
+  }
 
   // Si se asignó o cambió el empleado, guardarlo en settings de data_store.json para permanencia
   if (updates.empleadoNombre !== undefined) {
@@ -1246,6 +1329,18 @@ export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNu
         if (!stateData.settings) stateData.settings = {};
         if (!stateData.settings.routeEmployees) stateData.settings.routeEmployees = {};
         stateData.settings.routeEmployees[routeIdentifier] = updates.empleadoNombre;
+        if (numId) {
+          stateData.settings.routeEmployees[numId] = updates.empleadoNombre;
+          stateData.settings.routeEmployees[`Ruta ${numId}`] = updates.empleadoNombre;
+        }
+        if (updates.salarioBase !== undefined) {
+          if (!stateData.settings.baseSalaries) stateData.settings.baseSalaries = {};
+          stateData.settings.baseSalaries[routeIdentifier] = Number(updates.salarioBase);
+          if (numId) {
+            stateData.settings.baseSalaries[numId] = Number(updates.salarioBase);
+            stateData.settings.baseSalaries[`Ruta ${numId}`] = Number(updates.salarioBase);
+          }
+        }
         fs.writeFileSync('data_store.json', JSON.stringify(stateData, null, 2), 'utf8');
       }
     } catch (e) {

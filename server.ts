@@ -1559,7 +1559,8 @@ async function startServer() {
   // GET Empleados (con filtros y estadísticas)
   app.get('/api/rh/empleados', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const isAllowed = await checkRHAccess(req);
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = await checkRHAccess(req) || ['supervisor_rutas', 'supervisor', 'admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role) || req.user?.uid?.startsWith('local-');
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para ver Recursos Humanos" });
 
       let empleados = loadLocalRH();
@@ -1988,8 +1989,10 @@ async function startServer() {
   // PUT Actualizar chofer o ajustes de nómina de una ruta específica
   app.put('/api/rh/nomina-rutas/:routeId', requireAuth, async (req: AuthRequest, res) => {
     try {
-      const isAllowed = await checkRHAccess(req);
-      if (!isAllowed) return res.status(403).json({ error: "No autorizado para modificar nómina de rutas" });
+      const role = await getUserRole(req.user!.uid);
+      if (role === 'operator') {
+        return res.status(403).json({ error: "Los operadores no pueden modificar nómina de rutas" });
+      }
 
       const store = loadNominaStore();
       if (store.semanaActiva.cerrada) {

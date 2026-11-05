@@ -128,15 +128,15 @@ export default function CommissionsView({
 }) {
   const isOperator = role === 'operator';
   const operatorRoute = user?.username || "";
-  const isRHOrAdmin = ['admin', 'gerencia', 'rh', 'recursos_humanos'].includes(role || '') || !role;
+  const canEditRoutes = !isOperator;
 
   const [commissions, setCommissions] = useState<any[]>([]);
   const [rhEmpleados, setRhEmpleados] = useState<RHEmpleadoSimple[]>([]);
   const [serverNominaRutas, setServerNominaRutas] = useState<any[]>([]);
+  const [localRouteEmployees, setLocalRouteEmployees] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [syncing, setSyncing] = useState(false);
-  const [assigningRoute, setAssigningRoute] = useState<string | null>(null);
 
   const currentWeekStr = "Semana " + getWeekNumber(new Date());
   const [selectedWeek, setSelectedWeek] = useState<string>(currentWeekStr);
@@ -197,7 +197,7 @@ export default function CommissionsView({
       }
 
       // 2. Cargar colaboradores de RH
-      if (isRHOrAdmin) {
+      if (canEditRoutes) {
         try {
           const resRH = await apiFetch("/api/rh/empleados", { headers });
           if (resRH.ok) {
@@ -258,9 +258,16 @@ export default function CommissionsView({
   };
 
   // Asignar colaborador de RH a una ruta
-  const handleAssignEmpleado = async (routeId: string | number, empleadoNombre: string) => {
-    if (!isRHOrAdmin) return;
-    setAssigningRoute(String(routeId));
+  const handleAssignEmpleado = async (routeId: string | number, routeName: string, empleadoNombre: string) => {
+    if (isOperator) return;
+
+    // Actualización inmediata optimista en la interfaz
+    setLocalRouteEmployees(prev => ({
+      ...prev,
+      [String(routeId)]: empleadoNombre,
+      [routeName]: empleadoNombre
+    }));
+
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = "Bearer " + token;
@@ -274,19 +281,36 @@ export default function CommissionsView({
         updates.salarioBase = empObj.sueldoBase;
       }
 
+      // Guardar en backend de nómina de rutas
       const res = await apiFetch(`/api/rh/nomina-rutas/${encodeURIComponent(String(routeId))}`, {
         method: "PUT",
         headers,
         body: JSON.stringify(updates)
       });
 
+      // Guardar también en settings para permanencia general en data_store.json
+      apiFetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: {
+            routeEmployees: {
+              ...(state?.settings?.routeEmployees || {}),
+              [routeName]: empleadoNombre,
+              [String(routeId)]: empleadoNombre
+            }
+          }
+        })
+      }).catch(() => {});
+
       if (res.ok) {
         await fetchData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.warn("Aviso al asignar chofer:", errData);
       }
     } catch (err) {
       console.error("Error assigning employee to route:", err);
-    } finally {
-      setAssigningRoute(null);
     }
   };
 
@@ -399,8 +423,12 @@ export default function CommissionsView({
       const routeName = r.name || `Ruta ${r.id}`;
       const serverItem = serverNominaRutas.find(sn => String(sn.routeId) === String(r.id) || sn.routeName === routeName);
 
-      // Determinar chofer
-      const assignedEmpName = serverItem?.empleadoNombre || routeEmployees[routeName] || routeEmployees[String(r.id)] || '';
+      // Determinar chofer (prioridad a actualización optimista local)
+      const assignedEmpName = localRouteEmployees[String(r.id)] !== undefined
+        ? localRouteEmployees[String(r.id)]
+        : (localRouteEmployees[routeName] !== undefined
+            ? localRouteEmployees[routeName]
+            : (serverItem?.empleadoNombre || routeEmployees[routeName] || routeEmployees[String(r.id)] || ''));
       const rhMatch = assignedEmpName
         ? rhEmpleados.find(e => e.nombreCompleto.toLowerCase().trim() === assignedEmpName.toLowerCase().trim())
         : null;
@@ -572,7 +600,7 @@ export default function CommissionsView({
         linkWhatsApp
       };
     });
-  }, [state?.routes, state?.settings, commissions, selectedWeek, rhEmpleados, serverNominaRutas, rateCompany, ratePerson]);
+  }, [state?.routes, state?.settings, commissions, selectedWeek, rhEmpleados, serverNominaRutas, rateCompany, ratePerson, localRouteEmployees]);
 
   // Totales de todas las rutas
   const summary = useMemo(() => {
@@ -598,8 +626,9 @@ export default function CommissionsView({
   // Colaboradores de RH exclusivos para rutas: jornada 'rutero' o puesto/departamento 'ruta' / 'chofer'
   const choferesRuterosRH = useMemo(() => {
     return rhEmpleados.filter(e => {
-      if (e.status === 'baja') return false;
-      const tipo = (e.tipoSalario || '').toLowerCase().trim();
+      const statusStr = (e.status || e.estatus || '').toLowerCase().trim();
+      if (statusStr === 'baja' || statusStr === 'inactivo') return false;
+      const tipo = (e.tipoSalario || e.tipoJornada || '').toLowerCase().trim();
       const puesto = (e.puesto || '').toLowerCase().trim();
       const depto = (e.departamento || '').toLowerCase().trim();
       
@@ -832,9 +861,8 @@ export default function CommissionsView({
                           <div className="relative">
                             <select
                               value={r.empleadoNombre || ""}
-                              onChange={(e) => handleAssignEmpleado(r.routeId, e.target.value)}
-                              disabled={assigningRoute === String(r.routeId)}
-                              className={`w-full text-xs font-semibold rounded-lg px-2 py-1.5 border appearance-none outline-none focus:ring-2 focus:ring-emerald-500 ${
+                              onChange={(e) => handleAssignEmpleado(r.routeId, r.routeName, e.target.value)}
+                              className={`w-full text-xs font-semibold rounded-lg px-2 py-1.5 border appearance-none outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer ${
                                 r.empleadoNombre
                                   ? 'bg-emerald-50/40 text-emerald-900 border-emerald-300 font-bold'
                                   : 'bg-amber-50 text-amber-800 border-amber-300'
@@ -1005,12 +1033,12 @@ export default function CommissionsView({
                       <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
                         Colaborador / Chofer:
                       </span>
-                      {isRHOrAdmin ? (
+                      {canEditRoutes ? (
                         <div className="relative">
                           <select
                             value={activeRouteItem.empleadoNombre || ""}
-                            onChange={(e) => handleAssignEmpleado(activeRouteItem.routeId, e.target.value)}
-                            className="w-full text-xs font-black text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-500"
+                            onChange={(e) => handleAssignEmpleado(activeRouteItem.routeId, activeRouteItem.routeName, e.target.value)}
+                            className="w-full text-xs font-black text-slate-900 bg-white border border-slate-300 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                           >
                             <option value="">-- Asignar chofer de ruta (RH) --</option>
                             {getChoferesForRoute(activeRouteItem.empleadoNombre).map((e) => (
