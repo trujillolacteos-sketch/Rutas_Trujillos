@@ -1603,6 +1603,13 @@ async function startServer() {
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para registrar colaboradores" });
 
       const newEmp = await createEmpleado(req.body);
+      // Cascada automática a Checadas y Nómina
+      try {
+        await syncChecadasFromSheets();
+        await sincronizarNominaSemanal(true);
+      } catch (cascadeErr) {
+        console.warn('Notice cascading new employee to Checadas/Nomina:', cascadeErr);
+      }
       res.json({ success: true, empleado: newEmp });
     } catch (err: any) {
       console.error('[rhService] Error en POST /api/rh/empleados:', err);
@@ -1617,6 +1624,13 @@ async function startServer() {
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar colaboradores" });
 
       const updated = await updateEmpleado(req.params.id, req.body);
+      // Cascada automática de cambios en sueldoBase, jornada y tipoSalario a Checadas y Nómina
+      try {
+        await syncChecadasFromSheets();
+        await sincronizarNominaSemanal(true);
+      } catch (cascadeErr) {
+        console.warn('Notice cascading employee update to Checadas/Nomina:', cascadeErr);
+      }
       res.json({ success: true, empleado: updated });
     } catch (err: any) {
       console.error('[rhService] Error en PUT /api/rh/empleados/:id:', err);
@@ -1632,6 +1646,13 @@ async function startServer() {
 
       const { fechaBaja, motivo } = req.body;
       const updated = await darDeBajaEmpleado(req.params.id, fechaBaja, motivo);
+      // Desactivar inmediatamente de Checadas y Nómina
+      try {
+        await syncChecadasFromSheets();
+        await sincronizarNominaSemanal(true);
+      } catch (cascadeErr) {
+        console.warn('Notice cascading employee baja to Checadas/Nomina:', cascadeErr);
+      }
       res.json({ success: true, empleado: updated });
     } catch (err: any) {
       console.error('[rhService] Error en POST /api/rh/empleados/:id/baja:', err);
@@ -1647,6 +1668,12 @@ async function startServer() {
 
       const { fechaIngreso } = req.body;
       const updated = await reactivarEmpleado(req.params.id, fechaIngreso);
+      try {
+        await syncChecadasFromSheets();
+        await sincronizarNominaSemanal(true);
+      } catch (cascadeErr) {
+        console.warn('Notice cascading employee reactivar to Checadas/Nomina:', cascadeErr);
+      }
       res.json({ success: true, empleado: updated });
     } catch (err: any) {
       console.error('[rhService] Error en POST /api/rh/empleados/:id/reactivar:', err);
@@ -1863,8 +1890,7 @@ async function startServer() {
       const isAllowed = await checkRHAccess(req);
       if (!isAllowed) return res.status(403).json({ error: "No autorizado para editar Nómina" });
 
-      const rowNumber = parseInt(req.params.row, 10);
-      const updated = updateEmpleadoAjustes(rowNumber, req.body);
+      const updated = updateEmpleadoAjustes(req.params.row, req.body);
       const store = loadNominaStore();
       res.json({ success: true, empleado: updated, totales: store.semanaActiva.totales });
     } catch (err: any) {
@@ -1879,8 +1905,7 @@ async function startServer() {
       const isAllowed = await checkRHAccess(req);
       if (!isAllowed) return res.status(403).json({ error: "No autorizado" });
 
-      const rowNumber = parseInt(req.params.row, 10);
-      const updated = markWhatsAppEnviado(rowNumber, req.body?.enviado !== false);
+      const updated = markWhatsAppEnviado(req.params.row, req.body?.enviado !== false);
       res.json({ success: true, empleado: updated });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

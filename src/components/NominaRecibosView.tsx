@@ -26,7 +26,9 @@ import {
   X,
   CreditCard,
   Send,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
+  Save
 } from 'lucide-react';
 
 interface VentaDiaRuta {
@@ -125,6 +127,15 @@ interface NominaRecibosViewProps {
   user?: any;
 }
 
+function parseHoursToDecimal(hhmm?: string): number {
+  if (!hhmm || typeof hhmm !== 'string') return 0;
+  const parts = hhmm.trim().split(':');
+  if (parts.length !== 2) return 0;
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h + (m / 60);
+}
+
 export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, role, user }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -139,9 +150,15 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
   // Active view tab
   const [activeTab, setActiveTab] = useState<'nomina' | 'recibos' | 'historico'>('nomina');
 
+  // Table display mode
+  const [tableMode, setTableMode] = useState<'manual8' | 'resumen'>('manual8');
+
   // Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [deptFilter, setDeptFilter] = useState<string>('TODOS');
+
+  // Saving indicator per row
+  const [savedRowMap, setSavedRowMap] = useState<Record<number, boolean>>({});
 
   // Modals
   const [editingEmp, setEditingEmp] = useState<NominaEmpleado | null>(null);
@@ -181,8 +198,8 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
     loadNomina();
   }, []);
 
-  // Recalculate / Sync from Checadas
-  const handleRecalcular = async (forzar = false) => {
+  // Recalculate / Sync from Checadas and RH
+  const handleRecalcular = async (forzar = true) => {
     setRefreshing(true);
     setError(null);
     setSuccessMsg(null);
@@ -195,10 +212,10 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
         },
         body: JSON.stringify({ forzar })
       });
-      if (!res.ok) throw new Error('Error al sincronizar con Checadas');
+      if (!res.ok) throw new Error('Error al sincronizar con Checadas y RH');
       const data = await res.json();
       setSemanaActual(data.semanaActual);
-      setSuccessMsg('Nómina sincronizada con Checadas y Padrón RH.');
+      setSuccessMsg('Nómina alimentada y sincronizada desde Padrón RH y Checadas.');
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
       setError(err.message);
@@ -207,7 +224,95 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
     }
   };
 
-  // Save Employee Adjustments
+  // Inline input change for the 8 manual fields
+  const handleInlineChange = (rowNumber: number, field: keyof NominaEmpleado, rawValue: string) => {
+    if (!semanaActual) return;
+    const numVal = parseFloat(rawValue) || 0;
+
+    const updatedList = semanaActual.empleados.map(emp => {
+      if (emp.rowNumber !== rowNumber) return emp;
+      const updatedEmp = { ...emp, [field]: numVal };
+
+      const sueldoBase = emp.salarioBase;
+      const horasTrabajadasDec = parseHoursToDecimal(emp.horasTrabajadas);
+      const montoPorHoras = emp.tipoJornada === 'hora' ? Number((horasTrabajadasDec * sueldoBase).toFixed(2)) : 0;
+      const horasIncompletasDec = parseHoursToDecimal(emp.horasJornadaIncompleta);
+      const montoJornadaIncompleta = horasIncompletasDec > 0 ? Math.round(horasIncompletasDec * (sueldoBase / 7 / 8)) : 0;
+      const extrasDec = parseHoursToDecimal(emp.extras);
+      const extrasMonto = extrasDec > 0 ? Math.round(extrasDec * (sueldoBase / 7 / 8) * 1.2) : 0;
+      const faltasMonto = emp.faltas > 0 ? Math.round((sueldoBase / 7) * emp.faltas) : 0;
+      const comisionRuta = emp.comisionRuta || 0;
+
+      const bonosExtras = field === 'bonosExtras' ? numVal : emp.bonosExtras;
+      const pagosPendientes = field === 'pagosPendientes' ? numVal : emp.pagosPendientes;
+      const gasolina = field === 'gasolina' ? numVal : emp.gasolina;
+      const notasQueseria = field === 'notasQueseria' ? numVal : emp.notasQueseria;
+      const tienda = field === 'tienda' ? numVal : emp.tienda;
+      const cobrosPendientes = field === 'cobrosPendientes' ? numVal : emp.cobrosPendientes;
+      const prestamos = field === 'prestamos' ? numVal : emp.prestamos;
+      const abonos = field === 'abonos' ? numVal : emp.abonos;
+
+      let percepciones = (emp.tipoJornada === 'hora' ? montoPorHoras : sueldoBase) + extrasMonto + bonosExtras + pagosPendientes + prestamos + comisionRuta;
+      percepciones = Number(percepciones.toFixed(2));
+      const descuentos = Number((faltasMonto + montoJornadaIncompleta + abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+      const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
+
+      return {
+        ...updatedEmp,
+        percepciones,
+        descuentos,
+        pagoFinal
+      };
+    });
+
+    let totalPercepciones = 0;
+    let totalDescuentos = 0;
+    let totalPagoNeto = 0;
+    let totalFaltas = 0;
+    let totalHorasExtrasMonto = 0;
+    updatedList.forEach(e => {
+      totalPercepciones += e.percepciones;
+      totalDescuentos += e.descuentos;
+      totalPagoNeto += e.pagoFinal;
+      totalFaltas += e.faltas;
+      totalHorasExtrasMonto += e.extrasMonto;
+    });
+
+    setSemanaActual({
+      ...semanaActual,
+      empleados: updatedList,
+      totales: {
+        totalPercepciones: Number(totalPercepciones.toFixed(2)),
+        totalDescuentos: Number(totalDescuentos.toFixed(2)),
+        totalPagoNeto: Number(totalPagoNeto.toFixed(2)),
+        totalEmpleados: updatedList.length,
+        totalFaltas,
+        totalHorasExtrasMonto: Number(totalHorasExtrasMonto.toFixed(2))
+      }
+    });
+  };
+
+  // Auto-save on blur
+  const handleInlineBlur = async (emp: NominaEmpleado) => {
+    try {
+      await fetch(`/api/rh/nomina/${emp.rowNumber}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emp)
+      });
+      setSavedRowMap(prev => ({ ...prev, [emp.rowNumber]: true }));
+      setTimeout(() => {
+        setSavedRowMap(prev => ({ ...prev, [emp.rowNumber]: false }));
+      }, 1500);
+    } catch (e) {
+      console.warn('Error auto-guardando ajuste:', e);
+    }
+  };
+
+  // Save Employee Adjustments from Modal
   const handleSaveAjustes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEmp) return;
@@ -249,10 +354,8 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
       return;
     }
 
-    // Open WhatsApp link in new window
     window.open(emp.linkWhatsApp, '_blank');
 
-    // Mark as sent on server
     try {
       await fetch(`/api/rh/nomina/whatsapp-enviado/${emp.rowNumber}`, {
         method: 'POST',
@@ -328,13 +431,47 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
       if (deptFilter !== 'TODOS') {
         const isRuta = e.puesto.toUpperCase().includes('RUTA') || e.departamento.toUpperCase().includes('RUTA');
         if (deptFilter === 'RUTAS') matchDept = isRuta;
-        else if (deptFilter === 'PLANTA') matchDept = !isRuta && e.tipoJornada !== 'Gerencia';
-        else if (deptFilter === 'GERENCIA') matchDept = e.tipoJornada === 'Gerencia';
+        else if (deptFilter === 'PLANTA') matchDept = !isRuta && e.tipoJornada !== 'gerencia';
+        else if (deptFilter === 'GERENCIA') matchDept = e.tipoJornada === 'gerencia';
       }
 
       return matchSearch && matchDept;
     });
   }, [semanaActual?.empleados, searchTerm, deptFilter]);
+
+  // Column totals for the 8 manual fields
+  const totals8 = useMemo(() => {
+    let totPagosPendientes = 0;
+    let totBonosExtras = 0;
+    let totPrestamos = 0;
+    let totAbonos = 0;
+    let totGasolina = 0;
+    let totNotas = 0;
+    let totTienda = 0;
+    let totCobrosPendientes = 0;
+
+    filteredEmpleados.forEach(e => {
+      totPagosPendientes += e.pagosPendientes || 0;
+      totBonosExtras += e.bonosExtras || 0;
+      totPrestamos += e.prestamos || 0;
+      totAbonos += e.abonos || 0;
+      totGasolina += e.gasolina || 0;
+      totNotas += e.notasQueseria || 0;
+      totTienda += e.tienda || 0;
+      totCobrosPendientes += e.cobrosPendientes || 0;
+    });
+
+    return {
+      totPagosPendientes,
+      totBonosExtras,
+      totPrestamos,
+      totAbonos,
+      totGasolina,
+      totNotas,
+      totTienda,
+      totCobrosPendientes
+    };
+  }, [filteredEmpleados]);
 
   const formatMoney = (val: number) => {
     return '$' + Number(val || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -342,7 +479,6 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-2 sm:p-4 md:p-6 print:p-0 print:m-0 print:max-w-none">
-      {/* PRINT-ONLY STYLES FOR CRISP FULL RECEIPT */}
       <style>{`
         @media print {
           body * {
@@ -382,12 +518,12 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   Nómina & Recibos Digitales
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
-                  En Vivo
+                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                  <ShieldCheck className="w-3 h-3" /> Padrón RH Activo
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 font-medium">
-                Cálculo automatizado desde Checadas, generación instantánea de recibos y envío 1-clic por WhatsApp.
+                Alimentada exclusivamente por colaboradores <strong>ACTIVOS</strong> de RH ({filteredEmpleados.length} en nómina). Captura directa de los 8 conceptos manuales.
               </p>
             </div>
           </div>
@@ -419,7 +555,7 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                 onClick={() => handleRecalcular(true)}
                 disabled={refreshing}
                 className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
-                title="Sincronizar y recalcular datos desde Asistencia (Checadas)"
+                title="Sincronizar y recalcular datos desde Padrón RH y Checadas"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
                 <span>{refreshing ? 'Sincronizando...' : 'Recalcular'}</span>
@@ -526,8 +662,8 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Colaboradores</p>
-            <p className="text-lg font-black text-slate-900">{semanaActual?.totales.totalEmpleados || 0}</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Activos en Nómina</p>
+            <p className="text-lg font-black text-slate-900">{filteredEmpleados.length} colaboradores</p>
           </div>
         </div>
 
@@ -566,30 +702,31 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Monto Horas Extras</p>
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Horas Extras Monto</p>
             <p className="text-lg font-black text-amber-700">{formatMoney(semanaActual?.totales.totalHorasExtrasMonto || 0)}</p>
           </div>
         </div>
       </div>
 
-      {/* TAB 1: CONTROL & CÁLCULO DE NÓMINA (INTERACTIVE GRID) */}
+      {/* TAB 1: CONTROL & CÁLCULO DE NÓMINA (INTERACTIVE GRID WITH 8 MANUAL FIELDS) */}
       {activeTab === 'nomina' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden no-print">
-          {/* Filter & Search Bar */}
-          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
-            <div className="relative w-full sm:w-72">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar por colaborador o puesto..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
+          {/* Filter & View Mode Switcher */}
+          <div className="p-4 border-b border-slate-100 flex flex-col lg:flex-row items-center justify-between gap-3 bg-slate-50/50">
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              {/* Search */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar colaborador..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs font-bold text-slate-500">Filtrar:</span>
+              {/* Dept filter */}
               <div className="flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl text-xs font-bold text-slate-700">
                 {(['TODOS', 'PLANTA', 'RUTAS', 'GERENCIA'] as const).map(f => (
                   <button
@@ -604,6 +741,32 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                 ))}
               </div>
             </div>
+
+            {/* Mode Switcher */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-500">Vista de Columnas:</span>
+              <button
+                onClick={() => setTableMode('manual8')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  tableMode === 'manual8'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Captura Directa (8 Campos Manuales)</span>
+              </button>
+              <button
+                onClick={() => setTableMode('resumen')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  tableMode === 'resumen'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span>Resumen Compacto</span>
+              </button>
+            </div>
           </div>
 
           {/* Table */}
@@ -611,37 +774,79 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                  <th className="p-3">#</th>
-                  <th className="p-3">Colaborador</th>
-                  <th className="p-3">Puesto / Tipo</th>
-                  <th className="p-3 text-right">Sueldo Base</th>
-                  <th className="p-3 text-center">Faltas</th>
-                  <th className="p-3 text-center">Horas Extras</th>
-                  <th className="p-3 text-right">Percepciones</th>
-                  <th className="p-3 text-right">Gasolina</th>
-                  <th className="p-3 text-right">Tienda / Quesería</th>
-                  <th className="p-3 text-right text-rose-600">Deducciones</th>
-                  <th className="p-3 text-right text-indigo-900 font-black">Pago Final</th>
-                  <th className="p-3 text-center">Acciones</th>
+                  <th className="p-3 whitespace-nowrap">#</th>
+                  <th className="p-3 whitespace-nowrap">Colaborador (RH)</th>
+                  <th className="p-3 whitespace-nowrap">Puesto / Jornada</th>
+                  <th className="p-3 text-right whitespace-nowrap">Sueldo Base</th>
+                  <th className="p-3 text-center whitespace-nowrap">Faltas</th>
+                  <th className="p-3 text-center whitespace-nowrap">Extras</th>
+
+                  {tableMode === 'manual8' ? (
+                    <>
+                      {/* 3 Percepciones manuales (Verdes) */}
+                      <th className="p-2.5 text-center bg-emerald-50 text-emerald-900 border-l border-emerald-200 whitespace-nowrap">
+                        PAGOS PEND. ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-emerald-50 text-emerald-900 whitespace-nowrap">
+                        BONOS EXTRAS ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-emerald-50 text-emerald-900 whitespace-nowrap">
+                        PRÉSTAMOS ($)
+                      </th>
+
+                      {/* 5 Deducciones manuales (Rojas) */}
+                      <th className="p-2.5 text-center bg-rose-50 text-rose-900 border-l border-rose-200 whitespace-nowrap">
+                        ABONOS ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-rose-50 text-rose-900 whitespace-nowrap">
+                        GASOLINA ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-rose-50 text-rose-900 whitespace-nowrap">
+                        NOTAS QUESERÍA ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-rose-50 text-rose-900 whitespace-nowrap">
+                        TIENDA ($)
+                      </th>
+                      <th className="p-2.5 text-center bg-rose-50 text-rose-900 whitespace-nowrap">
+                        COBROS PEND. ($)
+                      </th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="p-3 text-right text-emerald-700 whitespace-nowrap">Percepciones</th>
+                      <th className="p-3 text-right text-rose-600 whitespace-nowrap">Deducciones</th>
+                    </>
+                  )}
+
+                  <th className="p-3 text-right text-indigo-900 font-black whitespace-nowrap bg-indigo-50/50">
+                    Pago Final
+                  </th>
+                  <th className="p-3 text-center whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredEmpleados.map((emp, idx) => {
                   const isRuta = emp.puesto.toUpperCase().includes('RUTA') || emp.departamento.toUpperCase().includes('RUTA');
-                  const tiendaQueseria = (emp.tienda || 0) + (emp.notasQueseria || 0);
+                  const isSaved = savedRowMap[emp.rowNumber];
 
                   return (
                     <tr
                       key={emp.rowNumber || idx}
-                      className="hover:bg-slate-50 transition-colors group cursor-pointer"
-                      onClick={() => setEditingEmp(emp)}
+                      className="hover:bg-slate-50 transition-colors group"
                     >
-                      <td className="p-3 font-mono text-slate-400 font-bold">{idx + 1}</td>
-                      <td className="p-3">
-                        <div className="font-bold text-slate-900">{emp.nombreCompleto}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">CURP: {emp.curp || 'S/N'}</div>
+                      <td className="p-3 font-mono text-slate-400 font-bold whitespace-nowrap">{idx + 1}</td>
+                      <td className="p-3 whitespace-nowrap">
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <span>{emp.nombreCompleto}</span>
+                          {isSaved && (
+                            <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded animate-pulse">✓</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          ID: {emp.numeroEmpleado || emp.id} • CURP: {emp.curp || 'S/N'}
+                        </div>
                       </td>
-                      <td className="p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <div className="font-semibold text-slate-700">{emp.puesto}</div>
                         <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded uppercase mt-0.5 ${
                           isRuta ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
@@ -649,19 +854,19 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                           {emp.tipoJornada}
                         </span>
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-800">
+                      <td className="p-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                         {formatMoney(emp.salarioBase)}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center whitespace-nowrap">
                         {emp.faltas > 0 ? (
                           <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                            {emp.faltas} día(s) (-{formatMoney(emp.faltasMonto)})
+                            {emp.faltas} d (-{formatMoney(emp.faltasMonto)})
                           </span>
                         ) : (
                           <span className="text-slate-400">0</span>
                         )}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center whitespace-nowrap">
                         {emp.extrasMonto > 0 ? (
                           <span className="font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                             {emp.extras} (+{formatMoney(emp.extrasMonto)})
@@ -670,28 +875,138 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                           <span className="text-slate-400">0:00</span>
                         )}
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-emerald-700">
-                        {formatMoney(emp.percepciones)}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-600">
-                        {emp.gasolina > 0 ? formatMoney(emp.gasolina) : '-'}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-600">
-                        {tiendaQueseria > 0 ? formatMoney(tiendaQueseria) : '-'}
-                      </td>
-                      <td className="p-3 text-right font-mono font-bold text-rose-600">
-                        -{formatMoney(emp.descuentos)}
-                      </td>
-                      <td className="p-3 text-right font-mono font-black text-indigo-900 bg-indigo-50/40 text-sm">
+
+                      {/* 8 INPUTS MANUALES DIRECTOS EN LA REJILLA (ORDEN EXACTO DE LA HOJA DE CÁLCULO) */}
+                      {tableMode === 'manual8' ? (
+                        <>
+                          {/* 1. PAGOS PENDIENTES (Verde) */}
+                          <td className="p-1.5 text-center bg-emerald-50/30 border-l border-emerald-100">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.pagosPendientes || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'pagosPendientes', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 2. BONOS EXTRAS (Verde) */}
+                          <td className="p-1.5 text-center bg-emerald-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.bonosExtras || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'bonosExtras', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 3. PRÉSTAMOS (Verde - Otorgados) */}
+                          <td className="p-1.5 text-center bg-emerald-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.prestamos || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'prestamos', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-emerald-800 outline-none focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 4. ABONOS (Rojo - Descuento semanal) */}
+                          <td className="p-1.5 text-center bg-rose-50/30 border-l border-rose-100">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.abonos || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'abonos', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-rose-200 rounded-lg text-xs text-rose-800 outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 5. GASOLINA (Rojo) */}
+                          <td className="p-1.5 text-center bg-rose-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.gasolina || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'gasolina', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-rose-200 rounded-lg text-xs text-rose-800 outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 6. NOTAS QUESERÍA (Rojo) */}
+                          <td className="p-1.5 text-center bg-rose-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.notasQueseria || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'notasQueseria', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-rose-200 rounded-lg text-xs text-rose-800 outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 7. TIENDA (Rojo) */}
+                          <td className="p-1.5 text-center bg-rose-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.tienda || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'tienda', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-rose-200 rounded-lg text-xs text-rose-800 outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
+                            />
+                          </td>
+
+                          {/* 8. COBROS PENDIENTES (Rojo) */}
+                          <td className="p-1.5 text-center bg-rose-50/30">
+                            <input
+                              type="number"
+                              step="any"
+                              value={emp.cobrosPendientes || ''}
+                              onChange={e => handleInlineChange(emp.rowNumber, 'cobrosPendientes', e.target.value)}
+                              onBlur={() => handleInlineBlur(emp)}
+                              placeholder="0"
+                              className="w-20 text-center font-mono font-semibold py-1 px-1.5 bg-white border border-rose-200 rounded-lg text-xs text-rose-800 outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
+                            />
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="p-3 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                            {formatMoney(emp.percepciones)}
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-rose-600 whitespace-nowrap">
+                            -{formatMoney(emp.descuentos)}
+                          </td>
+                        </>
+                      )}
+
+                      {/* Pago Final */}
+                      <td className="p-3 text-right font-mono font-black text-indigo-900 bg-indigo-50/50 text-sm whitespace-nowrap">
                         {formatMoney(emp.pagoFinal)}
                       </td>
-                      <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+
+                      {/* Acciones */}
+                      <td className="p-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* Quick Edit */}
+                          {/* Quick Edit Modal */}
                           <button
                             onClick={() => setEditingEmp(emp)}
                             className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                            title="Ajustar percepciones y deducciones"
+                            title="Editar en ventana flotante"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
@@ -735,6 +1050,67 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                   );
                 })}
               </tbody>
+
+              {/* Fila de Totales de Columnas */}
+              <tfoot>
+                <tr className="bg-slate-100/90 font-bold text-slate-800 text-[11px] border-t-2 border-slate-300">
+                  <td colSpan={3} className="p-3 text-slate-600 uppercase">
+                    Totales ({filteredEmpleados.length} Activos):
+                  </td>
+                  <td className="p-3 text-right font-mono font-black">
+                    {formatMoney(filteredEmpleados.reduce((acc, e) => acc + e.salarioBase, 0))}
+                  </td>
+                  <td className="p-3 text-center text-rose-700">
+                    {filteredEmpleados.reduce((acc, e) => acc + e.faltas, 0)} d
+                  </td>
+                  <td className="p-3 text-center text-emerald-700 font-mono">
+                    {formatMoney(filteredEmpleados.reduce((acc, e) => acc + e.extrasMonto, 0))}
+                  </td>
+
+                  {tableMode === 'manual8' ? (
+                    <>
+                      <td className="p-2 text-center font-mono text-emerald-800 bg-emerald-50/50">
+                        {formatMoney(totals8.totPagosPendientes)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-emerald-800 bg-emerald-50/50">
+                        {formatMoney(totals8.totBonosExtras)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-emerald-800 bg-emerald-50/50">
+                        {formatMoney(totals8.totPrestamos)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-rose-800 bg-rose-50/50">
+                        {formatMoney(totals8.totAbonos)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-rose-800 bg-rose-50/50">
+                        {formatMoney(totals8.totGasolina)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-rose-800 bg-rose-50/50">
+                        {formatMoney(totals8.totNotas)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-rose-800 bg-rose-50/50">
+                        {formatMoney(totals8.totTienda)}
+                      </td>
+                      <td className="p-2 text-center font-mono text-rose-800 bg-rose-50/50">
+                        {formatMoney(totals8.totCobrosPendientes)}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="p-3 text-right font-mono font-black text-emerald-700">
+                        {formatMoney(semanaActual?.totales.totalPercepciones || 0)}
+                      </td>
+                      <td className="p-3 text-right font-mono font-black text-rose-700">
+                        -{formatMoney(semanaActual?.totales.totalDescuentos || 0)}
+                      </td>
+                    </>
+                  )}
+
+                  <td className="p-3 text-right font-mono font-black text-indigo-950 text-base bg-indigo-100/50">
+                    {formatMoney(semanaActual?.totales.totalPagoNeto || 0)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -785,7 +1161,7 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                           {emp.semana}
                         </span>
                         <h3 className="font-bold text-slate-900 text-sm mt-1">{emp.nombreCompleto}</h3>
-                        <p className="text-xs text-slate-500">{emp.puesto}</p>
+                        <p className="text-xs text-slate-500">{emp.puesto} • Sueldo Base: {formatMoney(emp.salarioBase)}</p>
                       </div>
                       {emp.whatsappEnviado && (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -908,7 +1284,7 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
               {/* Resumen de Asistencia */}
               <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl grid grid-cols-3 gap-2 text-xs">
                 <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">Sueldo Base:</span>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">Sueldo Base (RH):</span>
                   <p className="font-black text-slate-800">{formatMoney(editingEmp.salarioBase)}</p>
                 </div>
                 <div>
@@ -923,12 +1299,23 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
 
               {/* Percepciones adicionales */}
               <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 text-emerald-700">
-                  <TrendingUp className="w-3.5 h-3.5" /> Percepciones Adicionales
+                <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-700">
+                  <TrendingUp className="w-3.5 h-3.5" /> Percepciones y Entregas (Verde)
                 </h4>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Bonos Extras ($)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">PAGOSPENDIENTES ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingEmp.pagosPendientes || ''}
+                      onChange={e => setEditingEmp({ ...editingEmp, pagosPendientes: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">BONOSEXTRAS ($)</label>
                     <input
                       type="number"
                       step="any"
@@ -939,12 +1326,12 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Pagos Pendientes ($)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">PRÉSTAMOS ($ Otorgados)</label>
                     <input
                       type="number"
                       step="any"
-                      value={editingEmp.pagosPendientes || ''}
-                      onChange={e => setEditingEmp({ ...editingEmp, pagosPendientes: parseFloat(e.target.value) || 0 })}
+                      value={editingEmp.prestamos || ''}
+                      onChange={e => setEditingEmp({ ...editingEmp, prestamos: parseFloat(e.target.value) || 0 })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
                       placeholder="0.00"
                     />
@@ -954,12 +1341,23 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
 
               {/* Deducciones semanales */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 text-rose-700">
-                  <Percent className="w-3.5 h-3.5" /> Deducciones y Créditos
+                <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-rose-700">
+                  <Percent className="w-3.5 h-3.5" /> Deducciones Semanales (Rojo)
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Movilidad / Gasolina ($)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">ABONOS ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingEmp.abonos || ''}
+                      onChange={e => setEditingEmp({ ...editingEmp, abonos: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">GASOLINA ($)</label>
                     <input
                       type="number"
                       step="any"
@@ -970,18 +1368,7 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Crédito Tienda ($)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={editingEmp.tienda || ''}
-                      onChange={e => setEditingEmp({ ...editingEmp, tienda: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Notas Quesería ($)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">NOTASQUESERIA ($)</label>
                     <input
                       type="number"
                       step="any"
@@ -992,34 +1379,23 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Cobros Pendientes ($)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">TIENDA ($)</label>
+                    <input
+                      type="number"
+                      step="any"
+                      value={editingEmp.tienda || ''}
+                      onChange={e => setEditingEmp({ ...editingEmp, tienda: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">COBROSPENDIENTES ($)</label>
                     <input
                       type="number"
                       step="any"
                       value={editingEmp.cobrosPendientes || ''}
                       onChange={e => setEditingEmp({ ...editingEmp, cobrosPendientes: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Préstamos ($)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={editingEmp.prestamos || ''}
-                      onChange={e => setEditingEmp({ ...editingEmp, prestamos: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Abonos a Cuenta ($)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={editingEmp.abonos || ''}
-                      onChange={e => setEditingEmp({ ...editingEmp, abonos: parseFloat(e.target.value) || 0 })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-rose-500"
                       placeholder="0.00"
                     />
@@ -1148,7 +1524,7 @@ export const NominaRecibosView: React.FC<NominaRecibosViewProps> = ({ token, rol
                     <div>
                       <div className="font-bold text-slate-900">{emp.nombreCompleto}</div>
                       <div className="text-[10px] text-slate-400">
-                        {emp.telefonoWhatsapp || 'Sin número'} • Neto: {formatMoney(emp.pagoFinal)}
+                        {emp.telefonoWhatsapp || 'Sin número'} • Sueldo Base: {formatMoney(emp.salarioBase)} • Neto: {formatMoney(emp.pagoFinal)}
                       </div>
                     </div>
 
@@ -1301,7 +1677,7 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
             <p className="font-bold text-slate-800">Ventas-Ruta</p>
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase">Sueldo Base:</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Sueldo Base (RH):</span>
             <p className="font-bold text-slate-800">{formatMoney(emp.salarioBase)}</p>
           </div>
         </div>
@@ -1357,7 +1733,7 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
               </div>
               {emp.bonosExtras > 0 && (
                 <div className="flex justify-between">
-                  <span>Bonos Extras:</span>
+                  <span>Bonos Extras (BONOSEXTRAS):</span>
                   <span className="font-mono font-bold">{formatMoney(emp.bonosExtras)}</span>
                 </div>
               )}
@@ -1365,6 +1741,12 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
                 <div className="flex justify-between">
                   <span>Pagos Pendientes:</span>
                   <span className="font-mono font-bold">{formatMoney(emp.pagosPendientes)}</span>
+                </div>
+              )}
+              {emp.prestamos > 0 && (
+                <div className="flex justify-between">
+                  <span>Préstamo Otorgado:</span>
+                  <span className="font-mono font-bold">{formatMoney(emp.prestamos)}</span>
                 </div>
               )}
               <div className="border-t border-slate-200 pt-1 flex justify-between font-black text-emerald-800">
@@ -1400,6 +1782,18 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
                 <div className="flex justify-between">
                   <span>Notas Quesería:</span>
                   <span className="font-mono font-bold">-{formatMoney(emp.notasQueseria)}</span>
+                </div>
+              )}
+              {emp.cobrosPendientes > 0 && (
+                <div className="flex justify-between">
+                  <span>Cobros Pendientes:</span>
+                  <span className="font-mono font-bold">-{formatMoney(emp.cobrosPendientes)}</span>
+                </div>
+              )}
+              {emp.abonos > 0 && (
+                <div className="flex justify-between">
+                  <span>Abono Préstamo:</span>
+                  <span className="font-mono font-bold">-{formatMoney(emp.abonos)}</span>
                 </div>
               )}
               <div className="border-t border-slate-200 pt-1 flex justify-between font-black text-rose-800">
@@ -1516,14 +1910,20 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
             </div>
             {emp.bonosExtras > 0 && (
               <div className="flex justify-between">
-                <span>Bonos Extras:</span>
+                <span>Bonos Extras (BONOSEXTRAS):</span>
                 <span className="font-mono font-bold">{formatMoney(emp.bonosExtras)}</span>
               </div>
             )}
             {emp.pagosPendientes > 0 && (
               <div className="flex justify-between">
-                <span>Pagos Pendientes:</span>
+                <span>Pagos Pendientes (PAGOSPENDIENTES):</span>
                 <span className="font-mono font-bold">{formatMoney(emp.pagosPendientes)}</span>
+              </div>
+            )}
+            {emp.prestamos > 0 && (
+              <div className="flex justify-between">
+                <span>Préstamo Otorgado (Prestamos):</span>
+                <span className="font-mono font-bold">{formatMoney(emp.prestamos)}</span>
               </div>
             )}
             <div className="border-t border-slate-200 pt-1.5 flex justify-between font-black text-emerald-800">
@@ -1553,37 +1953,31 @@ const ReceiptTemplate: React.FC<ReceiptTemplateProps> = ({ emp, format, formatMo
             )}
             {emp.gasolina > 0 && (
               <div className="flex justify-between">
-                <span>Movilidad / Gasolina:</span>
+                <span>Movilidad (GASOLINA):</span>
                 <span className="font-mono font-bold">-{formatMoney(emp.gasolina)}</span>
               </div>
             )}
             {emp.tienda > 0 && (
               <div className="flex justify-between">
-                <span>Crédito Tienda:</span>
+                <span>Crédito Tienda (TIENDA):</span>
                 <span className="font-mono font-bold">-{formatMoney(emp.tienda)}</span>
               </div>
             )}
             {emp.notasQueseria > 0 && (
               <div className="flex justify-between">
-                <span>Crédito Notas Quesería:</span>
+                <span>Crédito Notas (NOTASQUESERIA):</span>
                 <span className="font-mono font-bold">-{formatMoney(emp.notasQueseria)}</span>
               </div>
             )}
             {emp.cobrosPendientes > 0 && (
               <div className="flex justify-between">
-                <span>Cobros Pendientes:</span>
+                <span>Cobros Pendientes (COBROSPENDIENTES):</span>
                 <span className="font-mono font-bold">-{formatMoney(emp.cobrosPendientes)}</span>
-              </div>
-            )}
-            {emp.prestamos > 0 && (
-              <div className="flex justify-between">
-                <span>Préstamos:</span>
-                <span className="font-mono font-bold">-{formatMoney(emp.prestamos)}</span>
               </div>
             )}
             {emp.abonos > 0 && (
               <div className="flex justify-between">
-                <span>Abonos a Cuenta:</span>
+                <span>Abono Préstamo (Abonos):</span>
                 <span className="font-mono font-bold">-{formatMoney(emp.abonos)}</span>
               </div>
             )}

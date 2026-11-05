@@ -27,9 +27,21 @@ export interface EmpleadoRH {
   fechaBaja?: string; // DD/MM/YYYY
   departamento: string;
   tipoSalario: string; // 'jornada' | 'fijo' | 'hora' | 'gerencia'
+  jornada?: string; // e.g. "58:00"
   rowNumber: number; // 1-based row in Google Sheets
   edad?: number;
   antiguedad?: string;
+}
+
+// Normaliza nombres para garantizar coincidencia 100% inmune a dobles espacios, mayúsculas y acentos
+export function normalizeEmployeeName(name?: string): string {
+  if (!name) return '';
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
 }
 
 export interface RHStats {
@@ -180,7 +192,7 @@ export async function syncRHFromSheets(): Promise<{ count: number; empleados: Em
     const token = await getGoogleAccessToken(['https://www.googleapis.com/auth/spreadsheets']);
     if (!token) throw new Error('No se pudo autenticar con Google Sheets API');
 
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/RH!A2:S1000`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/RH!A2:T1000`, {
       headers: { Authorization: 'Bearer ' + token }
     });
 
@@ -213,6 +225,7 @@ export async function syncRHFromSheets(): Promise<{ count: number; empleados: Em
       const fechaNac = (r[5] || '').trim();
       const fechaIng = (r[14] || '').trim();
       const fechaBaj = (r[15] || '').trim();
+      const jornada = (r[19] || '').trim() || '58:00';
 
       empleados.push({
         id: String(numEmp),
@@ -236,6 +249,7 @@ export async function syncRHFromSheets(): Promise<{ count: number; empleados: Em
         fechaBaja: fechaBaj || undefined,
         departamento: (r[16] || '').trim() || 'PRODUCCIÓN',
         tipoSalario: (r[17] || '').trim().toLowerCase() || 'jornada',
+        jornada,
         rowNumber,
         edad: calculateEdad(fechaNac),
         antiguedad: calculateAntiguedad(fechaIng, fechaBaj)
@@ -252,6 +266,16 @@ export async function syncRHFromSheets(): Promise<{ count: number; empleados: Em
     console.error('[rhService] Error en syncRHFromSheets:', err);
     return { count: 0, empleados: loadLocalRH() };
   }
+}
+
+// Obtener únicamente los colaboradores con estatus ACTIVO (alimentador maestro de Checadas y Nómina)
+export async function getEmpleadosActivosRH(forceSync = false): Promise<EmpleadoRH[]> {
+  let all = loadLocalRH();
+  if (all.length === 0 || forceSync) {
+    const synced = await syncRHFromSheets();
+    all = synced.empleados;
+  }
+  return all.filter(e => (e.estatus || '').trim().toUpperCase() === 'ACTIVO');
 }
 
 // Inicialización al arrancar el servidor
@@ -424,14 +448,14 @@ export async function reactivarEmpleado(id: string, nuevaFechaIngreso?: string):
   });
 }
 
-// Escribe fila A:S en Google Sheets por número de fila
+// Escribe fila A:T en Google Sheets por número de fila
 async function writeEmpleadoRowToSheets(emp: EmpleadoRH): Promise<boolean> {
   try {
     const token = await getGoogleAccessToken(['https://www.googleapis.com/auth/spreadsheets']);
     if (!token) throw new Error('No se pudo autenticar con Google');
 
     const rowNumber = emp.rowNumber || (emp.numeroEmpleado - 999);
-    const range = `RH!A${rowNumber}:S${rowNumber}`;
+    const range = `RH!A${rowNumber}:T${rowNumber}`;
 
     const values = [[
       emp.estatus,
@@ -452,7 +476,8 @@ async function writeEmpleadoRowToSheets(emp: EmpleadoRH): Promise<boolean> {
       emp.fechaBaja || '',
       emp.departamento,
       emp.tipoSalario,
-      String(emp.numeroEmpleado)
+      String(emp.numeroEmpleado),
+      emp.jornada || '58:00'
     ]];
 
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;

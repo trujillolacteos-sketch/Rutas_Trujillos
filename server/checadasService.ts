@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getGoogleAccessToken } from './googleCredentials.ts';
-import { loadLocalRH } from './rhService.ts';
+import { loadLocalRH, getEmpleadosActivosRH, normalizeEmployeeName, EmpleadoRH } from './rhService.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const CHECADAS_STORE_FILE = 'checadas_store.json';
@@ -164,53 +164,78 @@ export async function syncChecadasFromSheets(): Promise<{
     return { semanaActiva: store.semanaActiva, historico: store.historico };
   }
 
-  // 1. Fetch Checadas (Semana Activa)
+  // 1. Fetch Checadas (Semana Activa) y sincronizar exclusivamente con Colaboradores ACTIVOS de RH
   try {
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Checadas!A1:AS50?valueRenderOption=FORMATTED_VALUE`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const [activosRH, res] = await Promise.all([
+      getEmpleadosActivosRH(),
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Checadas!A1:AS50?valueRenderOption=FORMATTED_VALUE`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+    ]);
 
     if (res.ok) {
       const data = await res.json();
       const rows: string[][] = data.values || [];
-      const empleados: EmpleadoChecada[] = [];
 
+      // Mapear filas existentes en la hoja de Checadas por nombre normalizado
+      const existingChecadasMap = new Map<string, { r: string[]; originalRow: number }>();
       for (let idx = 2; idx < rows.length; idx++) {
         const r = rows[idx];
-        const nombre = (r[0] || '').trim();
-        if (!nombre) continue;
-
-        const rowNumber = idx + 1;
-        const parseDay = (start: number): ChecadaDia => ({
-          entrada1: (r[start] || '').trim(),
-          salida1: (r[start + 1] || '').trim(),
-          entrada2: (r[start + 2] || '').trim(),
-          salida2: (r[start + 3] || '').trim(),
-          total: (r[start + 4] || '0:00').trim(),
-          extras: (r[start + 5] || '0:00').trim()
-        });
-
-        empleados.push({
-          rowNumber,
-          nombre,
-          jornada: (r[1] || '58:00').trim(),
-          faltas: parseInt(r[2], 10) || 0,
-          jornadaIncompleta: (r[3] || '').trim(),
-          incapacidades: parseInt(r[4], 10) || 0,
-          vacaciones: parseInt(r[5], 10) || 0,
-          tipoJornada: (r[6] || 'jornada').trim(),
-          extrasSemana: (r[7] || '0:00').trim(),
-          totalHorasSemana: (r[8] || '0:00').trim(),
-          dias: {
-            lunes: parseDay(9),
-            martes: parseDay(15),
-            miercoles: parseDay(21),
-            jueves: parseDay(27),
-            viernes: parseDay(33),
-            sabado: parseDay(39)
-          }
-        });
+        const rawName = (r[0] || '').trim();
+        if (!rawName) continue;
+        existingChecadasMap.set(normalizeEmployeeName(rawName), { r, originalRow: idx + 1 });
       }
+
+      // Checadas debe ser alimentado SOLO por los activos de RH
+      const parseDay = (r: string[], start: number): ChecadaDia => ({
+        entrada1: (r[start] || '').trim(),
+        salida1: (r[start + 1] || '').trim(),
+        entrada2: (r[start + 2] || '').trim(),
+        salida2: (r[start + 3] || '').trim(),
+        total: (r[start + 4] || '0:00').trim(),
+        extras: (r[start + 5] || '0:00').trim()
+      });
+
+      const empleados: EmpleadoChecada[] = activosRH.map((rhEmp, index) => {
+        const rowNumber = index + 3; // En hoja Checadas los datos inician en fila 3
+        const key = normalizeEmployeeName(rhEmp.nombreCompleto);
+        const match = existingChecadasMap.get(key);
+        const r = match ? match.r : [];
+
+        const jornada = rhEmp.jornada || (r[1] || '58:00').trim();
+        const tipoJornada = rhEmp.tipoSalario || (r[6] || 'jornada').trim();
+        const esGerencia = tipoJornada.toLowerCase() === 'gerencia';
+
+        const faltas = esGerencia ? 0 : (r[2] !== undefined && r[2] !== '' ? parseInt(r[2], 10) || 0 : 0);
+        const jornadaIncompleta = esGerencia ? '' : (r[3] || '').trim();
+        const incapacidades = parseInt(r[4], 10) || 0;
+        const vacaciones = parseInt(r[5], 10) || 0;
+        const extrasSemana = esGerencia ? '0:00' : (r[7] || '0:00').trim();
+        const totalHorasSemana = (r[8] || (esGerencia ? '00:00' : '54:00')).trim();
+
+        const emptyDay: ChecadaDia = { entrada1: '', salida1: '', entrada2: '', salida2: '', total: '0:00', extras: '0:00' };
+
+        return {
+          rowNumber,
+          nombre: rhEmp.nombreCompleto,
+          jornada,
+          faltas,
+          jornadaIncompleta,
+          incapacidades,
+          vacaciones,
+          tipoJornada,
+          extrasSemana,
+          totalHorasSemana,
+          dias: {
+            lunes: r.length > 9 ? parseDay(r, 9) : emptyDay,
+            martes: r.length > 15 ? parseDay(r, 15) : emptyDay,
+            miercoles: r.length > 21 ? parseDay(r, 21) : emptyDay,
+            jueves: r.length > 27 ? parseDay(r, 27) : emptyDay,
+            viernes: r.length > 33 ? parseDay(r, 33) : emptyDay,
+            sabado: r.length > 39 ? parseDay(r, 39) : emptyDay
+          }
+        };
+      });
 
       const weekInfo = getWeekDetails();
       store.semanaActiva = {

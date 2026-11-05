@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getGoogleAccessToken } from './googleCredentials.ts';
-import { loadLocalRH, EmpleadoRH } from './rhService.ts';
+import { loadLocalRH, getEmpleadosActivosRH, normalizeEmployeeName, EmpleadoRH } from './rhService.ts';
 import { loadStore as loadChecadasStore, SemanaChecadas, EmpleadoChecada, getWeekDetails } from './checadasService.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
@@ -177,6 +177,7 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
   // 5. Percepciones adicionales
   const bonosExtras = Number(emp.bonosExtras) || 0;
   const pagosPendientes = Number(emp.pagosPendientes) || 0;
+  const prestamos = Number(emp.prestamos) || 0;
 
   // Si es chofer de ruta, calcular comisión de ruta 2.5%
   let comisionRuta = Number(emp.comisionRuta) || 0;
@@ -198,21 +199,20 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
     emp.comisionRuta = comisionRuta;
   }
 
-  // 6. TOTAL PERCEPCIONES
+  // 6. TOTAL PERCEPCIONES (SalarioBase/Horas + Extras + Bonos + PagosPendientes + Prestamos + ComisionRuta)
   let percepciones = 0;
   if (tipoJornada === 'hora') {
-    percepciones = montoPorHoras + extrasMonto + bonosExtras + pagosPendientes + comisionRuta;
+    percepciones = montoPorHoras + extrasMonto + bonosExtras + pagosPendientes + prestamos + comisionRuta;
   } else {
-    percepciones = salarioBase + extrasMonto + bonosExtras + pagosPendientes + comisionRuta;
+    percepciones = salarioBase + extrasMonto + bonosExtras + pagosPendientes + prestamos + comisionRuta;
   }
   percepciones = Number(percepciones.toFixed(2));
 
-  // 7. TOTAL DEDUCCIONES
+  // 7. TOTAL DEDUCCIONES (Faltas + Incompleta + Gasolina + Notas + Tienda + CobrosPendientes + Abonos)
   const gasolina = Number(emp.gasolina) || 0;
   const notasQueseria = Number(emp.notasQueseria) || 0;
   const tienda = Number(emp.tienda) || 0;
   const cobrosPendientes = Number(emp.cobrosPendientes) || 0;
-  const prestamos = Number(emp.prestamos) || 0;
   const abonos = Number(emp.abonos) || 0;
 
   const descuentos = Number((
@@ -222,7 +222,6 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
     notasQueseria +
     tienda +
     cobrosPendientes +
-    prestamos +
     abonos
   ).toFixed(2));
 
@@ -247,10 +246,12 @@ export function calcularEmpleadoNomina(emp: Partial<NominaEmpleado>, baseSueldo?
       (extrasMonto > 0 ? `  • Horas Extras (${extras}): ${formatMoney(extrasMonto)}\n` : '') +
       (bonosExtras > 0 ? `  • Bonos Extras: ${formatMoney(bonosExtras)}\n` : '') +
       (pagosPendientes > 0 ? `  • Pagos Pendientes: ${formatMoney(pagosPendientes)}\n` : '') +
+      (prestamos > 0 ? `  • Préstamo Otorgado: ${formatMoney(prestamos)}\n` : '') +
       (comisionRuta > 0 ? `  • Comisión Rutas (2.5%): ${formatMoney(comisionRuta)}\n` : '') +
       `🔻 *Descuentos:* ${formatMoney(descuentos)}\n` +
       (faltasMonto > 0 ? `  • Faltas (${faltas} días): ${formatMoney(faltasMonto)}\n` : '') +
       (montoJornadaIncompleta > 0 ? `  • Retardos / J. Incompleta (${horasJornadaIncompleta}): ${formatMoney(montoJornadaIncompleta)}\n` : '') +
+      (abonos > 0 ? `  • Abono a Préstamo: ${formatMoney(abonos)}\n` : '') +
       (gasolina > 0 ? `  • Movilidad / Gasolina: ${formatMoney(gasolina)}\n` : '') +
       (tienda > 0 ? `  • Crédito Tienda: ${formatMoney(tienda)}\n` : '') +
       (notasQueseria > 0 ? `  • Notas Quesería: ${formatMoney(notasQueseria)}\n` : '') +
@@ -397,116 +398,128 @@ export function saveNominaStore(store: NominaStore): void {
 /**
  * Genera o sincroniza la nómina de la semana activa conectando Checadas y RH
  */
+/**
+ * Genera o sincroniza la nómina de la semana activa conectando Checadas y RH.
+ * Padrón RH es la fuente maestra única de colaboradores ACTIVOS, salarios base y tipos de jornada.
+ */
 export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise<SemanaNomina> {
   const store = loadNominaStore();
   const checadasStore = loadChecadasStore();
-  const empleadosRH = loadLocalRH();
+  const activosRH = await getEmpleadosActivosRH(true); // Siempre obtiene los colaboradores activos frescos de RH
 
   const semanaChecadas = checadasStore.semanaActiva;
-  const semanaId = semanaChecadas.id;
+  const semanaId = semanaChecadas.id || store.semanaActiva.id;
 
-  // Si la semana activa del store coincide y ya tiene datos, y no se fuerza recálculo, conservar ajustes
-  const existingMap = new Map<string, NominaEmpleado>();
-  if (store.semanaActiva.id === semanaId && !forzarRecalculo) {
-    store.semanaActiva.empleados.forEach(e => {
-      existingMap.set(e.nombreCompleto.trim().toUpperCase(), e);
-    });
-  }
-
-  const semanaTexto = `Semana ${semanaChecadas.semana}`;
-  const periodoTexto = `Del ${semanaChecadas.fechaInicio} al ${semanaChecadas.fechaFin}`;
-  const fechaPago = semanaChecadas.fechaFin;
-
-  // Solo incluir colaboradores activos del padrón RH o de checadas
-  const empleadosNomina: NominaEmpleado[] = [];
-
-  // Indexar RH por nombre normalizado
-  const rhMap = new Map<string, EmpleadoRH>();
-  empleadosRH.forEach(rh => {
-    rhMap.set(rh.nombreCompleto.trim().toUpperCase(), rh);
-    if (rh.primerApellido && rh.nombre) {
-      rhMap.set(`${rh.primerApellido} ${rh.nombre}`.trim().toUpperCase(), rh);
+  // Mapa de ajustes manuales previos para conservarlos al 100%:
+  // (PAGOSPENDIENTES, BONOSEXTRAS, Prestamos, Abonos, GASOLINA, NOTASQUESERIA, TIENDA, COBROSPENDIENTES)
+  const manualAdjustmentsMap = new Map<string, Partial<NominaEmpleado>>();
+  store.semanaActiva.empleados.forEach(e => {
+    const adj: Partial<NominaEmpleado> = {
+      pagosPendientes: Number(e.pagosPendientes) || 0,
+      bonosExtras: Number(e.bonosExtras) || 0,
+      prestamos: Number(e.prestamos) || 0,
+      abonos: Number(e.abonos) || 0,
+      gasolina: Number(e.gasolina) || 0,
+      notasQueseria: Number(e.notasQueseria) || 0,
+      tienda: Number(e.tienda) || 0,
+      cobrosPendientes: Number(e.cobrosPendientes) || 0,
+      whatsappEnviado: e.whatsappEnviado || false,
+      ventasPorDia: e.ventasPorDia
+    };
+    manualAdjustmentsMap.set(normalizeEmployeeName(e.nombreCompleto), adj);
+    if (e.numeroEmpleado) {
+      manualAdjustmentsMap.set(`NUM_${e.numeroEmpleado}`, adj);
     }
   });
 
-  // Iterar colaboradores de la semana de Checadas
-  semanaChecadas.empleados.forEach((checadaEmp, index) => {
-    const key = checadaEmp.nombre.trim().toUpperCase();
-    const rh = rhMap.get(key);
-    const existing = existingMap.get(key);
+  const semanaTexto = `Semana ${semanaChecadas.semana || store.semanaActiva.semanaNum}`;
+  const periodoTexto = `Del ${semanaChecadas.fechaInicio || ''} al ${semanaChecadas.fechaFin || ''}`;
+  const fechaPago = semanaChecadas.fechaFin || store.semanaActiva.fechaPago;
 
-    const sueldoBase = rh?.sueldoBase || existing?.salarioBase || 2500;
-    const puesto = rh?.puesto || (checadaEmp.tipoJornada === 'Gerencia' ? 'GERENCIA' : 'PRODUCCIÓN');
-    const departamento = rh?.departamento || (puesto.toLowerCase().includes('ruta') ? 'RUTAS' : 'PLANTA');
-    const tipoJornada = rh?.tipoSalario || checadaEmp.tipoJornada || 'jornada';
-    const curp = rh?.curp || '';
-    const antiguedad = rh?.antiguedad || '';
-    const fechaIngreso = rh?.fechaIngreso || '';
-    const telefonoWhatsapp = rh?.telefonoWhatsapp || '';
-    const primerApellido = rh?.primerApellido || '';
-    const segundoApellido = rh?.segundoApellido || '';
-    const nombres = rh?.nombre || '';
+  // Mapa de asistencia de Checadas indexado por nombre normalizado
+  const checadasMap = new Map<string, EmpleadoChecada>();
+  semanaChecadas.empleados.forEach(c => {
+    checadasMap.set(normalizeEmployeeName(c.nombre), c);
+  });
 
-    // Valores variables semanales (conservar si ya se capturaron)
-    const gasolina = existing?.gasolina || 0;
-    const notasQueseria = existing?.notasQueseria || 0;
-    const tienda = existing?.tienda || 0;
-    const cobrosPendientes = existing?.cobrosPendientes || 0;
-    const bonosExtras = existing?.bonosExtras || 0;
-    const pagosPendientes = existing?.pagosPendientes || (tipoJornada.toLowerCase() === 'gerencia' ? 5000 : 0);
-    const prestamos = existing?.prestamos || 0;
-    const abonos = existing?.abonos || 0;
-    const whatsappEnviado = existing?.whatsappEnviado || false;
-    const ventasPorDia = existing?.ventasPorDia;
+  // Nómina es alimentada EXCLUSIVAMENTE por los colaboradores con estatus ACTIVO en Padrón RH
+  const empleadosNomina: NominaEmpleado[] = activosRH.map((rhEmp, index) => {
+    const normKey = normalizeEmployeeName(rhEmp.nombreCompleto);
+    const checada = checadasMap.get(normKey);
+    const manual = (rhEmp.numeroEmpleado ? manualAdjustmentsMap.get(`NUM_${rhEmp.numeroEmpleado}`) : null) || manualAdjustmentsMap.get(normKey);
+
+    // Salario base tomado directamente de RH (inmune a fallos)
+    const salarioBase = Number(rhEmp.sueldoBase) || 0;
+    const tipoJornada = (rhEmp.tipoSalario || 'jornada').trim().toLowerCase();
+    const esGerencia = tipoJornada === 'gerencia';
+
+    // Asistencia desde Checadas
+    const faltas = esGerencia ? 0 : (checada ? checada.faltas : 0);
+    const horasTrabajadas = checada?.totalHorasSemana || (esGerencia ? '00:00' : '54:00');
+    const horasJornadaIncompleta = checada?.jornadaIncompleta || '0:00';
+    const extras = esGerencia ? '0:00' : (checada?.extrasSemana || '0:00');
+    const incapacidades = checada?.incapacidades || 0;
+    const vacacionesUtilizadas = checada?.vacaciones || 0;
+
+    // Los 8 campos de llenado manual
+    const pagosPendientes = manual?.pagosPendientes !== undefined 
+      ? manual.pagosPendientes 
+      : (esGerencia ? 5000 : 0);
+    const bonosExtras = manual?.bonosExtras || 0;
+    const prestamos = manual?.prestamos || 0;
+    const abonos = manual?.abonos || 0;
+    const gasolina = manual?.gasolina || 0;
+    const notasQueseria = manual?.notasQueseria || 0;
+    const tienda = manual?.tienda || 0;
+    const cobrosPendientes = manual?.cobrosPendientes || 0;
 
     const baseData: Partial<NominaEmpleado> = {
-      rowNumber: checadaEmp.rowNumber || index + 2,
-      id: rh?.id || String(index + 2),
-      numeroEmpleado: rh?.numeroEmpleado,
-      nombreCompleto: checadaEmp.nombre,
-      primerApellido,
-      segundoApellido,
-      nombres,
-      puesto,
-      departamento,
-      curp,
-      fechaIngreso,
-      antiguedad,
-      telefonoWhatsapp,
+      rowNumber: index + 2,
+      id: String(rhEmp.numeroEmpleado || rhEmp.id || (index + 2)),
+      numeroEmpleado: rhEmp.numeroEmpleado,
+      nombreCompleto: rhEmp.nombreCompleto,
+      primerApellido: rhEmp.primerApellido,
+      segundoApellido: rhEmp.segundoApellido,
+      nombres: rhEmp.nombre,
+      puesto: rhEmp.puesto || (esGerencia ? 'GERENCIA' : 'PRODUCCIÓN'),
+      departamento: rhEmp.departamento || (esGerencia ? 'GERENCIA' : 'PLANTA'),
+      curp: rhEmp.curp || '',
+      fechaIngreso: rhEmp.fechaIngreso || '',
+      antiguedad: rhEmp.antiguedad || '',
+      telefonoWhatsapp: rhEmp.telefonoWhatsapp || '',
       tipoJornada,
-      salarioBase: sueldoBase,
-      horasTrabajadas: checadaEmp.totalHorasSemana || '0:00',
-      faltas: checadaEmp.faltas,
-      horasJornadaIncompleta: checadaEmp.jornadaIncompleta || '0:00',
-      extras: checadaEmp.extrasSemana || '0:00',
-      incapacidades: checadaEmp.incapacidades,
-      vacacionesUtilizadas: checadaEmp.vacaciones,
+      salarioBase,
+      horasTrabajadas,
+      faltas,
+      horasJornadaIncompleta,
+      extras,
+      incapacidades,
+      vacacionesUtilizadas,
+      pagosPendientes,
+      bonosExtras,
+      prestamos,
+      abonos,
       gasolina,
       notasQueseria,
       tienda,
       cobrosPendientes,
-      bonosExtras,
-      pagosPendientes,
-      prestamos,
-      abonos,
       fechaDePago: fechaPago,
       periodoDePago: periodoTexto,
       semana: semanaTexto,
-      whatsappEnviado,
-      ventasPorDia
+      whatsappEnviado: manual?.whatsappEnviado || false,
+      ventasPorDia: manual?.ventasPorDia
     };
 
-    const calculado = calcularEmpleadoNomina(baseData, sueldoBase);
-    empleadosNomina.push(calculado);
+    return calcularEmpleadoNomina(baseData, salarioBase);
   });
 
   const totales = calcularTotalesSemana(empleadosNomina);
 
   const semanaActiva: SemanaNomina = {
     id: semanaId,
-    semanaNum: semanaChecadas.semana,
-    anio: semanaChecadas.anio,
-    periodo: semanaChecadas.periodo,
+    semanaNum: semanaChecadas.semana || store.semanaActiva.semanaNum,
+    anio: semanaChecadas.anio || store.semanaActiva.anio,
+    periodo: semanaChecadas.periodo || store.semanaActiva.periodo,
     fechaPago,
     cerrada: false,
     empleados: empleadosNomina,
@@ -520,13 +533,20 @@ export async function sincronizarNominaSemanal(forzarRecalculo = false): Promise
 }
 
 /**
- * Actualiza los conceptos variables de un empleado en la nómina activa
+ * Actualiza los conceptos variables de un empleado en la nómina activa (los 8 campos manuales)
  */
-export function updateEmpleadoAjustes(rowNumber: number, ajustes: Partial<NominaEmpleado>): NominaEmpleado {
+export function updateEmpleadoAjustes(identifier: string | number, ajustes: Partial<NominaEmpleado>): NominaEmpleado {
   const store = loadNominaStore();
-  const empIndex = store.semanaActiva.empleados.findIndex(e => e.rowNumber === rowNumber);
+  const idStr = String(identifier).trim();
+  const numId = parseInt(idStr, 10);
+  const empIndex = store.semanaActiva.empleados.findIndex(e =>
+    e.rowNumber === numId ||
+    e.id === idStr ||
+    String(e.numeroEmpleado) === idStr ||
+    normalizeEmployeeName(e.nombreCompleto) === normalizeEmployeeName(idStr)
+  );
   if (empIndex === -1) {
-    throw new Error(`Empleado con fila ${rowNumber} no encontrado en la nómina activa.`);
+    throw new Error(`Empleado con identificador ${identifier} no encontrado en la nómina activa.`);
   }
 
   const current = store.semanaActiva.empleados[empIndex];
@@ -535,7 +555,9 @@ export function updateEmpleadoAjustes(rowNumber: number, ajustes: Partial<Nomina
     ...ajustes
   };
 
-  const recalculated = calcularEmpleadoNomina(merged, merged.salarioBase);
+  // Mantener salarioBase original de RH
+  const sueldoBase = current.salarioBase;
+  const recalculated = calcularEmpleadoNomina(merged, sueldoBase);
   store.semanaActiva.empleados[empIndex] = recalculated;
   store.semanaActiva.totales = calcularTotalesSemana(store.semanaActiva.empleados);
 
@@ -546,9 +568,16 @@ export function updateEmpleadoAjustes(rowNumber: number, ajustes: Partial<Nomina
 /**
  * Marca un recibo como enviado por WhatsApp
  */
-export function markWhatsAppEnviado(rowNumber: number, enviado = true): NominaEmpleado {
+export function markWhatsAppEnviado(identifier: string | number, enviado = true): NominaEmpleado {
   const store = loadNominaStore();
-  const empIndex = store.semanaActiva.empleados.findIndex(e => e.rowNumber === rowNumber);
+  const idStr = String(identifier).trim();
+  const numId = parseInt(idStr, 10);
+  const empIndex = store.semanaActiva.empleados.findIndex(e =>
+    e.rowNumber === numId ||
+    e.id === idStr ||
+    String(e.numeroEmpleado) === idStr ||
+    normalizeEmployeeName(e.nombreCompleto) === normalizeEmployeeName(idStr)
+  );
   if (empIndex === -1) throw new Error('Empleado no encontrado');
   store.semanaActiva.empleados[empIndex].whatsappEnviado = enviado;
   saveNominaStore(store);
