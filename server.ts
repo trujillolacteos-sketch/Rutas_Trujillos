@@ -54,6 +54,10 @@ import {
 } from './server/productionLinesService.ts';
 
 import {
+  calculateProductionForecast
+} from './server/productionForecastService.ts';
+
+import {
   initContabilidadOnStartup,
   createMovimiento,
   createDepositoBancario,
@@ -1243,6 +1247,79 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // ==========================================
+  // PRONÓSTICO DE PRODUCCIÓN, INSUMOS Y ABASTO
+  // ==========================================
+  app.get('/api/production/forecast', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const period = (req.query.period as any) || 'last_4_weeks';
+      const leadTimeDays = req.query.leadTimeDays ? parseFloat(req.query.leadTimeDays as string) : 2.5;
+      const safetyDays = req.query.safetyDays ? parseFloat(req.query.safetyDays as string) : 2.5;
+      const growthFactor = req.query.growthFactor ? parseFloat(req.query.growthFactor as string) : 1.0;
+      const forceRefresh = req.query.force === 'true';
+
+      let manualOverrides: Record<string, number> = {};
+      if (req.query.overrides) {
+        try {
+          manualOverrides = JSON.parse(req.query.overrides as string);
+        } catch (e) {}
+      }
+
+      const forecast = await calculateProductionForecast({
+        period,
+        leadTimeDays,
+        safetyDays,
+        growthFactor,
+        manualOverrides,
+        forceRefresh
+      });
+
+      res.json(forecast);
+    } catch (err: any) {
+      console.error('[GET /api/production/forecast] Error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/production/forecast/quick-purchase', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Forbidden" });
+
+      const { proveedor, items, fechaCompra, folio, notas } = req.body;
+      if (!proveedor || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "Datos incompletos para generar compra" });
+      }
+
+      const results = [];
+      for (const item of items) {
+        if (!item.nombre || !item.cantidad || item.cantidad <= 0) continue;
+        const purchaseRecordData = {
+          fechaCompra: fechaCompra || new Date().toISOString().slice(0, 10),
+          folio: folio || `ORD-${proveedor.slice(0, 4).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+          itemNombre: item.nombre,
+          isIngredient: item.tipo === 'ingrediente',
+          proveedor,
+          empaqueTipo: item.presentacion || item.unidadBase || 'Unidad',
+          empaquesCantidad: 1,
+          contenidoPorEmpaque: item.cantidad,
+          unidadBase: item.unidadBase || 'kg',
+          costoTotal: item.costoTotal || (item.cantidad * (item.costoUnitario || 0)),
+          impuestoTipo: 'sin_iva' as const,
+          notas: notas || `Generado automáticamente desde Pronóstico y Abasto (Lead Time 2.5d)`
+        };
+        const recorded = await recordPurchase(purchaseRecordData);
+        results.push(recorded);
+      }
+
+      res.json({ success: true, count: results.length, records: results });
+    } catch (err: any) {
+      console.error('[POST /api/production/forecast/quick-purchase] Error:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/api';
 import { AppState, PlannedVisit, ClientData } from './types';
-import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck, Calculator, FileText } from 'lucide-react';
+import { Truck, Route, LayoutDashboard, Map, Map as MapIcon, Bell, Settings as SettingsIcon, LogOut, CheckCircle2, Navigation, AlertTriangle, RefreshCw, Users, Clock, DollarSign, BarChart3, Factory, ShoppingCart, Layers, Boxes, Activity, PackageCheck, Calculator, FileText, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // Subcomponents
@@ -22,6 +22,7 @@ import ProductionLinesView from './components/ProductionLinesView';
 import PurchasesView from './components/PurchasesView';
 import SuppliesInventoryView from './components/SuppliesInventoryView';
 import ProductionKpisView from './components/ProductionKpisView';
+import ProductionForecastView from './components/ProductionForecastView';
 import ContabilidadView from './components/ContabilidadView';
 import EstadoResultadosView from './components/EstadoResultadosView';
 import RecursosHumanosView from './components/RecursosHumanosView';
@@ -48,7 +49,7 @@ function App() {
       return { clients: [], visits: [], routes: [], lastSync: null };
     }
   });
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases' | 'supplies_inventory' | 'production_kpis' | 'estado_resultados' | 'contabilidad' | 'recursos_humanos' | 'checadas' | 'nomina'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'planner' | 'alerts' | 'clientes' | 'settings' | 'reports' | 'sales_reports' | 'commissions' | 'zones' | 'production' | 'production_lines' | 'purchases' | 'supplies_inventory' | 'production_kpis' | 'production_forecast' | 'estado_resultados' | 'contabilidad' | 'recursos_humanos' | 'checadas' | 'nomina'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -313,7 +314,8 @@ function App() {
   const showSupplies = !isAuxiliarContable && (canAccessSupplies || hasExtraMenu('supplies_inventory'));
   const showProductionKpis = !isAuxiliarContable && (canAccessProductionKpis || hasExtraMenu('production_kpis'));
   const showPurchases = !isAuxiliarContable && (canAccessPurchases || hasExtraMenu('purchases'));
-  const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases;
+  const showProductionForecast = !isAuxiliarContable && (canAccessProduction || hasExtraMenu('production_forecast'));
+  const showGroupProduction = showProductionLines || showProduction || showSupplies || showProductionKpis || showPurchases || showProductionForecast;
 
   const showSalesReports = !isAuxiliarContable && !isRH && ((canAccessRoutes || isOperator) || hasExtraMenu('sales_reports'));
   const showCommissions = !isAuxiliarContable && (isAdmin || isGerencia || isRH || canAccessRoutes || isOperator || hasExtraMenu('commissions'));
@@ -762,6 +764,21 @@ function App() {
                   <span>Compras e Insumos</span>
                 </button>
               )}
+
+              {/* Pronóstico y Abasto */}
+              {showProductionForecast && (
+                <button 
+                  onClick={() => setActiveTab('production_forecast')} 
+                  className={`flex items-center gap-2 md:gap-3 px-3.5 md:px-3 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
+                    activeTab === 'production_forecast' 
+                      ? 'bg-indigo-600 text-white shadow-sm' 
+                      : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 bg-slate-50 md:bg-transparent border border-slate-200/60 md:border-transparent'
+                  }`}
+                >
+                  <TrendingUp className={`w-4 h-4 md:w-4.5 md:h-4.5 shrink-0 ${activeTab === 'production_forecast' ? 'text-white' : 'text-indigo-600'}`} />
+                  <span>Pronóstico y Abasto</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -1001,6 +1018,7 @@ function App() {
               {activeTab === 'supplies_inventory' && showSupplies && <SuppliesInventoryView role={role} user={user} state={state} />}
               {activeTab === 'production_kpis' && showProductionKpis && <ProductionKpisView role={role} user={user} state={state} />}
               {activeTab === 'purchases' && showPurchases && <PurchasesView role={role} user={user} state={state} />}
+              {activeTab === 'production_forecast' && showProductionForecast && <ProductionForecastView role={role} user={user} state={state} />}
               {activeTab === 'recursos_humanos' && showRecursosHumanos && <RecursosHumanosView token={token!} role={role} user={user} />}
               {activeTab === 'checadas' && showChecadas && <ChecadasView token={token!} role={role} user={user} />}
               {activeTab === 'nomina' && showNomina && <NominaRecibosView token={token!} role={role} user={user} />}
