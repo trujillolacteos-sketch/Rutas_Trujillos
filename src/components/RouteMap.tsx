@@ -81,8 +81,8 @@ function getMaleSpanishVoice(): SpeechSynthesisVoice | null {
   return esMx || esVoices[0];
 }
 
-// Convertir instrucciones a un tono coloquial y natural de copiloto repartidor
-function formatColloquialInstruction(rawText: string, distanceMeters: number, stage: 'anticipacion' | 'inmediata'): string {
+// Convertir instrucciones a un tono coloquial y natural de copiloto repartidor con anticipación temprana
+function formatColloquialInstruction(rawText: string, distanceMeters: number, stage: 'lejana' | 'media' | 'inmediata'): string {
   let text = rawText.trim();
 
   // Limpiar cardinales y formalismos excesivos
@@ -95,31 +95,42 @@ function formatColloquialInstruction(rawText: string, distanceMeters: number, st
 
   const roundDist = Math.max(50, Math.round(distanceMeters / 50) * 50);
 
-  if (stage === 'anticipacion') {
+  if (stage === 'lejana') {
     if (/vuelta a la derecha/i.test(text)) {
       const rest = text.replace(/.*?vuelta a la derecha( en| por)?/i, '').trim();
-      return `Aguas, en ${roundDist} metros prepárate para dar vuelta a la derecha${rest ? ' en ' + rest : ''}.`;
+      return `Ojo, en ${roundDist} metros nos abrimos para dar vuelta a la derecha${rest ? ' en ' + rest : ''}.`;
     }
     if (/vuelta a la izquierda/i.test(text)) {
       const rest = text.replace(/.*?vuelta a la izquierda( en| por)?/i, '').trim();
-      return `Aguas, en ${roundDist} metros prepárate para dar vuelta a la izquierda${rest ? ' en ' + rest : ''}.`;
+      return `Ojo, en ${roundDist} metros nos abrimos para dar vuelta a la izquierda${rest ? ' en ' + rest : ''}.`;
     }
     if (/glorieta|rotonda/i.test(text)) {
       return `En ${roundDist} metros entramos a la glorieta.`;
     }
     return `Sigue derecho por ${roundDist} metros.`;
-  } else {
-    // Inmediata (< 80 m)
+  } else if (stage === 'media') {
     if (/vuelta a la derecha/i.test(text)) {
       const rest = text.replace(/.*?vuelta a la derecha( en| por)?/i, '').trim();
-      return `Aquí a la derecha${rest ? ' en ' + rest : ''}.`;
+      return `En la esquina vuelta a la derecha${rest ? ' en ' + rest : ''}.`;
     }
     if (/vuelta a la izquierda/i.test(text)) {
       const rest = text.replace(/.*?vuelta a la izquierda( en| por)?/i, '').trim();
-      return `Aquí a la izquierda${rest ? ' en ' + rest : ''}.`;
+      return `En la esquina vuelta a la izquierda${rest ? ' en ' + rest : ''}.`;
     }
     if (/glorieta|rotonda/i.test(text)) {
-      return text;
+      return `Entrando a la glorieta.`;
+    }
+    return `Sigue derecho.`;
+  } else {
+    // Inmediata (< 45 m)
+    if (/vuelta a la derecha/i.test(text)) {
+      return `Aquí a la derecha.`;
+    }
+    if (/vuelta a la izquierda/i.test(text)) {
+      return `Aquí a la izquierda.`;
+    }
+    if (/glorieta|rotonda/i.test(text)) {
+      return `Toma la salida aquí.`;
     }
     return text;
   }
@@ -178,14 +189,18 @@ function RoutingMachine({ start, end, isMuted, voiceVolume }: { start: [number, 
             if (remainingDistToEnd < 35) {
               stage = 'llegada';
               textToSpeak = 'Listo, llegamos con el cliente.';
-            } else if (dist <= 80) {
-              // 2. Giro o maniobra inmediata (< 80 metros)
+            } else if (dist <= 45) {
+              // 2. Giro o maniobra inmediata (< 45 metros)
               stage = 'inmediata';
               textToSpeak = formatColloquialInstruction(instructionText, dist, 'inmediata');
-            } else if (dist > 150 && dist <= 450) {
-              // 3. Anticipación con tiempo suficiente (150 a 450 metros)
-              stage = 'anticipacion';
-              textToSpeak = formatColloquialInstruction(instructionText, dist, 'anticipacion');
+            } else if (dist > 70 && dist <= 200) {
+              // 3. Anticipación de esquina (70 a 200 metros)
+              stage = 'media';
+              textToSpeak = formatColloquialInstruction(instructionText, dist, 'media');
+            } else if (dist > 250 && dist <= 600) {
+              // 4. Anticipación lejana con tiempo de sobra (250 a 600 metros)
+              stage = 'lejana';
+              textToSpeak = formatColloquialInstruction(instructionText, dist, 'lejana');
             }
             
             const stageKey = instructionText + '|' + stage;

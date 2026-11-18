@@ -54,6 +54,8 @@ export default function LiveRouteMonitor({ state, setState }: LiveRouteMonitorPr
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRequestTime, setLastRequestTime] = useState<Date>(new Date());
   const [showLiveMapModal, setShowLiveMapModal] = useState(false);
+  const [showGpsLogsModal, setShowGpsLogsModal] = useState(false);
+  const [logRouteFilter, setLogRouteFilter] = useState<number | 'ALL'>('ALL');
   const [focusedRouteId, setFocusedRouteId] = useState<number | null>(null);
 
   // Get current day name for filtering today's visits
@@ -179,13 +181,33 @@ export default function LiveRouteMonitor({ state, setState }: LiveRouteMonitorPr
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <a
+            href="https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit#gid=848756553"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-xl transition-colors shadow-xs"
+            title="Abrir pestaña Historial_GPS en Google Sheets"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Google Sheets (Historial GPS)</span>
+          </a>
+
+          <button
+            onClick={() => setShowGpsLogsModal(true)}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors shadow-xs"
+          >
+            <Clock className="w-3.5 h-3.5 text-blue-600" />
+            <span>Bitácora GPS ({state.trackingLogs?.length || 0})</span>
+          </button>
+
           <button
             onClick={() => setShowLiveMapModal(true)}
             className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors shadow-xs"
           >
             <Maximize2 className="w-3.5 h-3.5" /> Ver Mapa en Vivo
           </button>
+
           <button
             onClick={handleRequestLiveLocations}
             disabled={isRefreshing}
@@ -383,6 +405,133 @@ export default function LiveRouteMonitor({ state, setState }: LiveRouteMonitorPr
                     );
                   })}
               </MapContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bitacora GPS Modal */}
+      {showGpsLogsModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 text-blue-700 rounded-xl">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    Bitácora Completa de Eventos y Tracking GPS
+                    <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-semibold">
+                      {state.trackingLogs?.length || 0} registros
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Sincronizado permanentemente con la hoja <strong className="text-emerald-700">Historial_GPS</strong> en Google Sheets
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href="https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit#gid=848756553"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold rounded-lg transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> Abrir en Google Sheets
+                </a>
+                <button
+                  onClick={() => setShowGpsLogsModal(false)}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="px-6 py-2.5 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-600">Filtrar por Ruta:</span>
+                <select
+                  value={logRouteFilter}
+                  onChange={(e) => setLogRouteFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+                  className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-700 text-xs"
+                >
+                  <option value="ALL">Todas las Rutas</option>
+                  {(state.routes || []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <span className="text-slate-500 text-[11px]">
+                Mostrando {((state.trackingLogs || []).filter(l => logRouteFilter === 'ALL' || l.routeId === logRouteFilter)).length} eventos
+              </span>
+            </div>
+
+            {/* Table */}
+            <div className="flex-1 overflow-auto p-4">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold sticky top-0">
+                    <th className="py-2.5 px-3">Fecha / Hora</th>
+                    <th className="py-2.5 px-3">Ruta</th>
+                    <th className="py-2.5 px-3">Tipo de Evento</th>
+                    <th className="py-2.5 px-3">Duración</th>
+                    <th className="py-2.5 px-3">Coordenadas</th>
+                    <th className="py-2.5 px-3">Notas / Detalle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {((state.trackingLogs || [])
+                    .filter(l => logRouteFilter === 'ALL' || l.routeId === logRouteFilter)
+                    .slice()
+                    .reverse())
+                    .map((log) => {
+                      const r = (state.routes || []).find(rt => rt.id === log.routeId);
+                      const isAlert = log.type === 'PAUSA_PROLONGADA' || log.type === 'PANTALLA_MINIMIZADA';
+                      return (
+                        <tr key={log.id} className={`hover:bg-slate-50/80 transition-colors ${isAlert ? 'bg-amber-50/30' : ''}`}>
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-600 font-medium">
+                            {new Date(log.timestamp).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'medium' })}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-slate-800">
+                            {r ? r.name : `Ruta ${log.routeId}`}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                log.type === 'PAUSA_PROLONGADA'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                  : log.type === 'PANTALLA_MINIMIZADA'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : log.type === 'VISITA_CLIENTE'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              {log.type}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">
+                            {log.duration ? `${Math.round(log.duration / 60)} min` : '---'}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                            {log.lat ? `${log.lat.toFixed(4)}, ${log.lng.toFixed(4)}` : 'Sin GPS'}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-700 max-w-xs truncate" title={log.notes || ''}>
+                            {log.notes || '---'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

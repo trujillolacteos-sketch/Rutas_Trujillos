@@ -1100,9 +1100,9 @@ export default function ProductionView({
                 <label className="text-xs font-semibold text-slate-600 block mb-1">Kg Totales Obtenidos en Tina / Molde</label>
                 <input
                   type="number"
-                  step="0.01"
-                  min="0.1"
-                  placeholder="Ej. 120.5"
+                  step="0.001"
+                  min="0.001"
+                  placeholder="Ej. 120.500"
                   value={prodKgTotal}
                   onChange={e => setProdKgTotal(e.target.value === '' ? '' : parseFloat(e.target.value))}
                   required
@@ -1113,13 +1113,13 @@ export default function ProductionView({
               {/* Crema adjustment */}
               <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
                 <label className="text-xs font-bold text-amber-900 block">
-                  Crema Natural Recuperada (Kg) (Opcional)
+                  Crema Natural Recuperada (Kg) (Opcional - hasta milésimas)
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
-                  placeholder="0.0"
+                  placeholder="0.000"
                   value={cremaNaturalKg}
                   onChange={e => setCremaNaturalKg(e.target.value === '' ? '' : parseFloat(e.target.value))}
                   className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-sm font-semibold text-slate-800"
@@ -1185,9 +1185,9 @@ export default function ProductionView({
                           <div className="w-28">
                             <input
                               type="number"
-                              step="0.01"
+                              step="0.001"
                               min="0"
-                              placeholder="0.0"
+                              placeholder="0.000"
                               value={ing.quantity}
                               onChange={e => {
                                 const val = e.target.value === '' ? '' : parseFloat(e.target.value);
@@ -1264,7 +1264,7 @@ export default function ProductionView({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Kg Producidos</span>
-                <span className="text-2xl font-black text-white">{calculatedProdSummary.kgFinal.toFixed(2)} kg</span>
+                <span className="text-2xl font-black text-white">{calculatedProdSummary.kgFinal.toFixed(3)} kg</span>
               </div>
 
               <div>
@@ -1458,11 +1458,11 @@ export default function ProductionView({
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Kilos Originales:</span>
-                    <span className="font-bold text-slate-800">{selectedLotInfo.kgTotal.toFixed(2)} kg</span>
+                    <span className="font-bold text-slate-800">{selectedLotInfo.kgTotal.toFixed(3)} kg</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">Saldo Disponible:</span>
-                    <span className="font-black text-blue-700">{selectedLotInfo.kgDisponible.toFixed(2)} kg</span>
+                    <span className="font-black text-blue-700">{selectedLotInfo.kgDisponible.toFixed(3)} kg</span>
                   </div>
                   <div className="flex justify-between text-xs pt-1 border-t border-blue-200/50">
                     <span className="text-slate-500">Costo Base / Kg:</span>
@@ -1504,8 +1504,8 @@ export default function ProductionView({
                   </div>
 
                   <div className="flex justify-between text-[11px] text-slate-500">
-                    <span>Capturados: {calculatedPackagingSummary.totalKgCapturados.toFixed(2)} kg</span>
-                    <span>Remanente: {calculatedPackagingSummary.balanceKg.toFixed(2)} kg</span>
+                    <span>Capturados: {calculatedPackagingSummary.totalKgCapturados.toFixed(3)} kg</span>
+                    <span>Remanente: {calculatedPackagingSummary.balanceKg.toFixed(3)} kg</span>
                   </div>
                 </div>
               )}
@@ -1694,7 +1694,7 @@ export default function ProductionView({
                         <div>
                           <label className="text-[11px] font-semibold text-slate-500 block mb-1">Kilos de esta línea</label>
                           <div className="px-2.5 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-700">
-                            {((typeof item.piezas === 'number' ? item.piezas : 0) * (item.peso || 0)).toFixed(2)} kg
+                            {((typeof item.piezas === 'number' ? item.piezas : 0) * (item.peso || 0)).toFixed(3)} kg
                           </div>
                         </div>
 
@@ -1753,9 +1753,9 @@ export default function ProductionView({
                           <div className="flex items-center gap-1">
                             <input
                               type="number"
-                              step="0.01"
+                              step="0.001"
                               min="0"
-                              placeholder="0.0 kg"
+                              placeholder="0.000 kg"
                               value={packAdicionalesKg[ad] || ''}
                               onChange={e => {
                                 const val = parseFloat(e.target.value) || 0;
@@ -1785,7 +1785,7 @@ export default function ProductionView({
               <div>
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">Kilos Empacados</span>
                 <span className="text-2xl font-black text-blue-400">
-                  {calculatedPackagingSummary.totalKgCapturados.toFixed(2)} kg
+                  {calculatedPackagingSummary.totalKgCapturados.toFixed(3)} kg
                 </span>
               </div>
 
@@ -1923,9 +1923,9 @@ export default function ProductionView({
                             )}
                           </td>
                           <td className="p-3.5 font-semibold text-slate-800">{b.categoria}</td>
-                          <td className="p-3.5 text-right font-bold text-slate-900">{b.kgTotal.toFixed(2)} kg</td>
-                          <td className="p-3.5 text-right text-slate-600">{emp.toFixed(2)} kg</td>
-                          <td className="p-3.5 text-right font-black text-blue-700">{disp.toFixed(2)} kg</td>
+                          <td className="p-3.5 text-right font-bold text-slate-900">{b.kgTotal.toFixed(3)} kg</td>
+                          <td className="p-3.5 text-right text-slate-600">{emp.toFixed(3)} kg</td>
+                          <td className="p-3.5 text-right font-black text-blue-700">{disp.toFixed(3)} kg</td>
                           <td className="p-3.5 text-right font-bold text-emerald-700">${b.costoPorKg.toFixed(2)}</td>
                           <td className="p-3.5 text-center">
                             {isComplete ? (
@@ -2025,7 +2025,7 @@ export default function ProductionView({
                         <td className="p-3.5 text-right text-rose-600">{item.reservado}</td>
                         <td className="p-3.5 text-right font-black text-emerald-700">{item.disponible}</td>
                         <td className="p-3.5 text-right font-bold text-slate-700">
-                          {item.pesoTotal > 0 ? `${item.pesoTotal.toFixed(2)} kg` : '---'}
+                          {item.pesoTotal > 0 ? `${item.pesoTotal.toFixed(3)} kg` : '---'}
                         </td>
                       </tr>
                     ))}
@@ -2164,7 +2164,7 @@ export default function ProductionView({
                   <input
                     type="number"
                     step="0.001"
-                    min="0.01"
+                    min="0.001"
                     value={skuModalForm.peso}
                     onChange={e => setSkuModalForm({ ...skuModalForm, peso: parseFloat(e.target.value) || 0 })}
                     required

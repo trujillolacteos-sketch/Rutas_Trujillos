@@ -417,7 +417,10 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     });
 
     if (route.id === r1Route.id) {
-      // --- RUTA 1: NORTE (AGS Lunes, Encarnación Martes a Sábado) ---
+      // --- RUTA 1: NORTE (REGLA ESTRICTA: UN SOLO MUNICIPIO AL DÍA) ---
+      // Lunes: Aguascalientes 100% exclusivo (NUNCA mezclar con San Juan ni Encarnación)
+      // Martes, Miércoles, Jueves: Encarnación de Díaz microzonas (NUNCA mezclar con San Juan)
+      // Viernes, Sábado: San Juan de los Lagos Norte (NUNCA mezclar con foráneos)
       const agsClients = foreignClients.filter((c: any) => {
         const nc = (c.city || '').toLowerCase();
         return nc.includes('ags') || nc.includes('aguascalientes');
@@ -426,63 +429,66 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
         const nc = (c.city || '').toLowerCase();
         return nc.includes('encarnaci');
       });
-      const otherForeign = foreignClients.filter((c: any) => !agsClients.includes(c) && !encClients.includes(c));
 
-      // Lunes: AGS estricto (latitud norte >= 21.75)
+      // Lunes: Aguascalientes exclusivo
       const realAgs = agsClients.filter((c: any) => !c.lat || c.lat >= 21.7);
-      dailyVisits[0].push(...realAgs);
+      const orderedAgs = nearestNeighborTSP(realAgs, DEPOT.lat, DEPOT.lng);
+      dailyVisits[0].push(...orderedAgs);
 
-      // Encarnación de Díaz: microzonas compactas de Martes a Sábado
+      // Martes a Jueves (3 días): Encarnación de Díaz ordenado por microzonas TSP
       const orderedEnc = nearestNeighborTSP(encClients, DEPOT.lat, DEPOT.lng);
-      const encDays = [1, 2, 3, 4, 5]; // Martes a Sábado
-      const encPerDay = Math.ceil(orderedEnc.length / 5);
+      const encDays = [1, 2, 3]; // Martes, Miércoles, Jueves
+      const encPerDay = Math.ceil(orderedEnc.length / 3);
       encDays.forEach((dIdx: number, step: number) => {
         const slice = orderedEnc.slice(step * encPerDay, (step + 1) * encPerDay);
         dailyVisits[dIdx].push(...slice);
       });
 
-      // Locales San Juan Norte: complementar Lunes y balancear
+      // Viernes y Sábado (2 días): San Juan de los Lagos Norte exclusivo
       const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
-      orderedLocals.forEach((c: any, idx: number) => {
-        if (dailyVisits[0].length < 23) {
-          dailyVisits[0].push(c);
-        } else {
-          const dIdx = encDays[idx % encDays.length];
-          dailyVisits[dIdx].push(c);
-        }
+      const r1LocalDays = [4, 5]; // Viernes, Sábado
+      const r1LocalPerDay = Math.ceil(orderedLocals.length / 2);
+      r1LocalDays.forEach((dIdx: number, step: number) => {
+        const slice = orderedLocals.slice(step * r1LocalPerDay, (step + 1) * r1LocalPerDay);
+        dailyVisits[dIdx].push(...slice);
       });
 
-
-
     } else if (route.id === r2Route.id) {
-      // --- RUTA 2: SUR (Altos Sur Martes, Arandas Miércoles, San Juan Lunes/Jueves/Viernes/Sábado) ---
-      const arandasClients = foreignClients.filter((c: any) => (c.city || '').toLowerCase().includes('arandas'));
+      // --- RUTA 2: SUR (REGLA ESTRICTA: UN SOLO MUNICIPIO AL DÍA) ---
+      // Martes: Corredor Altos Sur exclusivo (Jalostotitlán, San Miguel, Valle, Tepatitlán)
+      // Miércoles: Arandas / Jesús María / Manuel Doblado exclusivo
+      // Lunes, Jueves, Viernes, Sábado: San Juan de los Lagos Sur exclusivo
+      const arandasClients = foreignClients.filter((c: any) => {
+        const nc = (c.city || '').toLowerCase();
+        return nc.includes('arandas') || nc.includes('jesus') || nc.includes('jesús') || nc.includes('manuel doblado');
+      });
       const altosSurClients = foreignClients.filter((c: any) => !arandasClients.includes(c));
 
-      // Miércoles: Arandas
-      dailyVisits[2].push(...arandasClients);
       // Martes: Corredor Altos Sur
-      dailyVisits[1].push(...altosSurClients);
+      const orderedAltos = nearestNeighborTSP(altosSurClients, DEPOT.lat, DEPOT.lng);
+      dailyVisits[1].push(...orderedAltos);
 
-      const r2FreeDays = [0, 3, 4, 5]; // Lunes, Jueves, Viernes, Sábado
+      // Miércoles: Arandas y Jesús María Jalisco
+      const orderedArandas = nearestNeighborTSP(arandasClients, DEPOT.lat, DEPOT.lng);
+      dailyVisits[2].push(...orderedArandas);
+
+      // Lunes, Jueves, Viernes, Sábado (4 días locales San Juan Sur)
       const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
-      orderedLocals.forEach((c: any, idx: number) => {
-        if (dailyVisits[1].length < 23) {
-          dailyVisits[1].push(c);
-        } else if (dailyVisits[2].length < 23) {
-          dailyVisits[2].push(c);
-        } else {
-          const dIdx = r2FreeDays[idx % r2FreeDays.length];
-          dailyVisits[dIdx].push(c);
-        }
+      const r2LocalDays = [0, 3, 4, 5]; // Lunes, Jueves, Viernes, Sábado
+      const r2LocalPerDay = Math.ceil(orderedLocals.length / 4);
+      r2LocalDays.forEach((dIdx: number, step: number) => {
+        const slice = orderedLocals.slice(step * r2LocalPerDay, (step + 1) * r2LocalPerDay);
+        dailyVisits[dIdx].push(...slice);
       });
 
     } else if (route.id === r3Route.id) {
-      // --- RUTA 3: OESTE (Yahualica y Cuquio Lunes, San Juan Poniente Martes a Sábado) ---
-      // Lunes: Yahualica + Cuquio
-      dailyVisits[0].push(...foreignClients);
+      // --- RUTA 3: OESTE (REGLA ESTRICTA: UN SOLO MUNICIPIO AL DÍA) ---
+      // Lunes: Yahualica + Cuquio exclusivo (NUNCA mezclar con San Juan)
+      // Martes a Sábado: San Juan Poniente exclusivo
+      const orderedForeign = nearestNeighborTSP(foreignClients, DEPOT.lat, DEPOT.lng);
+      dailyVisits[0].push(...orderedForeign);
 
-      const r3LocalDays = [1, 2, 3, 4, 5];
+      const r3LocalDays = [1, 2, 3, 4, 5]; // Martes a Sábado
       const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
       const perDay = Math.ceil(orderedLocals.length / 5);
       r3LocalDays.forEach((dIdx: number, step: number) => {
@@ -491,19 +497,18 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       });
 
     } else if (route.id === r4Route.id) {
-      // --- RUTA 4: ESTE (Lagos de Moreno Jueves, San Juan Oriente Lunes/Martes/Miércoles/Viernes/Sábado) ---
-      // Jueves: Lagos de Moreno
-      dailyVisits[3].push(...foreignClients);
+      // --- RUTA 4 / 5: ESTE (REGLA ESTRICTA: UN SOLO MUNICIPIO AL DÍA) ---
+      // Jueves: Lagos de Moreno exclusivo
+      // Lunes, Martes, Miércoles, Viernes, Sábado: San Juan Oriente exclusivo
+      const orderedForeign = nearestNeighborTSP(foreignClients, DEPOT.lat, DEPOT.lng);
+      dailyVisits[3].push(...orderedForeign);
 
-      const r4LocalDays = [0, 1, 2, 4, 5];
+      const r4LocalDays = [0, 1, 2, 4, 5]; // Lunes, Martes, Miércoles, Viernes, Sábado
       const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
-      orderedLocals.forEach((c: any, idx: number) => {
-        if (dailyVisits[3].length < 23) {
-          dailyVisits[3].push(c);
-        } else {
-          const dIdx = r4LocalDays[idx % r4LocalDays.length];
-          dailyVisits[dIdx].push(c);
-        }
+      const r4LocalPerDay = Math.ceil(orderedLocals.length / 5);
+      r4LocalDays.forEach((dIdx: number, step: number) => {
+        const slice = orderedLocals.slice(step * r4LocalPerDay, (step + 1) * r4LocalPerDay);
+        dailyVisits[dIdx].push(...slice);
       });
 
     } else {

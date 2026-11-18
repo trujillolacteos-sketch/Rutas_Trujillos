@@ -1,18 +1,21 @@
 import { getGoogleAccessToken } from './googleCredentials.ts';
 
 const SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
-const SHEET_NAME = 'Tracking_Colmena';
+const SHEET_NAME = 'Historial_GPS';
 
 const HEADERS = [
-  'ID',
-  'ID de Ruta',
+  'ID Evento',
+  'ID Ruta',
+  'Ruta',
   'Fecha y Hora (ISO)',
+  'Fecha Local',
+  'Hora Local',
   'Tipo de Evento',
   'Latitud',
   'Longitud',
   'Duración (seg)',
   'Notas / Motivo',
-  'Fecha Captura'
+  'Fecha Registro'
 ];
 
 /**
@@ -96,17 +99,27 @@ export async function appendTrackingLogsToSheet(logs: any[]): Promise<boolean> {
     const sheetReady = await ensureTrackingSheetExists(token);
     if (!sheetReady) return false;
 
-    const rows = logs.map(log => [
-      log.id || '',
-      log.routeId || '',
-      log.timestamp || new Date().toISOString(),
-      log.type || 'evento',
-      log.lat !== undefined ? log.lat : '',
-      log.lng !== undefined ? log.lng : '',
-      log.duration || 0,
-      log.notes || log.reason || '',
-      new Date().toISOString()
-    ]);
+    const rows = logs.map(log => {
+      const d = log.timestamp ? new Date(log.timestamp) : new Date();
+      const fechaLocal = isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' });
+      const horaLocal = isNaN(d.getTime()) ? '' : d.toLocaleTimeString('es-MX', { timeZone: 'America/Mexico_City' });
+      const rName = log.routeId ? `Ruta ${log.routeId}` : 'Ruta';
+
+      return [
+        log.id || '',
+        log.routeId || '',
+        rName,
+        log.timestamp || new Date().toISOString(),
+        fechaLocal,
+        horaLocal,
+        log.type || 'evento',
+        log.lat !== undefined ? log.lat : '',
+        log.lng !== undefined ? log.lng : '',
+        log.duration || 0,
+        log.notes || log.reason || '',
+        new Date().toISOString()
+      ];
+    });
 
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A1:append?valueInputOption=USER_ENTERED`,
@@ -146,7 +159,7 @@ export async function loadTrackingLogsFromSheet(limit = 1000): Promise<any[]> {
     if (!token) return [];
 
     const res = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A2:I`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!A2:L`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
@@ -157,12 +170,12 @@ export async function loadTrackingLogsFromSheet(limit = 1000): Promise<any[]> {
     const logs = rows.map((r: any[]) => ({
       id: r[0] || Math.random().toString(36).substr(2, 9),
       routeId: parseInt(r[1], 10) || r[1] || 1,
-      timestamp: r[2] || new Date().toISOString(),
-      type: r[3] || 'evento',
-      lat: parseFloat(r[4]) || 0,
-      lng: parseFloat(r[5]) || 0,
-      duration: parseInt(r[6], 10) || 0,
-      notes: r[7] || ''
+      timestamp: r[3] || r[2] || new Date().toISOString(),
+      type: r[6] || r[3] || 'evento',
+      lat: parseFloat(r[7] || r[4]) || 0,
+      lng: parseFloat(r[8] || r[5]) || 0,
+      duration: parseInt(r[9] || r[6], 10) || 0,
+      notes: r[10] || r[7] || ''
     }));
 
     // Retornar los más recientes limitados
