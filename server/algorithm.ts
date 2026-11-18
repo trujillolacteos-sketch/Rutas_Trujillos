@@ -146,14 +146,62 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     { name: "Yahualica", lat: 21.1319, lng: -102.9017 },
     { name: "Tepatitl\xE1n", lat: 20.8066, lng: -102.7601 },
     { name: "Arandas", lat: 20.7047, lng: -102.3467 },
+    { name: "Arandas", lat: 20.605, lng: -102.22 }, // Jesús María, Jalisco (región Arandas / Altos Sur)
     { name: "Valle de Guadalupe", lat: 21.0867, lng: -102.5513 },
     { name: "Ojocaliente", lat: 22.648, lng: -102.2881 }
   ];
-  function getCityFromCoords(lat, lng, fallback) {
-    const agsMunis = ["aguascalientes", "asientos", "calvillo", "cos\xEDo", "cosio", "el llano", "jes\xFAs mar\xEDa", "jesus maria", "pabell\xF3n de arteaga", "pabellon de arteaga", "rinc\xF3n de romos", "rincon de romos", "san francisco de los romo", "san jos\xE9 de gracia", "san jose de gracia", "tepezal\xE1", "tepezala"];
+  function getCityFromCoords(lat: number, lng: number, fallback?: string) {
+    const agsMunis = ["aguascalientes", "asientos", "calvillo", "cosío", "cosio", "el llano", "pabellón de arteaga", "pabellon de arteaga", "rincón de romos", "rincon de romos", "san francisco de los romo", "san josé de gracia", "san jose de gracia", "tepezalá", "tepezala"];
+
+    // 1. Las coordenadas GPS mandan de forma estricta:
+    if (lat && lng) {
+      // Región Jesús María / Arandas, Jalisco (al sur de San Juan de los Lagos, Latitud < 21.0)
+      if (lat >= 20.4 && lat <= 20.98 && lng >= -102.6 && lng <= -102.0) {
+        return "Arandas";
+      }
+
+      // Región Aguascalientes Metropolitana (estrictamente al norte, Latitud >= 21.75)
+      if (lat >= 21.75 && lat <= 22.4 && lng >= -102.5 && lng <= -102.0) {
+        return "Zona Metropolitana AGS";
+      }
+
+      let closest = null;
+      let minD = Infinity;
+      for (let c of KNOWN_CITIES) {
+        let d = Math.sqrt(Math.pow(c.lat - lat, 2) + Math.pow(c.lng - lng, 2)) * 111;
+        if (d < minD) {
+          minD = d;
+          closest = c;
+        }
+      }
+      if (closest && minD < 30) {
+        // Blindaje: Nunca clasificar como AGS si está al sur de San Juan (lat < 21.4)
+        if (closest.name === "Zona Metropolitana AGS" && lat < 21.4) {
+          return "Arandas";
+        }
+        return closest.name;
+      }
+
+      // Región Zacatecas por coordenadas (norte de Aguascalientes)
+      if (lat >= 22.4 && lat <= 25.0 && lng >= -104.5 && lng <= -100.5) {
+        return "Zacatecas";
+      }
+    }
+
+    // 2. Fallback de texto si no hay GPS preciso:
     if (fallback) {
       const fbLow = fallback.toLowerCase();
-      if (agsMunis.some((m) => fbLow.includes(m))) return "Zona Metropolitana AGS";
+      // Distinguir Jesús María, Jalisco vs Jesús María, Aguascalientes
+      if (fbLow.includes("jesus maria") || fbLow.includes("jesús maría")) {
+        if (lat && lat < 21.4) return "Arandas";
+        if (fbLow.includes("jal") || fbLow.includes("jalisco")) return "Arandas";
+        if (fbLow.includes("ags") || fbLow.includes("aguascalientes")) return "Zona Metropolitana AGS";
+        // Por proximidad al centro de operaciones en Jalisco, asumir Jalisco si no especifica AGS
+        return "Arandas";
+      }
+      if (agsMunis.some((m) => fbLow.includes(m))) {
+        if (!lat || lat >= 21.5) return "Zona Metropolitana AGS";
+      }
       if (fbLow.includes("san juan de l")) return "San Juan de los Lagos";
       if (fbLow.includes("tepatitlan") || fbLow.includes("tepatitlán")) return "Tepatitlán";
       if (fbLow.includes("cuquio")) return "Cuquio";
@@ -165,25 +213,7 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       if (fbLow.includes("lagos de")) return "Lagos de Moreno";
       if (fbLow.includes("encarnaci")) return "Encarnación de Díaz";
     }
-    if (!lat || !lng) return fallback || "Sin Ubicaci\xF3n";
-    let closest = null;
-    let minD = Infinity;
-    for (let c of KNOWN_CITIES) {
-      let d = Math.sqrt(Math.pow(c.lat - lat, 2) + Math.pow(c.lng - lng, 2)) * 111;
-      if (d < minD) {
-        minD = d;
-        closest = c;
-      }
-    }
-    if (closest && minD < 25) {
-      return closest.name;
-    }
-    
-    // Región Zacatecas por coordenadas (norte de Aguascalientes)
-    if (lat >= 22.4 && lat <= 25.0 && lng >= -104.5 && lng <= -100.5) {
-      return "Zacatecas";
-    }
-    return fallback || "Regi\xF3n Desconocida";
+    return fallback || "Sin Ubicación";
   }
   const DEPOT = { lat: 21.343263, lng: -102.264407 };
   const allClients = rawClients.map((c) => {
@@ -267,6 +297,9 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     'encarnación de díaz': { targetName: 'Ruta 1', corridor: 'NORTE' },
     'encarnacion de diaz': { targetName: 'Ruta 1', corridor: 'NORTE' },
     'arandas': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Miércoles' },
+    'jesús maría': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Miércoles' },
+    'jesus maria': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Miércoles' },
+    'manuel doblado': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Miércoles' },
     'jalostotitlán': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
     'jalostotitlan': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
     'san miguel el alto': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
@@ -348,6 +381,22 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     routeClientsMap[assignedR.id].push(c);
   });
 
+  // Blindaje geográfico estricto de seguridad:
+  // Ningún cliente ubicado al sur de San Juan de los Lagos (lat < 21.2) puede permanecer en Ruta 1 (Eje Norte)
+  if (routeClientsMap[r1Route.id]) {
+    const southClients = routeClientsMap[r1Route.id].filter((c: any) => c.lat && c.lat < 21.2);
+    if (southClients.length > 0) {
+      routeClientsMap[r1Route.id] = routeClientsMap[r1Route.id].filter((c: any) => !c.lat || c.lat >= 21.2);
+      southClients.forEach((c: any) => {
+        c.assignedRouteId = r2Route.id;
+        c.corridor = 'SUR';
+        c.city = 'Arandas';
+        c.assignedDay = 'Miércoles';
+        routeClientsMap[r2Route.id].push(c);
+      });
+    }
+  }
+
   // Generar visitas diarias por ruta respetando la regla: UN SOLO MUNICIPIO FORÁNEO POR DÍA
   let allVisits: any[] = [];
 
@@ -379,8 +428,9 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       });
       const otherForeign = foreignClients.filter((c: any) => !agsClients.includes(c) && !encClients.includes(c));
 
-      // Lunes: AGS + salida norte San Juan
-      dailyVisits[0].push(...agsClients);
+      // Lunes: AGS estricto (latitud norte >= 21.75)
+      const realAgs = agsClients.filter((c: any) => !c.lat || c.lat >= 21.7);
+      dailyVisits[0].push(...realAgs);
 
       // Encarnación de Díaz: microzonas compactas de Martes a Sábado
       const orderedEnc = nearestNeighborTSP(encClients, DEPOT.lat, DEPOT.lng);
@@ -402,9 +452,7 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
         }
       });
 
-      otherForeign.forEach((c: any) => {
-        dailyVisits[0].push(c);
-      });
+
 
     } else if (route.id === r2Route.id) {
       // --- RUTA 2: SUR (Altos Sur Martes, Arandas Miércoles, San Juan Lunes/Jueves/Viernes/Sábado) ---
