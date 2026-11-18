@@ -177,10 +177,13 @@ export default function EstadoResultadosView({ token }: EstadoResultadosViewProp
   // Granularity mode
   const [tipo, setTipo] = useState<'semana' | 'mes' | 'año'>('semana');
 
-  // Selectors
-  const [año, setAño] = useState<number>(2026);
-  const [semana, setSemana] = useState<number>(44);
-  const [mes, setMes] = useState<string>('octubre');
+  // Selectors - Default dinámico a la fecha de hoy
+  const [año, setAño] = useState<number>(() => new Date().getFullYear());
+  const [semana, setSemana] = useState<number>(() => getExcelWeekNumber(new Date()));
+  const [mes, setMes] = useState<string>(() => {
+    const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return meses[new Date().getMonth()] || 'noviembre';
+  });
 
   // Data & loading
   const [data, setData] = useState<EstadoResultadosData | null>(null);
@@ -515,7 +518,7 @@ export default function EstadoResultadosView({ token }: EstadoResultadosViewProp
               onChange={(e) => setAño(parseInt(e.target.value, 10))}
               className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              {[2026, 2025, 2024].map(y => (
+              {Array.from(new Set([new Date().getFullYear(), 2026, 2025, 2024])).sort((a, b) => b - a).map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>

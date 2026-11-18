@@ -943,7 +943,7 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                 <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
                   <div>
                     <span className="text-slate-300 font-bold block text-[11px]">
-                      Semana {cajaChica?.semanaActual?.semanaNum || 44}:
+                      Semana {cajaChica?.semanaActual?.semanaNum || 'Actual'}:
                     </span>
                     <span className="text-[10px] text-slate-400">
                       +{fmt(cajaChica?.semanaActual?.entradas)} | -{fmt(cajaChica?.semanaActual?.salidas)}

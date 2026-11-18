@@ -946,8 +946,11 @@ export function calculateEstadoResultados(params: {
   let periodoLabel = '';
   let anteriorLabel = '';
   let añoPasadoLabel = '';
-  let targetSemana = params.semana || 44;
-  let targetMes = (params.mes || 'octubre').toLowerCase().trim();
+  const nowCalc = new Date();
+  const currentWeekNum = getExcelWeekNumber(nowCalc);
+  const currentMonthName = MESES[nowCalc.getMonth()] || 'noviembre';
+  let targetSemana = params.semana || currentWeekNum;
+  let targetMes = (params.mes || currentMonthName).toLowerCase().trim();
 
   if (tipo === 'semana') {
     periodoLabel = `Semana ${targetSemana} (${targetYear})`;
@@ -966,7 +969,7 @@ export function calculateEstadoResultados(params: {
 
   } else if (tipo === 'mes') {
     const mesIdx = MESES.indexOf(targetMes);
-    const validMesIdx = mesIdx >= 0 ? mesIdx : 9; // default octubre (idx 9)
+    const validMesIdx = mesIdx >= 0 ? mesIdx : nowCalc.getMonth();
     const curMesName = MESES[validMesIdx];
     targetMes = curMesName;
 
