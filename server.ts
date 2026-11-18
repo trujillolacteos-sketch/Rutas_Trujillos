@@ -48,6 +48,10 @@ import {
   initUsersSyncOnStartup
 } from './server/usersSheetService.ts';
 import {
+  appendTrackingLogsToSheet,
+  loadTrackingLogsFromSheet
+} from './server/trackingSheetService.ts';
+import {
   loadLocalLineReports,
   createLineReport,
   deleteLineReport
@@ -249,6 +253,21 @@ async function initPersistentDatabase() {
     await initUsersSyncOnStartup(currentState, saveState);
   } catch (sheetErr: any) {
     console.warn("Google Sheets Users notice (continuing with local state):", sheetErr.message);
+  }
+  // Google Sheets Tracking Persistence (Mente Colmena Permanente en tu Google Sheet)
+  try {
+    const currentState = loadState();
+    if (!currentState.trackingLogs || currentState.trackingLogs.length === 0) {
+      console.log('[trackingSheetService] Restaurando logs de tracking desde Google Sheet...');
+      const sheetLogs = await loadTrackingLogsFromSheet(2000);
+      if (sheetLogs.length > 0) {
+        currentState.trackingLogs = sheetLogs;
+        saveState(currentState);
+        console.log(`[trackingSheetService] Se restauraron ${sheetLogs.length} logs de tracking desde Google Sheet.`);
+      }
+    }
+  } catch (trackErr: any) {
+    console.warn("Google Sheets Tracking notice (continuing with local state):", trackErr.message);
   }
   // Google Sheets Contabilidad Persistence & Sync (Módulo Contabilidad)
   try {
@@ -482,6 +501,11 @@ async function startServer() {
     const clientVersion = parseInt(req.query.version as string) || 0;
     const state = loadState();
     const deltaVisits = (state.visits || []).filter((v: any) => v.updatedAt && v.updatedAt >= since);
+    const deltaLogs = (state.trackingLogs || []).filter((l: any) => {
+      if (!since) return true;
+      const t = new Date(l.timestamp).getTime();
+      return isNaN(t) || t >= since;
+    });
     
     const needsFullSync = !clientVersion || clientVersion !== state.stateVersion;
     
@@ -495,13 +519,15 @@ async function startServer() {
         disabledZones: state.disabledZones || [],
         clientOverrides: state.clientOverrides || {},
         zoneOverrides: state.zoneOverrides || {},
-        visits: deltaVisits
+        visits: deltaVisits,
+        trackingLogs: deltaLogs
       });
     } else {
       res.json({
         needsFullSync: false,
         stateVersion: state.stateVersion,
-        visits: deltaVisits
+        visits: deltaVisits,
+        trackingLogs: deltaLogs
       });
     }
   });
@@ -524,12 +550,25 @@ async function startServer() {
   app.post('/api/tracking', async (req, res) => {
     try {
       const log = req.body;
-      await db.insert(gpsLogs).values({ routeId: log.routeId, lat: log.lat, lng: log.lng, timestamp: new Date(log.timestamp) }).catch(() => {});
+      if (!log.timestamp) log.timestamp = new Date().toISOString();
+      if (!log.id) log.id = Math.random().toString(36).substr(2, 9);
+
+      await db.insert(gpsLogs).values({
+        routeId: log.routeId || 1,
+        lat: log.lat || 0,
+        lng: log.lng || 0,
+        timestamp: new Date(log.timestamp)
+      }).catch(() => {});
       
       const state = loadState();
       if (!state.trackingLogs) state.trackingLogs = [];
       state.trackingLogs.push(log);
       saveState(state);
+
+      // Respaldo asíncrono permanente en Google Sheets
+      appendTrackingLogsToSheet([log]).catch(e => {
+        console.error('[trackingSheetService] Error asíncrono guardando log:', e.message);
+      });
       
       res.json({ success: true });
     } catch(e) {

@@ -97,11 +97,21 @@ function App() {
                else newVisits.push(dv);
              });
           }
+          // Sincronizar trackingLogs (Mente Colmena en tiempo real)
+          const newLogs = [...(prev.trackingLogs || [])];
+          if (delta.trackingLogs && Array.isArray(delta.trackingLogs)) {
+            delta.trackingLogs.forEach((dl: any) => {
+              const exists = newLogs.some(l => (l.id && l.id === dl.id) || (l.timestamp === dl.timestamp && l.routeId === dl.routeId));
+              if (!exists) newLogs.push(dl);
+            });
+          }
+
           let newState: AppState;
           if (delta.needsFullSync) {
             newState = {
               ...prev,
               visits: newVisits,
+              trackingLogs: newLogs,
               users: delta.users || prev.users,
               settings: delta.settings || prev.settings,
               routes: delta.routes || prev.routes,
@@ -114,6 +124,7 @@ function App() {
             newState = {
               ...prev,
               visits: newVisits,
+              trackingLogs: newLogs,
               stateVersion: delta.stateVersion || prev.stateVersion
             };
           }

@@ -58,6 +58,73 @@ function MapUpdater({ center, zoom }: { center: [number, number] | null, zoom: n
   return null;
 }
 
+// Función para seleccionar la mejor voz masculina en español
+function getMaleSpanishVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return null;
+
+  const esVoices = voices.filter(v => v.lang.startsWith('es'));
+  if (esVoices.length === 0) return null;
+
+  // Buscar nombres de voces masculinas comunes en español (Google, Microsoft, Apple, Android)
+  const maleKeywords = ['jorge', 'raul', 'raúl', 'pablo', 'diego', 'carlos', 'miguel', 'david', 'male', 'hombre', 'enrique', 'alvaro', 'álvaro', 'alonso', 'manuel', 'antonio'];
+  const maleVoice = esVoices.find(v => {
+    const nameLow = v.name.toLowerCase();
+    return maleKeywords.some(k => nameLow.includes(k));
+  });
+
+  if (maleVoice) return maleVoice;
+
+  // Priorizar español México
+  const esMx = esVoices.find(v => v.lang.includes('MX'));
+  return esMx || esVoices[0];
+}
+
+// Convertir instrucciones a un tono coloquial y natural de copiloto repartidor
+function formatColloquialInstruction(rawText: string, distanceMeters: number, stage: 'anticipacion' | 'inmediata'): string {
+  let text = rawText.trim();
+
+  // Limpiar cardinales y formalismos excesivos
+  text = text.replace(/(Ve|Vaya|Dirígete|Diríjase|Continúa) (hacia el|al) (norte|sur|este|oeste|noreste|noroeste|sureste|suroeste)( por)?/gi, 'Sigue derecho');
+  text = text.replace(/(norte|sur|este|oeste|noreste|noroeste|sureste|suroeste)/gi, '');
+  text = text.replace(/gire a la (derecha|izquierda)/gi, 'vuelta a la $1');
+  text = text.replace(/gira a la (derecha|izquierda)/gi, 'vuelta a la $1');
+  text = text.replace(/doble a la (derecha|izquierda)/gi, 'vuelta a la $1');
+  text = text.replace(/en la rotonda tome la/gi, 'en la glorieta toma la');
+
+  const roundDist = Math.max(50, Math.round(distanceMeters / 50) * 50);
+
+  if (stage === 'anticipacion') {
+    if (/vuelta a la derecha/i.test(text)) {
+      const rest = text.replace(/.*?vuelta a la derecha( en| por)?/i, '').trim();
+      return `Aguas, en ${roundDist} metros prepárate para dar vuelta a la derecha${rest ? ' en ' + rest : ''}.`;
+    }
+    if (/vuelta a la izquierda/i.test(text)) {
+      const rest = text.replace(/.*?vuelta a la izquierda( en| por)?/i, '').trim();
+      return `Aguas, en ${roundDist} metros prepárate para dar vuelta a la izquierda${rest ? ' en ' + rest : ''}.`;
+    }
+    if (/glorieta|rotonda/i.test(text)) {
+      return `En ${roundDist} metros entramos a la glorieta.`;
+    }
+    return `Sigue derecho por ${roundDist} metros.`;
+  } else {
+    // Inmediata (< 80 m)
+    if (/vuelta a la derecha/i.test(text)) {
+      const rest = text.replace(/.*?vuelta a la derecha( en| por)?/i, '').trim();
+      return `Aquí a la derecha${rest ? ' en ' + rest : ''}.`;
+    }
+    if (/vuelta a la izquierda/i.test(text)) {
+      const rest = text.replace(/.*?vuelta a la izquierda( en| por)?/i, '').trim();
+      return `Aquí a la izquierda${rest ? ' en ' + rest : ''}.`;
+    }
+    if (/glorieta|rotonda/i.test(text)) {
+      return text;
+    }
+    return text;
+  }
+}
+
 // Component to handle turn-by-turn routing
 function RoutingMachine({ start, end, isMuted, voiceVolume }: { start: [number, number] | null, end: [number, number] | null, isMuted?: boolean, voiceVolume?: number }) {
   const map = useMap();
@@ -101,22 +168,27 @@ function RoutingMachine({ start, end, isMuted, voiceVolume }: { start: [number, 
             const dist = currentInstruction.distance;
             const instructionText = currentInstruction.text;
             
+            // Distancia total restante al punto final (cliente)
+            const remainingDistToEnd = getDistance(start[0], start[1], end[0], end[1]);
+
             let stage = '';
             let textToSpeak = '';
-            
-            // Limpiar cardinales exhaustivo
-            let cleanText = instructionText;
-            cleanText = cleanText.replace(/(Ve|Vaya|Dirígete|Diríjase|Continúa) (hacia el|al) (norte|sur|este|oeste|noreste|noroeste|sureste|suroeste)( por)?/gi, 'Sigue');
-            cleanText = cleanText.replace(/(norte|sur|este|oeste|noreste|noroeste|sureste|suroeste)/gi, '');
-            // A veces dice "en la rotonda..." vamos a dejarlo
-            
-            // Simplificar y no hablar tanto
-            if (dist <= 150) {
+
+            // 1. Llegada inmediata al cliente (< 35 metros)
+            if (remainingDistToEnd < 35) {
+              stage = 'llegada';
+              textToSpeak = 'Listo, llegamos con el cliente.';
+            } else if (dist <= 80) {
+              // 2. Giro o maniobra inmediata (< 80 metros)
               stage = 'inmediata';
-              textToSpeak = cleanText;
+              textToSpeak = formatColloquialInstruction(instructionText, dist, 'inmediata');
+            } else if (dist > 150 && dist <= 450) {
+              // 3. Anticipación con tiempo suficiente (150 a 450 metros)
+              stage = 'anticipacion';
+              textToSpeak = formatColloquialInstruction(instructionText, dist, 'anticipacion');
             }
             
-            const stageKey = cleanText + '|' + stage;
+            const stageKey = instructionText + '|' + stage;
             
             if (textToSpeak && stageKey !== lastInstructionRef.current) {
               lastInstructionRef.current = stageKey;
@@ -124,9 +196,15 @@ function RoutingMachine({ start, end, isMuted, voiceVolume }: { start: [number, 
               if ('speechSynthesis' in window && !isMuted) {
                 window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                utterance.lang = 'es-MX';
-                utterance.rate = 1.0;
+                
+                // Asignar voz masculina en español
+                const maleVoice = getMaleSpanishVoice();
+                if (maleVoice) utterance.voice = maleVoice;
+                utterance.lang = maleVoice?.lang || 'es-MX';
+                utterance.pitch = 0.88; // Tono más grave / masculino
+                utterance.rate = 1.05;  // Ritmo natural y dinámico de copiloto
                 utterance.volume = voiceVolume !== undefined ? voiceVolume : 1.0;
+                
                 window.speechSynthesis.speak(utterance);
               }
             }

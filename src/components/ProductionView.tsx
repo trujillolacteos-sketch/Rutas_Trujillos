@@ -443,11 +443,31 @@ export default function ProductionView({
       }
     });
 
-    // Ajuste Crema Natural
+    // Ajuste Crema Natural / Crema Mozzarella
+    const isCrema = prodCategory.toLowerCase().includes('crema');
+    const isMozzarella = prodCategory.toLowerCase().includes('mozzarella');
+
+    // Insumos no lácteos (para Crema)
+    let costoInsumosNoLeche = 0;
+    prodIngredients.forEach(i => {
+      const q = typeof i.quantity === 'number' ? i.quantity : 0;
+      const c = q * (costMap[i.name] || 0);
+      const lower = i.name.toLowerCase();
+      if (!['leche entera', 'leche pipa', 'leche descremada', 'leche en polvo', 'crema natural'].includes(lower)) {
+        costoInsumosNoLeche += c;
+      }
+    });
+
     let ajusteCrema = 0;
     const cremaKg = typeof cremaNaturalKg === 'number' ? cremaNaturalKg : 0;
-    if (cremaKg > 0) {
-      const costoUnitCrema = costMap['Crema natural'] || costMap['Crema natural compra'] || 55;
+    const costoUnitCrema = costMap['Crema natural'] || costMap['Crema natural compra'] || 55;
+
+    if (isCrema) {
+      // En la Crema: la materia prima base es la crema recuperada de mozzarella (en vez de costo de leche o pipa)
+      const kgCremaBase = cremaKg > 0 ? cremaKg : (typeof prodKgTotal === 'number' ? prodKgTotal : 0);
+      ajusteCrema = kgCremaBase * costoUnitCrema;
+    } else if (cremaKg > 0) {
+      // En Quesos: la crema se descuenta del lote de queso
       ajusteCrema = cremaKg * costoUnitCrema;
       if (costoLeche > 0 && kgLeche > 0) {
         const costoKgLeche = costoLeche / kgLeche;
@@ -456,13 +476,15 @@ export default function ProductionView({
     }
 
     // Mozzarella discount logic
-    const isMozzarella = prodCategory.toLowerCase().includes('mozzarella');
     let descuentoMozzarella = 0;
     if (isMozzarella && rawTotalCost > 0) {
       descuentoMozzarella = rawTotalCost * 0.15;
     }
 
-    const netCost = Math.max(0, rawTotalCost - ajusteCrema - descuentoMozzarella);
+    // Costo neto: en crema es el ajuste de crema de mozzarella + insumos no leche; en queso es total - ajustes
+    const netCost = isCrema
+      ? (costoInsumosNoLeche + ajusteCrema)
+      : Math.max(0, rawTotalCost - ajusteCrema - descuentoMozzarella);
     const kgFinal = typeof prodKgTotal === 'number' && prodKgTotal > 0 ? prodKgTotal : 0;
     const costPerKg = kgFinal > 0 ? netCost / kgFinal : 0;
 
@@ -1252,7 +1274,9 @@ export default function ProductionView({
                 </span>
                 {calculatedProdSummary.ajusteCrema > 0 && (
                   <span className="text-[10px] text-amber-300 block">
-                    (Ajuste Crema: -${calculatedProdSummary.ajusteCrema.toFixed(2)})
+                    {prodCategory.toLowerCase().includes('crema')
+                      ? `(Base Crema Mozzarella: +$${calculatedProdSummary.ajusteCrema.toFixed(2)})`
+                      : `(Ajuste Crema: -$${calculatedProdSummary.ajusteCrema.toFixed(2)})`}
                   </span>
                 )}
               </div>
@@ -1851,6 +1875,7 @@ export default function ProductionView({
                   <tr>
                     <th className="p-3.5">Lote</th>
                     <th className="p-3.5">Fecha Prod</th>
+                    <th className="p-3.5">Línea / Origen</th>
                     <th className="p-3.5">Categoría</th>
                     <th className="p-3.5 text-right">Kg Producido</th>
                     <th className="p-3.5 text-right">Kg Empacados</th>
@@ -1874,11 +1899,29 @@ export default function ProductionView({
                       const disp = lotInfo ? lotInfo.kgDisponible : 0;
                       const emp = lotInfo ? lotInfo.kgEmpacados : (b.kgTotal - disp);
                       const isComplete = disp <= 0.5;
+                      const lineTag = b.lineNombre || (lotInfo ? lotInfo.lineNombre : null);
+                      const originInfo = [b.rancho || lotInfo?.rancho, b.pipa || lotInfo?.pipa].filter(Boolean).join(' / ');
 
                       return (
                         <tr key={b.id || b.lote} className="hover:bg-slate-50/70 transition-colors">
                           <td className="p-3.5 font-bold font-mono text-slate-900">{b.lote}</td>
                           <td className="p-3.5">{b.fechaProduccion}</td>
+                          <td className="p-3.5">
+                            {lineTag ? (
+                              <div>
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  {lineTag}
+                                </span>
+                                {originInfo && (
+                                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate max-w-[150px]">
+                                    {originInfo}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">Producción Directa</span>
+                            )}
+                          </td>
                           <td className="p-3.5 font-semibold text-slate-800">{b.categoria}</td>
                           <td className="p-3.5 text-right font-bold text-slate-900">{b.kgTotal.toFixed(2)} kg</td>
                           <td className="p-3.5 text-right text-slate-600">{emp.toFixed(2)} kg</td>
@@ -1900,7 +1943,7 @@ export default function ProductionView({
                     })}
                   {(!historyData.production || historyData.production.length === 0) && (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400">
+                      <td colSpan={9} className="p-8 text-center text-slate-400">
                         No hay lotes de producción registrados aún en la aplicación.
                       </td>
                     </tr>

@@ -92,6 +92,12 @@ export interface PackagingBatch {
   aprovechamientoTotal: number;
   items: PackagingItem[];
   adicionalesKg: Record<string, number>;
+  lineReportId?: string;
+  lineId?: string;
+  lineNombre?: string;
+  rancho?: string;
+  pipa?: string;
+  lecheLitros?: number;
 }
 
 // Append Rows to Google Sheet
@@ -484,14 +490,31 @@ export async function createProductionBatch(data: {
     let kgFinal = Number(data.kgTotal) || 0;
 
     if (data.categoria === 'All / Crema') {
-      kgFinal = sumaKg;
-      const costoCremaNatural = mapaCostos['Crema natural'] || 0;
-      ajusteCrema = cremaNaturalKg * costoCremaNatural;
-      if (cremaNaturalKg > 0 && kgLecheUsada > 0) {
-        const costoPromedioLeche = costoLecheUsada / kgLecheUsada;
-        const costoRecuperado = cremaNaturalKg * costoPromedioLeche;
-        totalCosto += ajusteCrema + costoRecuperado;
+      kgFinal = Number(data.kgTotal) || sumaKg || 0;
+      const costoCremaNatural = mapaCostos['Crema natural'] || mapaCostos['Crema natural compra'] || 55;
+
+      let baseCrema = 0;
+      if (data.loteCrema) {
+        const lotes = loadLocalProduction();
+        const targetLote = lotes.find(l => l.lote === data.loteCrema);
+        if (targetLote && targetLote.ajusteCrema > 0) {
+          baseCrema = targetLote.ajusteCrema;
+        }
       }
+      if (baseCrema === 0) {
+        baseCrema = (cremaNaturalKg > 0 ? cremaNaturalKg : kgFinal) * costoCremaNatural;
+      }
+
+      ajusteCrema = baseCrema;
+      // En la Crema: el costo de materia prima base proviene del ajuste/recuperación de crema de mozzarella
+      // en vez de costo de leche o pipa entera, más los insumos complementarios no lácteos
+      totalCosto = baseCrema;
+      registrosInsumos.forEach(item => {
+        const lower = item.nombre.toLowerCase();
+        if (!['leche entera', 'leche pipa', 'leche descremada', 'leche en polvo', 'crema natural'].includes(lower)) {
+          totalCosto += item.costoTotal;
+        }
+      });
     } else if (data.categoria === 'All / Quesos / Mozzarella' && data.loteCrema) {
       // Descuenta ajuste del lote crema asociado
       const lotes = loadLocalProduction();
@@ -961,7 +984,13 @@ export async function createPackagingBatch(data: {
       kgCapturados,
       aprovechamientoTotal,
       items,
-      adicionalesKg
+      adicionalesKg,
+      lineReportId: infoLote.lineReportId,
+      lineId: infoLote.lineId,
+      lineNombre: infoLote.lineNombre,
+      rancho: infoLote.rancho,
+      pipa: infoLote.pipa,
+      lecheLitros: infoLote.lecheLitros
     };
 
     // 1. Guardar localmente

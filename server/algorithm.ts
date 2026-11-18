@@ -151,11 +151,19 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
   ];
   function getCityFromCoords(lat, lng, fallback) {
     const agsMunis = ["aguascalientes", "asientos", "calvillo", "cos\xEDo", "cosio", "el llano", "jes\xFAs mar\xEDa", "jesus maria", "pabell\xF3n de arteaga", "pabellon de arteaga", "rinc\xF3n de romos", "rincon de romos", "san francisco de los romo", "san jos\xE9 de gracia", "san jose de gracia", "tepezal\xE1", "tepezala"];
-    if (fallback && agsMunis.some((m) => fallback.toLowerCase().includes(m))) {
-      return "Zona Metropolitana AGS";
-    }
-    if (fallback && fallback.toLowerCase().includes("san juan de l")) {
-      fallback = "San Juan de los Lagos";
+    if (fallback) {
+      const fbLow = fallback.toLowerCase();
+      if (agsMunis.some((m) => fbLow.includes(m))) return "Zona Metropolitana AGS";
+      if (fbLow.includes("san juan de l")) return "San Juan de los Lagos";
+      if (fbLow.includes("tepatitlan") || fbLow.includes("tepatitlán")) return "Tepatitlán";
+      if (fbLow.includes("cuquio")) return "Cuquio";
+      if (fbLow.includes("jalos")) return "Jalostotitlán";
+      if (fbLow.includes("san miguel")) return "San Miguel el Alto";
+      if (fbLow.includes("valle de g")) return "Valle de Guadalupe";
+      if (fbLow.includes("arandas")) return "Arandas";
+      if (fbLow.includes("yahualica")) return "Yahualica";
+      if (fbLow.includes("lagos de")) return "Lagos de Moreno";
+      if (fbLow.includes("encarnaci")) return "Encarnación de Díaz";
     }
     if (!lat || !lng) return fallback || "Sin Ubicaci\xF3n";
     let closest = null;
@@ -238,457 +246,258 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     addLog("error", "No hay rutas activas o clientes.");
     return { clients: allClients, visits: [], routes, logs };
   }
-  // --- ALGORITMO DE AGRUPAMIENTO ESTRICTO POR COLONIAS ---
-  validClients.forEach(c => {
-      c.distKm = Math.sqrt((c.lat - DEPOT.lat)**2 + (c.lng - DEPOT.lng)**2) * 111;
-      if (c.city === 'Zona Metropolitana AGS' || c.city === 'Guadalajara') c.tier = 1;
-      else if (c.city.toLowerCase().includes('san juan')) c.tier = 3;
-      else c.tier = 2;
-      c.freq = Math.min(6, Math.max(1, c.visitFrequency));
-      c.cost = c.freq; 
-  });
+  // --- ALGORITMO DE MICROZONAS Y CORREDORES ESTRICTOS (UN SOLO MUNICIPIO AL DÍA) ---
+  const SJ_CENTER = { lat: 21.25113, lng: -102.32519 };
 
-  const totalCost = validClients.reduce((sum, c) => sum + c.cost, 0);
-  const targetCost = totalCost / k;
-  
-  let routeAssignments = Array(k).fill(null).map(() => []);
-  let routeCosts = Array(k).fill(0);
-
-  // 1. Crear MicroZonas (Colonias) usando K-Means con radio máximo constraint
-  let colonias = [];
-  
-  function constrainedKMeans(tierClients, maxRadius, tier) {
-      if (tierClients.length === 0) return [];
-      let centroids = [{lat: tierClients[0].lat, lng: tierClients[0].lng}];
-      let assignments = new Array(tierClients.length).fill(0);
-      
-      let maxIters = tierClients.length + 50;
-      while (maxIters-- > 0) {
-          let maxDist = 0;
-          let furthestClientIdx = -1;
-          
-          for (let i = 0; i < tierClients.length; i++) {
-              let c = tierClients[i];
-              let bestDist = Infinity;
-              let bestC = 0;
-              for (let j = 0; j < centroids.length; j++) {
-                  let d = Math.sqrt((c.lat - centroids[j].lat)**2 + (c.lng - centroids[j].lng)**2) * 111;
-                  if (d < bestDist) {
-                      bestDist = d;
-                      bestC = j;
-                  }
-              }
-              assignments[i] = bestC;
-              if (bestDist > maxDist) {
-                  maxDist = bestDist;
-                  furthestClientIdx = i;
-              }
-          }
-          
-          // Si el cliente más lejano supera el radio, agregamos un nuevo centroide en su posición
-          if (maxDist > maxRadius && centroids.length < tierClients.length) {
-              centroids.push({lat: tierClients[furthestClientIdx].lat, lng: tierClients[furthestClientIdx].lng});
-              continue; // Re-asignar puntos
-          }
-          
-          // Actualizar centroides
-          let newCentroids = centroids.map(() => ({lat: 0, lng: 0, count: 0}));
-          for (let i = 0; i < tierClients.length; i++) {
-              let clusterIdx = assignments[i];
-              newCentroids[clusterIdx].lat += tierClients[i].lat;
-              newCentroids[clusterIdx].lng += tierClients[i].lng;
-              newCentroids[clusterIdx].count++;
-          }
-          
-          let shift = 0;
-          for (let j = 0; j < centroids.length; j++) {
-              if (newCentroids[j].count > 0) {
-                  let nLat = newCentroids[j].lat / newCentroids[j].count;
-                  let nLng = newCentroids[j].lng / newCentroids[j].count;
-                  shift += Math.abs(centroids[j].lat - nLat) + Math.abs(centroids[j].lng - nLng);
-                  centroids[j].lat = nLat;
-                  centroids[j].lng = nLng;
-              }
-          }
-          if (shift < 0.0001) break;
-      }
-                  
-      let clusters = centroids.map(() => ({tier: tier, clients: [], cost: 0, lat: 0, lng: 0, isForeign: false}));
-      for (let i = 0; i < tierClients.length; i++) {
-          let clusterIdx = assignments[i];
-          let c = tierClients[i];
-          clusters[clusterIdx].clients.push(c);
-          clusters[clusterIdx].cost += c.cost;
-      }
-      
-      return clusters.filter(cl => cl.clients.length > 0).map(cl => {
-          cl.lat = cl.clients.reduce((sum, c) => sum + c.lat, 0) / cl.clients.length;
-          cl.lng = cl.clients.reduce((sum, c) => sum + c.lng, 0) / cl.clients.length;
-          cl.isForeign = cl.clients[0].distKm > 10;
-          return cl;
-      });
+  function getBearing(lat1: number, lng1: number, lat2: number, lng2: number) {
+    const y = Math.sin((lng2 - lng1) * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lng2 - lng1) * Math.PI / 180);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   }
 
-  [1, 2, 3].forEach(tier => {
-      let tierClients = validClients.filter(c => c.tier === tier);
-      let radiusLimit = tier === 1 ? 8 : (tier === 2 ? 4 : 0.35); // San Juan = 350m, Foraneo = 4km, Metro = 8km
-      
-      const byCity = {};
-      tierClients.forEach(c => {
-          byCity[c.city] = byCity[c.city] || [];
-          byCity[c.city].push(c);
-      });
-      
-                  Object.keys(byCity).forEach(city => {
-          let cityClusters = constrainedKMeans(byCity[city], radiusLimit, tier);
-                    cityClusters.forEach(cl => cl.city = city);
-          colonias = colonias.concat(cityClusters);
-      });
+  // Mapeo canónico de municipios foráneos a su corredor geográfico natural
+  // Ruta 1: Norte (Aguascalientes y Encarnación)
+  // Ruta 2: Sur / Altos (Arandas, Jalostotitlán, Valle de Guadalupe, San Miguel, Tepatitlán)
+  // Ruta 3: Oeste (Yahualica y Cuquio)
+  // Ruta 4: Este (Lagos de Moreno)
+  const CITY_CORRIDORS: Record<string, { targetName: string; corridor: string; preferredDay?: string }> = {
+    'zona metropolitana ags': { targetName: 'Ruta 1', corridor: 'NORTE', preferredDay: 'Lunes' },
+    'aguascalientes': { targetName: 'Ruta 1', corridor: 'NORTE', preferredDay: 'Lunes' },
+    'encarnación de díaz': { targetName: 'Ruta 1', corridor: 'NORTE' },
+    'encarnacion de diaz': { targetName: 'Ruta 1', corridor: 'NORTE' },
+    'arandas': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Miércoles' },
+    'jalostotitlán': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'jalostotitlan': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'san miguel el alto': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'valle de guadalupe': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'tepatitlán': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'tepatitlan': { targetName: 'Ruta 2', corridor: 'SUR', preferredDay: 'Martes' },
+    'yahualica': { targetName: 'Ruta 3', corridor: 'OESTE', preferredDay: 'Lunes' },
+    'cuquio': { targetName: 'Ruta 3', corridor: 'OESTE', preferredDay: 'Lunes' },
+    'lagos de moreno': { targetName: 'Ruta 4', corridor: 'ESTE', preferredDay: 'Jueves' }
+  };
+
+  // Mapear rutas activas por nombre y por índice
+  const activeRouteMap: Record<string, any> = {};
+  activeRoutes.forEach((r: any, idx: number) => {
+    activeRouteMap[r.name] = r;
+    activeRouteMap['idx_' + idx] = r;
   });
 
-  // 2. Ordenar TODAS las colonias juntas para un flujo geográfico continuo (evita cruzar municipios y saltos al depot)
-  colonias.forEach(col => {
-      col.lat = col.clients.reduce((sum, c) => sum + c.lat, 0) / col.clients.length;
-      col.lng = col.clients.reduce((sum, c) => sum + c.lng, 0) / col.clients.length;
-  });
-  
-  // Agrupar por macro-municipios para ordenar geográficamente, pero MANTENIENDO TODOS LOS CLUSTERS DEL MUNICIPIO JUNTOS
-  let cityMap = {};
-  colonias.forEach(col => {
-      if (!cityMap[col.city]) {
-          cityMap[col.city] = { city: col.city, colonias: [], lat: 0, lng: 0 };
-      }
-      cityMap[col.city].colonias.push(col);
-  });
-  
-  let macroCities = Object.values(cityMap);
-  macroCities.forEach(mc => {
-      mc.lat = mc.colonias.reduce((sum, c) => sum + c.lat, 0) / mc.colonias.length;
-      mc.lng = mc.colonias.reduce((sum, c) => sum + c.lng, 0) / mc.colonias.length;
-  });
-  
-  
-macroCities = nearestNeighborTSP(macroCities, DEPOT.lat, DEPOT.lng);
-console.log('TSP MacroCities:', macroCities.map(m => m.city));
+  const getRouteForName = (name: string, fallbackIdx: number) => {
+    return activeRouteMap[name] || activeRoutes[fallbackIdx % activeRoutes.length];
+  };
 
-  
-  let newColonias = [];
-  macroCities.forEach(mc => {
-      newColonias = newColonias.concat(mc.colonias);
-  });
-  
-  // Sort all colonias radially from the true center of San Juan
-  const SJ_CENTER = { lat: 21.25113, lng: -102.32519 };
-  newColonias.forEach(col => {
-      const y = Math.sin((col.lng - SJ_CENTER.lng) * Math.PI/180) * Math.cos(col.lat * Math.PI/180);
-      const x = Math.cos(SJ_CENTER.lat * Math.PI/180) * Math.sin(col.lat * Math.PI/180) - Math.sin(SJ_CENTER.lat * Math.PI/180) * Math.cos(col.lat * Math.PI/180) * Math.cos((col.lng - SJ_CENTER.lng) * Math.PI/180);
-      let brng = Math.atan2(y, x) * 180 / Math.PI;
-      col.bearing = (brng + 360) % 360;
-  });
-  newColonias.sort((a, b) => a.bearing - b.bearing);
-  colonias = newColonias;
+  const r1Route = getRouteForName('Ruta 1', 0);
+  const r2Route = getRouteForName('Ruta 2', 1);
+  const r3Route = getRouteForName('Ruta 3', 2);
+  const r4Route = getRouteForName('Ruta 4', 3);
 
-  // 3. Asignar colonias a rutas equilibrando la carga de forma equitativa (Target Dinámico)
-  // Pre-asignar clientes con ruta permanente/fidelizada
-  validClients.forEach(c => {
+  // Clasificar clientes entre Foráneos y Locales (San Juan de los Lagos)
+  const routeClientsMap: Record<number, any[]> = {};
+  activeRoutes.forEach((r: any) => routeClientsMap[r.id] = []);
+
+  const localClients: any[] = [];
+
+  validClients.forEach((c: any) => {
+    // 1. Respetar permanentRouteId o asignación manual directa
     if (c.permanentRouteId !== undefined) {
-      const rIdx = activeRoutes.findIndex(r => r.id === c.permanentRouteId);
-      if (rIdx !== -1) {
-        c.assignedRouteId = activeRoutes[rIdx].id;
-        routeAssignments[rIdx].push(c);
-        routeCosts[rIdx] += c.cost;
+      const matchR = activeRoutes.find((r: any) => r.id === c.permanentRouteId);
+      if (matchR) {
+        c.assignedRouteId = matchR.id;
+        routeClientsMap[matchR.id].push(c);
+        return;
       }
+    }
+
+    const normCity = (c.city || '').trim().toLowerCase();
+    const corridorInfo = CITY_CORRIDORS[normCity];
+
+    if (corridorInfo) {
+      const targetR = getRouteForName(corridorInfo.targetName, 0);
+      c.assignedRouteId = targetR.id;
+      c.corridor = corridorInfo.corridor;
+      if (corridorInfo.preferredDay) {
+        c.assignedDay = corridorInfo.preferredDay;
+      }
+      routeClientsMap[targetR.id].push(c);
+    } else {
+      c.bearing = getBearing(SJ_CENTER.lat, SJ_CENTER.lng, c.lat, c.lng);
+      localClients.push(c);
     }
   });
 
-  let currentRIdx = 0;
-  
-  let unassignedColonias = [];
-  colonias.forEach(col => {
-      let pending = col.clients.filter(c => c.permanentRouteId === undefined);
-      if (pending.length > 0) {
-          unassignedColonias.push({ clients: pending, cost: pending.reduce((sum, c) => sum + c.cost, 0), city: col.city, bearing: col.bearing });
-      }
+  // Balancear clientes locales de San Juan de los Lagos manteniendo continuidad radial
+  localClients.sort((a, b) => a.bearing - b.bearing);
+  const targetPerRoute = Math.ceil(validClients.length / activeRoutes.length);
+
+  // Orden radial de llenado acorde al cuadrante geográfico de salida de cada ruta
+  const routeFillingOrder = [r4Route, r2Route, r3Route, r1Route];
+  let currentFillingIdx = 0;
+
+  localClients.forEach((c: any) => {
+    while (
+      currentFillingIdx < routeFillingOrder.length - 1 &&
+      routeClientsMap[routeFillingOrder[currentFillingIdx].id].length >= targetPerRoute
+    ) {
+      currentFillingIdx++;
+    }
+    const assignedR = routeFillingOrder[currentFillingIdx];
+    c.assignedRouteId = assignedR.id;
+    routeClientsMap[assignedR.id].push(c);
   });
 
-  let remainingTotalCost = unassignedColonias.reduce((sum, col) => sum + col.cost, 0);
-  let remainingRoutesCount = k;
-  let dynamicTargetCost = remainingTotalCost / remainingRoutesCount;
+  // Generar visitas diarias por ruta respetando la regla: UN SOLO MUNICIPIO FORÁNEO POR DÍA
+  let allVisits: any[] = [];
 
-  let cityBlocks = [];
-  let currentBlock = null;
-  unassignedColonias.forEach(col => {
-      if (!currentBlock || currentBlock.city !== col.city) {
-          if (currentBlock) cityBlocks.push(currentBlock);
-          currentBlock = { city: col.city, colonias: [], cost: 0 };
+  activeRoutes.forEach((route: any) => {
+    const clientsInRoute = routeClientsMap[route.id] || [];
+    if (clientsInRoute.length === 0) return;
+
+    const dailyVisits: any[][] = Array(6).fill(null).map(() => []);
+
+    // Separar foráneos vs locales en esta ruta
+    const foreignClients = clientsInRoute.filter((c: any) => {
+      const nc = (c.city || '').trim().toLowerCase();
+      return nc && !nc.includes('san juan');
+    });
+    const routeLocals = clientsInRoute.filter((c: any) => {
+      const nc = (c.city || '').trim().toLowerCase();
+      return !nc || nc.includes('san juan');
+    });
+
+    if (route.id === r1Route.id) {
+      // --- RUTA 1: NORTE (AGS Lunes, Encarnación Martes a Sábado) ---
+      const agsClients = foreignClients.filter((c: any) => {
+        const nc = (c.city || '').toLowerCase();
+        return nc.includes('ags') || nc.includes('aguascalientes');
+      });
+      const encClients = foreignClients.filter((c: any) => {
+        const nc = (c.city || '').toLowerCase();
+        return nc.includes('encarnaci');
+      });
+      const otherForeign = foreignClients.filter((c: any) => !agsClients.includes(c) && !encClients.includes(c));
+
+      // Lunes: AGS + salida norte San Juan
+      dailyVisits[0].push(...agsClients);
+
+      // Encarnación de Díaz: microzonas compactas de Martes a Sábado
+      const orderedEnc = nearestNeighborTSP(encClients, DEPOT.lat, DEPOT.lng);
+      const encDays = [1, 2, 3, 4, 5]; // Martes a Sábado
+      const encPerDay = Math.ceil(orderedEnc.length / 5);
+      encDays.forEach((dIdx: number, step: number) => {
+        const slice = orderedEnc.slice(step * encPerDay, (step + 1) * encPerDay);
+        dailyVisits[dIdx].push(...slice);
+      });
+
+      // Locales San Juan Norte: complementar Lunes y balancear
+      const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
+      orderedLocals.forEach((c: any, idx: number) => {
+        if (dailyVisits[0].length < 23) {
+          dailyVisits[0].push(c);
+        } else {
+          const dIdx = encDays[idx % encDays.length];
+          dailyVisits[dIdx].push(c);
+        }
+      });
+
+      otherForeign.forEach((c: any) => {
+        dailyVisits[0].push(c);
+      });
+
+    } else if (route.id === r2Route.id) {
+      // --- RUTA 2: SUR (Altos Sur Martes, Arandas Miércoles, San Juan Lunes/Jueves/Viernes/Sábado) ---
+      const arandasClients = foreignClients.filter((c: any) => (c.city || '').toLowerCase().includes('arandas'));
+      const altosSurClients = foreignClients.filter((c: any) => !arandasClients.includes(c));
+
+      // Miércoles: Arandas
+      dailyVisits[2].push(...arandasClients);
+      // Martes: Corredor Altos Sur
+      dailyVisits[1].push(...altosSurClients);
+
+      const r2FreeDays = [0, 3, 4, 5]; // Lunes, Jueves, Viernes, Sábado
+      const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
+      orderedLocals.forEach((c: any, idx: number) => {
+        if (dailyVisits[1].length < 23) {
+          dailyVisits[1].push(c);
+        } else if (dailyVisits[2].length < 23) {
+          dailyVisits[2].push(c);
+        } else {
+          const dIdx = r2FreeDays[idx % r2FreeDays.length];
+          dailyVisits[dIdx].push(c);
+        }
+      });
+
+    } else if (route.id === r3Route.id) {
+      // --- RUTA 3: OESTE (Yahualica y Cuquio Lunes, San Juan Poniente Martes a Sábado) ---
+      // Lunes: Yahualica + Cuquio
+      dailyVisits[0].push(...foreignClients);
+
+      const r3LocalDays = [1, 2, 3, 4, 5];
+      const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
+      const perDay = Math.ceil(orderedLocals.length / 5);
+      r3LocalDays.forEach((dIdx: number, step: number) => {
+        const slice = orderedLocals.slice(step * perDay, (step + 1) * perDay);
+        dailyVisits[dIdx].push(...slice);
+      });
+
+    } else if (route.id === r4Route.id) {
+      // --- RUTA 4: ESTE (Lagos de Moreno Jueves, San Juan Oriente Lunes/Martes/Miércoles/Viernes/Sábado) ---
+      // Jueves: Lagos de Moreno
+      dailyVisits[3].push(...foreignClients);
+
+      const r4LocalDays = [0, 1, 2, 4, 5];
+      const orderedLocals = nearestNeighborTSP(routeLocals, DEPOT.lat, DEPOT.lng);
+      orderedLocals.forEach((c: any, idx: number) => {
+        if (dailyVisits[3].length < 23) {
+          dailyVisits[3].push(c);
+        } else {
+          const dIdx = r4LocalDays[idx % r4LocalDays.length];
+          dailyVisits[dIdx].push(c);
+        }
+      });
+
+    } else {
+      // Fallback genérico para cualquier otra ruta
+      const ordered = nearestNeighborTSP(clientsInRoute, DEPOT.lat, DEPOT.lng);
+      const perDay = Math.ceil(ordered.length / 6);
+      for (let d = 0; d < 6; d++) {
+        dailyVisits[d].push(...ordered.slice(d * perDay, (d + 1) * perDay));
       }
-      currentBlock.colonias.push(col);
-      currentBlock.cost += col.cost;
-  });
-  if (currentBlock) cityBlocks.push(currentBlock);
+    }
 
-  const globalTargetCost = totalCost / k;
-  const MAX_ALLOWED = globalTargetCost * 1.15;
-  const MIN_ALLOWED = globalTargetCost * 0.85;
-  
-  console.log('DEBUG: globalTargetCost=', globalTargetCost, 'MAX_ALLOWED=', MAX_ALLOWED, 'MIN_ALLOWED=', MIN_ALLOWED);
-
-  cityBlocks.forEach(block => {
-      // Allow splitting any block if it's large or if it's the hub
-      const isMassive = block.cost > dynamicTargetCost * 0.4 || block.city.includes('San Juan');
-      
-      if (isMassive) {
-          block.colonias.forEach(col => {
-              if (currentRIdx < k - 1 && routeCosts[currentRIdx] > 0) {
-                  const currentWithNew = routeCosts[currentRIdx] + col.cost;
-                  const shortfall = dynamicTargetCost - routeCosts[currentRIdx];
-                  const excess = currentWithNew - dynamicTargetCost;
-                  if (currentWithNew > MAX_ALLOWED || (excess > shortfall && routeCosts[currentRIdx] >= MIN_ALLOWED)) {
-                      remainingTotalCost -= routeCosts[currentRIdx];
-                      remainingRoutesCount--;
-                      dynamicTargetCost = remainingTotalCost / remainingRoutesCount;
-                      currentRIdx++;
-                  }
-              }
-              col.clients.forEach(c => {
-                  c.assignedRouteId = activeRoutes[currentRIdx].id;
-                  routeAssignments[currentRIdx].push(c);
-                  routeCosts[currentRIdx] += c.cost;
-              });
-          });
-      } else {
-          if (currentRIdx < k - 1 && routeCosts[currentRIdx] > 0) {
-              const currentWithNew = routeCosts[currentRIdx] + block.cost;
-              const shortfall = dynamicTargetCost - routeCosts[currentRIdx];
-              const excess = currentWithNew - dynamicTargetCost;
-              if (currentWithNew > MAX_ALLOWED || (excess > shortfall && routeCosts[currentRIdx] >= MIN_ALLOWED) || excess > shortfall + (MAX_ALLOWED - globalTargetCost) * 0.5) {
-                  remainingTotalCost -= routeCosts[currentRIdx];
-                  remainingRoutesCount--;
-                  dynamicTargetCost = remainingTotalCost / remainingRoutesCount;
-                  currentRIdx++;
-              }
+    // Respetar asignaciones manuales / permanentDay si existen
+    clientsInRoute.forEach((c: any) => {
+      const explicitDay = c.permanentDay;
+      if (explicitDay) {
+        const targetDayIdx = DAYS.indexOf(explicitDay);
+        if (targetDayIdx !== -1) {
+          for (let d = 0; d < 6; d++) {
+            dailyVisits[d] = dailyVisits[d].filter((x: any) => x.id !== c.id);
           }
-          block.colonias.forEach(col => {
-              col.clients.forEach(c => {
-                  c.assignedRouteId = activeRoutes[currentRIdx].id;
-                  routeAssignments[currentRIdx].push(c);
-                  routeCosts[currentRIdx] += c.cost;
-              });
-          });
+          dailyVisits[targetDayIdx].push(c);
+        }
       }
-  });
-
-  let allVisits = [];
-  routeAssignments.forEach((routeClients, rIdx) => {
-    const route = activeRoutes[rIdx];
-    if (routeClients.length === 0) return;
-
-    const dailyVisits = Array(6).fill(null).map(() => []);
-    const dayLoads = Array(6).fill(0);
-    
-    // Total load considering frequencies
-    const totalRouteLoad = routeClients.reduce((sum, c) => sum + Math.min(6, Math.max(1, c.freq)), 0);
-    const idealDayLoad = Math.ceil(totalRouteLoad / 6);
-
-    // 1. "Cruza todos los clientes" - Trace a continuous geographic path through ALL clients of the route
-    
-    // 1. "Cruza todos los clientes" respetando Jerarquía Estricta
-    // Primero agrupamos por Tier (1: Metro, 2: Foránea, 3: Local)
-    // Luego por MicroZona (proximidad estricta) y finalmente TSP
-    const clientsByTier = { 1: [], 2: [], 3: [] };
-    routeClients.forEach(c => clientsByTier[c.tier || 3].push(c));
-    
-    let orderedClients = [];
-    
-    [1, 2, 3].forEach(tier => {
-        const tierClients = clientsByTier[tier];
-        if (tierClients.length === 0) return;
-        
-        // Agrupar en colonias/microzonas para no romper proximidad
-        let microZones = [];
-        tierClients.forEach(c => {
-            let found = false;
-            for (let mz of microZones) {
-                const d = Math.sqrt((mz.lat - c.lat)**2 + (mz.lng - c.lng)**2) * 111;
-                const radiusLimit = tier === 1 ? 8 : (tier === 2 ? 4 : 0.12); // 120 meters for local (roughly one block)
-                if (d <= radiusLimit) {
-                    mz.clients.push(c);
-                    // Update centroid
-                    mz.lat = mz.clients.reduce((s, c) => s + c.lat, 0) / mz.clients.length;
-                    mz.lng = mz.clients.reduce((s, c) => s + c.lng, 0) / mz.clients.length;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                microZones.push({ clients: [c], lat: c.lat, lng: c.lng });
-            }
-        });
-        
-        // Agrupar microzonas por MUNICIPIO para evitar intercalarlos
-        let mzByCity = {};
-        microZones.forEach(mz => {
-            let counts = {};
-            mz.clients.forEach(c => { counts[c.city] = (counts[c.city] || 0) + 1 });
-            mz.city = Object.keys(counts).reduce((a,b) => counts[a] > counts[b] ? a : b);
-            mzByCity[mz.city] = mzByCity[mz.city] || [];
-            mzByCity[mz.city].push(mz);
-        });
-        
-        let macroMz = Object.keys(mzByCity).map(city => {
-            let mzs = mzByCity[city];
-            let lat = mzs.reduce((sum, mz) => sum + mz.lat, 0) / mzs.length;
-            let lng = mzs.reduce((sum, mz) => sum + mz.lng, 0) / mzs.length;
-            return { city, lat, lng, mzs };
-        });
-        
-        macroMz = nearestNeighborTSP(macroMz, DEPOT.lat, DEPOT.lng);
-        
-        macroMz.forEach(mmz => {
-            let orderedZones = nearestNeighborTSP(mmz.mzs, mmz.lat, mmz.lng);
-            orderedZones.forEach(mz => {
-                const mzOrderedClients = nearestNeighborTSP(mz.clients, mz.lat, mz.lng);
-                orderedClients = orderedClients.concat(mzOrderedClients);
-            });
-        });
     });
 
-
-    // 2. Frequency distribution patterns
-    const patterns = {
-        1: [[0], [1], [2], [3], [4], [5]],
-        2: [[0,3], [1,4], [2,5]],
-        3: [[0,2,4], [1,3,5]],
-        4: [[0,1,3,4], [0,2,4,5], [1,2,3,5]], 
-        5: [[0,1,2,3,4], [1,2,3,4,5], [0,2,3,4,5], [0,1,3,4,5], [0,1,2,4,5]],
-        6: [[0,1,2,3,4,5]]
-    };
-
-    let lastDays = [];
-    let dayCities = Array(6).fill(null).map(() => new Set());
-    let cityCountsInRoute = {};
-    let cityCenters = {};
-    orderedClients.forEach(c => { 
-        cityCountsInRoute[c.city] = (cityCountsInRoute[c.city] || 0) + 1;
-        cityCenters[c.city] = cityCenters[c.city] || {lat: 0, lng: 0, count: 0};
-        cityCenters[c.city].lat += c.lat;
-        cityCenters[c.city].lng += c.lng;
-        cityCenters[c.city].count++;
-    });
-    Object.keys(cityCenters).forEach(city => {
-        cityCenters[city].lat /= cityCenters[city].count;
-        cityCenters[city].lng /= cityCenters[city].count;
-    });
-
-    orderedClients.forEach((c) => {
-        const freq = Math.min(6, Math.max(1, c.freq));
-        let availablePatterns = patterns[freq] || patterns[1];
-        
-        const targetDayName = c.permanentDay || c.assignedDay;
-        if (targetDayName) {
-            const targetDayIdx = DAYS.indexOf(targetDayName);
-            if (targetDayIdx !== -1) {
-                const matchingPatterns = availablePatterns.filter(p => p.includes(targetDayIdx));
-                if (matchingPatterns.length > 0) {
-                    availablePatterns = matchingPatterns;
-                } else {
-                    const customPattern = [targetDayIdx];
-                    for (let step = 1; step < freq; step++) {
-                        const nextDay = (targetDayIdx + Math.round((6 / freq) * step)) % 6;
-                        if (!customPattern.includes(nextDay)) customPattern.push(nextDay);
-                    }
-                    for (let i = 0; i < 6 && customPattern.length < freq; i++) {
-                        if (!customPattern.includes(i)) customPattern.push(i);
-                    }
-                    availablePatterns = [customPattern.sort((a, b) => a - b)];
-                }
-            }
-        }
-        
-        let bestPattern = availablePatterns[0];
-        let bestScore = Infinity;
-
-        for (let p of availablePatterns) {
-            let overfill = 0;
-            let continuityPenalty = 0;
-            let balanceScore = 0;
-            
-            for (let d of p) {
-                let projectedLoad = dayLoads[d] + 1;
-                if (projectedLoad > idealDayLoad) {
-                    overfill += (projectedLoad - idealDayLoad);
-                }
-                
-                balanceScore += Math.pow(dayLoads[d], 2) * 2.0; 
-
-                if (!lastDays.includes(d)) {
-                    continuityPenalty += 50;
-                }
-                
-                if (dayCities[d].has(c.city)) {
-                    continuityPenalty -= 500; // Fuerte bonificación por agrupar la misma ciudad
-                } else if (dayCities[d].size > 0) {
-                    // Penalización base por mezclar ciudades
-                    continuityPenalty += 400; 
-                    
-                    let isSJ = false;
-                    dayCities[d].forEach(city => {
-                        if (city.includes('San Juan') || c.city.includes('San Juan')) {
-                            isSJ = true;
-                        }
-                    });
-
-                    // Toleramos más si se mezcla con San Juan (Hub principal)
-                    if (isSJ) {
-                        continuityPenalty -= 250; 
-                    }
-                    
-                    dayCities[d].forEach(city => {
-                        if (cityCenters[city] && cityCenters[c.city]) {
-                            let dist = Math.sqrt(Math.pow(cityCenters[city].lat - cityCenters[c.city].lat, 2) + Math.pow(cityCenters[city].lng - cityCenters[c.city].lng, 2)) * 111;
-                            continuityPenalty += dist * 5; 
-                        }
-                        
-                        if (!city.includes('San Juan') && !c.city.includes('San Juan')) {
-                            // Nunca mezclar dos municipios foráneos grandes
-                            if (cityCountsInRoute[city] >= 10 || cityCountsInRoute[c.city] >= 10) {
-                                continuityPenalty += 1000;
-                            }
-                        }
-                    });
-                }
-            }
-            
-            const currentScore = (overfill * 2000) + balanceScore + continuityPenalty;
-            if (currentScore < bestScore) {
-                bestScore = currentScore;
-                bestPattern = p;
-            }
-        }
-        lastDays = bestPattern;
-        for (let d of bestPattern) {
-            dayCities[d].add(c.city);
-            dailyVisits[d].push(c);
-            dayLoads[d]++;
-        }
-    });
-
-    // 4. Trace the final route for each specific day
-    dailyVisits.forEach((clientsInDay, dayIdx) => {
+    // 4. Trazar ruta final por día con TSP (nearest-neighbor + 2-opt)
+    dailyVisits.forEach((clientsInDay: any[], dayIdx: number) => {
       if (clientsInDay.length === 0) return;
       const actualDay = DAYS[dayIdx];
       const orderedDay = nearestNeighborTSP(clientsInDay, DEPOT.lat, DEPOT.lng);
-      
-      orderedDay.forEach((c, vIdx) => {
-        const existingV = existingVisits.find((ev) => ev.clientId === c.id && ev.day === actualDay);
-        let finalStatus = "PENDIENTE";
-        if (existingV && existingV.status && existingV.status !== "PENDIENTE") {
+
+      orderedDay.forEach((c: any, vIdx: number) => {
+        c.assignedDay = actualDay;
+        const existingV = existingVisits.find((ev: any) => ev.clientId === c.id && ev.day === actualDay);
+        let finalStatus = 'PENDIENTE';
+        if (existingV && existingV.status && existingV.status !== 'PENDIENTE') {
           finalStatus = existingV.status;
         } else if (c.boughtThisWeek) {
-          finalStatus = "SURTIDO";
+          finalStatus = 'SURTIDO';
         }
         allVisits.push({
-          id: existingV ? existingV.id : "v-" + c.id + "-" + actualDay + "-" + vIdx + "-" + Math.random().toString(36).substr(2, 4),
+          id: existingV ? existingV.id : 'v-' + c.id + '-' + actualDay + '-' + vIdx + '-' + Math.random().toString(36).substr(2, 4),
           clientId: c.id,
           clientName: c.name,
           lat: c.lat,
@@ -701,7 +510,6 @@ console.log('TSP MacroCities:', macroCities.map(m => m.city));
       });
     });
   });
-
   if (invalidClients.length > 0) {
     addLog("warning", "Se excluyeron " + invalidClients.length + " clientes an\xF3malos (sin GPS) de las rutas.");
     const supRouteIdx = routes.findIndex((r) => r.id === 999999);
