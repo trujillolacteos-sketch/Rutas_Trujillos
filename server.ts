@@ -65,6 +65,11 @@ import {
   syncProductsToGoogleSheet,
   syncSingleProductFromOdoo
 } from './server/productsSheetService.ts';
+import {
+  syncClientsToGoogleSheet,
+  syncSingleClientFromOdoo,
+  getMasterClientsCatalog
+} from './server/clientsSheetService.ts';
 
 import {
   initContabilidadOnStartup,
@@ -496,6 +501,17 @@ async function startServer() {
       console.log(`[Cron Diario] Catálogo de productos sincronizado con éxito: ${res.count} productos en pestaña Catalogo_Productos.`);
     } catch (err: any) {
       console.error('[Cron Diario] Error en sincronización diaria de productos:', err.message);
+    }
+  });
+
+  // Automated Daily Cron at 3:40 AM (Madrugada): Sincronización del catálogo de clientes de Odoo a Google Sheets
+  cron.schedule('40 3 * * *', async () => {
+    console.log('[Cron Diario 03:40 AM] Sincronizando catálogo de clientes desde Odoo hacia Google Sheets...');
+    try {
+      const res = await syncClientsToGoogleSheet();
+      console.log(`[Cron Diario] Catálogo de clientes sincronizado con éxito: ${res.count} clientes en pestaña Catalogo_Clientes.`);
+    } catch (err: any) {
+      console.error('[Cron Diario] Error en sincronización diaria de clientes:', err.message);
     }
   });
 
@@ -1295,6 +1311,52 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('[POST /api/production/sync-single-product] Error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Sincronizar Catálogo Completo de Clientes desde Odoo a Google Sheets (Exclusivo Gerencia y Admin)
+  app.post('/api/clients/sync-odoo-clients', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrativo pueden sincronizar clientes desde Odoo." });
+
+      const syncResult = await syncClientsToGoogleSheet();
+      res.json({
+        success: true,
+        count: syncResult.count,
+        sheetUrl: syncResult.sheetUrl,
+        message: `¡Catálogo de clientes sincronizado exitosamente con Odoo! Se actualizaron ${syncResult.count} clientes en la hoja Catalogo_Clientes de Google Sheets.`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/clients/sync-odoo-clients] Error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Actualizar un cliente específico desde Odoo en tiempo real (Exclusivo Gerencia y Admin)
+  app.post('/api/clients/sync-single-client', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrativo pueden actualizar clientes desde Odoo." });
+
+      const { query } = req.body;
+      if (!query) return res.status(400).json({ error: "Se requiere nombre, ID o referencia del cliente." });
+
+      const updated = await syncSingleClientFromOdoo(query);
+      if (!updated) {
+        return res.status(404).json({ success: false, message: `No se encontró el cliente "${query}" en Odoo.` });
+      }
+
+      res.json({
+        success: true,
+        client: updated,
+        message: `Cliente "${updated.name}" actualizado con éxito desde Odoo (Ruta: ${updated.rutaAsignada || 'Sin ruta'}, Municipio: ${updated.municipio}). Sincronizado en Google Sheets.`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/clients/sync-single-client] Error:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

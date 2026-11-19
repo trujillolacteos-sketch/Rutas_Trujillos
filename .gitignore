@@ -13,4 +13,5 @@ google-drive-key.json
 *.backup.json
 forecast_cache.json
 odoo_products_cache.json
+odoo_clients_cache.json
 
