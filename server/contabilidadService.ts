@@ -19,6 +19,7 @@ export interface MovimientoContable {
   folio?: string;
   litros?: number;
   precioPorLitro?: number;
+  organizacionMovimientos?: string;
   semana: string; // 'Semana 44'
   semanaNum: number;
   mes: string; // 'noviembre'
@@ -147,7 +148,7 @@ export async function fetchGoogleSheetContabilidad(): Promise<MovimientoContable
     const token = await getGoogleAccessToken(['https://www.googleapis.com/auth/spreadsheets']);
     if (!token) throw new Error('No se pudo obtener token de Google');
 
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Contabilidad!A2:P`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/Contabilidad!A1:Q`, {
       headers: { Authorization: 'Bearer ' + token }
     });
 
@@ -158,33 +159,87 @@ export async function fetchGoogleSheetContabilidad(): Promise<MovimientoContable
 
     const data = await res.json();
     const rows = data.values || [];
+    if (rows.length === 0) return loadLocalContabilidad();
+
+    // Mapeo dinámico de columnas por nombre en Fila 1 para máxima resiliencia ante inserciones
+    const header: string[] = rows[0] || [];
+    const colMap = {
+      fecha: header.findIndex(h => /fecha/i.test(h)),
+      empresa: header.findIndex(h => /cuenta mayor|empresa/i.test(h)),
+      tipo: header.findIndex(h => /tipo de movimiento|tipo/i.test(h)),
+      cuentaMenor: header.findIndex(h => /cuenta menor/i.test(h)),
+      monto: header.findIndex(h => /monto/i.test(h)),
+      motivo: header.findIndex(h => /motivo/i.test(h)),
+      autoriza: header.findIndex(h => /autoriza/i.test(h)),
+      cuentaFiscal: header.findIndex(h => /cuenta fiscal/i.test(h)),
+      folio: header.findIndex(h => /folio/i.test(h)),
+      litros: header.findIndex(h => /litros/i.test(h)),
+      precioLitro: header.findIndex(h => /precio/i.test(h)),
+      org: header.findIndex(h => /organización|organizacion/i.test(h)),
+      semana: header.findIndex(h => /semana/i.test(h)),
+      mes: header.findIndex(h => /mes/i.test(h)),
+      año: header.findIndex(h => /año|ano/i.test(h)),
+      total: header.findIndex(h => /total/i.test(h)),
+      dia: header.findIndex(h => /día|dia/i.test(h))
+    };
+
+    const idxFecha = colMap.fecha >= 0 ? colMap.fecha : 0;
+    const idxEmpresa = colMap.empresa >= 0 ? colMap.empresa : 1;
+    const idxTipo = colMap.tipo >= 0 ? colMap.tipo : 2;
+    const idxCuentaMenor = colMap.cuentaMenor >= 0 ? colMap.cuentaMenor : 3;
+    const idxMonto = colMap.monto >= 0 ? colMap.monto : 4;
+    const idxMotivo = colMap.motivo >= 0 ? colMap.motivo : 5;
+    const idxAutoriza = colMap.autoriza >= 0 ? colMap.autoriza : 6;
+    const idxCuentaFiscal = colMap.cuentaFiscal >= 0 ? colMap.cuentaFiscal : 7;
+    const idxFolio = colMap.folio >= 0 ? colMap.folio : 8;
+    const idxLitros = colMap.litros >= 0 ? colMap.litros : 9;
+    const idxPrecioLitro = colMap.precioLitro >= 0 ? colMap.precioLitro : 10;
+    const idxOrg = colMap.org >= 0 ? colMap.org : 11;
+    const idxSemana = colMap.semana >= 0 ? colMap.semana : 12;
+    const idxMes = colMap.mes >= 0 ? colMap.mes : 13;
+    const idxAño = colMap.año >= 0 ? colMap.año : 14;
+    const idxTotal = colMap.total >= 0 ? colMap.total : 15;
+    const idxDia = colMap.dia >= 0 ? colMap.dia : 16;
+
     const parsed: MovimientoContable[] = [];
 
-    rows.forEach((r: any[], idx: number) => {
-      if (!r || r.length === 0 || !r[0]) return;
+    for (let idx = 1; idx < rows.length; idx++) {
+      const r = rows[idx];
+      if (!r || r.length === 0 || !r[idxFecha]) continue;
 
-      const dateMeta = parseDateString(r[0]);
-      const empresa = r[1] ? String(r[1]).trim() : 'Quesería';
-      const tipo = (r[2] ? String(r[2]).trim() : 'Salida') as any;
-      const cuentaMenor = r[3] ? String(r[3]).trim() : 'Gastos';
-      const monto = parseNumeric(r[4]);
-      const motivo = r[5] ? String(r[5]).trim() : '';
-      const autoriza = r[6] ? String(r[6]).trim() : '';
-      const cuentaFiscal = r[7] ? String(r[7]).trim() : 'Efectivo';
-      const folio = r[8] ? String(r[8]).trim() : '';
-      const litros = r[9] ? parseNumeric(r[9]) : undefined;
-      const precioPorLitro = r[10] ? parseNumeric(r[10]) : undefined;
+      const dateMeta = parseDateString(r[idxFecha]);
+      const empresa = r[idxEmpresa] ? String(r[idxEmpresa]).trim() : 'Quesería';
+      const tipo = (r[idxTipo] ? String(r[idxTipo]).trim() : 'Salida') as any;
+      const cuentaMenor = r[idxCuentaMenor] ? String(r[idxCuentaMenor]).trim() : 'Gastos';
+      const monto = parseNumeric(r[idxMonto]);
+      const motivo = r[idxMotivo] ? String(r[idxMotivo]).trim() : '';
+      const autoriza = r[idxAutoriza] ? String(r[idxAutoriza]).trim() : '';
+      const cuentaFiscal = r[idxCuentaFiscal] ? String(r[idxCuentaFiscal]).trim() : 'Efectivo';
+      const folio = r[idxFolio] ? String(r[idxFolio]).trim() : '';
+      const litros = r[idxLitros] ? parseNumeric(r[idxLitros]) : undefined;
+      const precioPorLitro = r[idxPrecioLitro] ? parseNumeric(r[idxPrecioLitro]) : undefined;
+      const organizacionMovimientos = r[idxOrg] ? String(r[idxOrg]).trim() : '';
 
-      const extractedSem = r[11] ? parseInt(String(r[11]).replace(/\D/g, ''), 10) : NaN;
+      const extractedSem = r[idxSemana] ? parseInt(String(r[idxSemana]).replace(/\D/g, ''), 10) : NaN;
       const semNum = (!isNaN(extractedSem) && extractedSem >= 1 && extractedSem <= 54) ? extractedSem : getExcelWeekNumber(dateMeta.date);
-      const semana = r[11] ? String(r[11]).trim() : `Semana ${semNum}`;
-      const mes = r[12] ? String(r[12]).trim() : MESES[dateMeta.month - 1];
-      const año = r[13] ? parseInt(r[13], 10) || dateMeta.year : dateMeta.year;
-      const totalNeto = r[14] ? parseNumeric(r[14]) : calculateTotalNeto(empresa, cuentaMenor, tipo, monto, litros, precioPorLitro);
-      const dia = r[15] ? String(r[15]).trim() : DIAS[dateMeta.date.getDay()];
+      const semana = r[idxSemana] ? String(r[idxSemana]).trim() : `Semana ${semNum}`;
+      const mes = r[idxMes] ? String(r[idxMes]).trim() : MESES[dateMeta.month - 1];
+      const parsedAño = Math.round(parseNumeric(r[idxAño]));
+      const año = (parsedAño >= 2020 && parsedAño <= 2040) ? parsedAño : dateMeta.year;
+
+      let totalNeto: number;
+      if (r[idxTotal] !== undefined && r[idxTotal] !== null && String(r[idxTotal]).trim() !== '' && String(r[idxTotal]).trim() !== '$ -') {
+        totalNeto = parseNumeric(r[idxTotal]);
+      } else if (String(r[idxTotal]).trim() === '$ -') {
+        totalNeto = 0;
+      } else {
+        totalNeto = calculateTotalNeto(empresa, cuentaMenor, tipo, monto, litros, precioPorLitro);
+      }
+
+      const dia = r[idxDia] ? String(r[idxDia]).trim() : DIAS[dateMeta.date.getDay()];
 
       parsed.push({
-        id: `mov_row_${idx + 2}`,
+        id: `mov_row_${idx + 1}`,
         fecha: dateMeta.formattedISO,
         fechaSheet: dateMeta.formattedSheet,
         empresa,
@@ -197,19 +252,20 @@ export async function fetchGoogleSheetContabilidad(): Promise<MovimientoContable
         folio,
         litros,
         precioPorLitro,
+        organizacionMovimientos,
         semana,
         semanaNum: semNum,
         mes,
         año,
         totalNeto,
         dia,
-        rowNumber: idx + 2
+        rowNumber: idx + 1
       });
-    });
+    }
 
     // Guardar en caché local
     saveLocalContabilidad(parsed);
-    console.log(`[contabilidadService] ¡Cargados ${parsed.length} movimientos desde Google Sheets!`);
+    console.log(`[contabilidadService] ¡Cargados ${parsed.length} movimientos desde Google Sheets con mapeo dinámico de columnas!`);
     return parsed;
   } catch (err) {
     console.error('[contabilidadService] Error fetching from sheet:', err);
@@ -223,25 +279,26 @@ export async function appendMovimientoToSheet(mov: MovimientoContable): Promise<
     if (!token) return false;
 
     const row = [
-      mov.fechaSheet || mov.fecha,
-      mov.empresa,
-      mov.tipoMovimiento,
-      mov.cuentaMenor,
-      mov.monto,
-      mov.motivo,
-      mov.autoriza,
-      mov.cuentaFiscal,
-      mov.folio || '',
-      mov.litros != null ? mov.litros : '',
-      mov.precioPorLitro != null ? mov.precioPorLitro : '',
-      mov.semana,
-      mov.mes,
-      mov.año,
-      mov.totalNeto,
-      mov.dia
+      mov.fechaSheet || mov.fecha, // A: Fecha
+      mov.empresa, // B: Cuenta mayor
+      mov.tipoMovimiento, // C: Tipo movimiento
+      mov.cuentaMenor, // D: Cuenta menor
+      mov.monto, // E: Monto
+      mov.motivo, // F: Motivo
+      mov.autoriza, // G: Autoriza
+      mov.cuentaFiscal, // H: Cuenta fiscal
+      mov.folio || '', // I: Folio
+      mov.litros != null ? mov.litros : '', // J: Litros
+      mov.precioPorLitro != null ? mov.precioPorLitro : '', // K: Precio por litro
+      mov.organizacionMovimientos || '', // L: Organización de movimientos
+      mov.semana, // M: Semana
+      mov.mes, // N: Mes
+      mov.año, // O: Año
+      mov.totalNeto, // P: Total
+      mov.dia // Q: Día
     ];
 
-    const range = encodeURIComponent('Contabilidad!A:P');
+    const range = encodeURIComponent('Contabilidad!A:Q');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${NEW_SPREADSHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
     const res = await fetch(url, {
@@ -1421,36 +1478,50 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
     // Exclusivamente los movimientos que sean "efectivo"
     if (cf !== 'efectivo') return;
 
+    cashMovs.push(m);
+
+    // En Google Sheets, el monto neto firmado de Col Total (Col P)
+    // define el flujo de efectivo real en caja chica:
+    // Las salidas son negativas (-), las entradas son positivas (+),
+    // y partidas informativas o deudas pendientes ("leche que se debe", etc.) tienen totalNeto = 0.
+    const tn = typeof m.totalNeto === 'number' && !isNaN(m.totalNeto) ? m.totalNeto : null;
     const monto = Math.abs(Number(m.monto) || 0);
     const tipo = (m.tipoMovimiento || '').toLowerCase();
 
-    cashMovs.push(m);
+    let deltaEntrada = 0;
+    let deltaSalida = 0;
 
-    if (tipo === 'entrada') {
-      totalEntradas += monto;
-    } else if (tipo === 'salida') {
-      totalSalidas += monto;
+    if (tn !== null) {
+      if (tn > 0) deltaEntrada = tn;
+      else if (tn < 0) deltaSalida = Math.abs(tn);
+      // tn === 0 no mueve efectivo físico
+    } else {
+      if (tipo === 'entrada') deltaEntrada = monto;
+      else if (tipo === 'salida') deltaSalida = monto;
     }
+
+    totalEntradas += deltaEntrada;
+    totalSalidas += deltaSalida;
 
     // Hoy
     if (m.fecha === todayStr) {
       hoyMovs++;
-      if (tipo === 'entrada') hoyEntradas += monto;
-      else if (tipo === 'salida') hoySalidas += monto;
+      hoyEntradas += deltaEntrada;
+      hoySalidas += deltaSalida;
     }
 
     // Semana Actual
     if (m.año === curYear && m.semanaNum === curSemNum) {
       semanaMovs++;
-      if (tipo === 'entrada') semanaEntradas += monto;
-      else if (tipo === 'salida') semanaSalidas += monto;
+      semanaEntradas += deltaEntrada;
+      semanaSalidas += deltaSalida;
     }
 
     // Mes Actual
     if (m.año === curYear && (m.mes || '').toLowerCase().trim() === curMes) {
       mesMovs++;
-      if (tipo === 'entrada') mesEntradas += monto;
-      else if (tipo === 'salida') mesSalidas += monto;
+      mesEntradas += deltaEntrada;
+      mesSalidas += deltaSalida;
     }
   });
 
@@ -1503,16 +1574,11 @@ export function getCajaChicaBalance(): CajaChicaBalanceResponse {
   };
 }
 
-// Startup Initialization: Loads from sheet if local store is empty
+// Startup Initialization: Always syncs from sheet on startup to ensure updated columns
 export async function initContabilidadOnStartup(): Promise<void> {
   try {
-    const local = loadLocalContabilidad();
-    if (local.length === 0) {
-      console.log('[contabilidadService] Almacén local vacío. Sincronizando desde Google Sheets...');
-      await fetchGoogleSheetContabilidad();
-    } else {
-      console.log(`[contabilidadService] Almacén local inicializado con ${local.length} movimientos.`);
-    }
+    console.log('[contabilidadService] Sincronizando contabilidad desde Google Sheets al iniciar servidor...');
+    await fetchGoogleSheetContabilidad();
   } catch (err) {
     console.error('[contabilidadService] Error on startup sync:', err);
   }
