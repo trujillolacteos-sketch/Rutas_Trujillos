@@ -2,6 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { executeKw } from './odoo';
 import { getProductionConfig, getSuppliesInventory } from './productionService';
+import {
+  getMasterProductsCatalog,
+  cleanCategoryName,
+  inferCategoryFromName,
+  parseWeightFromTitle
+} from './productsSheetService';
 
 const FORECAST_CACHE_FILE = 'forecast_cache.json';
 
@@ -102,7 +108,10 @@ const LECHE_YIELDS_BY_CAT: Record<string, number> = {
   cheddar: 10.0,
   crema: 3.5,
   jocoque: 3.5,
-  mantequilla: 14.0
+  mantequilla: 14.0,
+  yogurt: 1.0,
+  cotija: 10.0,
+  requeson: 4.0
 };
 
 // Dosis estándar de ingredientes por kg de queso
@@ -117,34 +126,7 @@ const INGREDIENTS_DOSAGE_PER_KG: Record<string, number> = {
   'azucar': 0.05 // para jocoque
 };
 
-function cleanCategoryName(name: string): string {
-  if (!name) return 'Otros';
-  return name
-    .replace(/^All\s*\/\s*Quesos\s*\/\s*/i, '')
-    .replace(/^All\s*\/\s*/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function parseWeightFromTitle(title: string): number {
-  const lower = (title || '').toLowerCase();
-  const kgMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilos?)/);
-  if (kgMatch) return parseFloat(kgMatch[1]);
-
-  const gMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|gramos?)/);
-  if (gMatch) return parseFloat(gMatch[1]) / 1000;
-
-  const lMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|litro?s?)/);
-  if (lMatch) return parseFloat(lMatch[1]);
-
-  const mlMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:ml|mililitros?)/);
-  if (mlMatch) return parseFloat(mlMatch[1]) / 1000;
-
-  if (lower.includes('1/4')) return 0.25;
-  if (lower.includes('1/2')) return 0.5;
-
-  return 1.0;
-}
+// cleanCategoryName & parseWeightFromTitle imported from productsSheetService
 
 export async function calculateProductionForecast(options: {
   period?: 'last_week' | 'last_2_weeks' | 'last_4_weeks';
@@ -212,7 +194,8 @@ export async function calculateProductionForecast(options: {
     console.warn('[productionForecastService] Could not fetch Odoo sales:', err.message);
   }
 
-  // 3. Load Production Config & SKUs
+  // 3. Load Master Products Catalog (Odoo / Google Sheets) & Production Config SKUs
+  const masterCatalogMap = await getMasterProductsCatalog(Boolean(options.forceRefresh));
   const config = getProductionConfig();
   const configuredSkusMap = new Map<string, any>();
   (config.skus || []).forEach((s: any) => {
@@ -237,12 +220,32 @@ export async function calculateProductionForecast(options: {
     // Skip non-dairy
     if (nonDairyKeywords.some(kw => norm.includes(kw))) return;
 
+    // Look up in configured SKUs first, then in Master Products Catalog (Odoo / Google Sheets)
     const skuMatch = configuredSkusMap.get(norm);
-    const category = skuMatch?.category || 'Otros Lácteos';
-    const cleanCat = cleanCategoryName(category);
+    const catalogMatch = masterCatalogMap.get(norm) || masterCatalogMap.get(`id_${prodId}`);
 
-    // Resolve weight
-    let pesoUnitarioKg = (skuMatch && Number(skuMatch.peso) > 0) ? Number(skuMatch.peso) : parseWeightFromTitle(prodName);
+    let category = skuMatch?.category || catalogMatch?.odooCategory || '';
+    let cleanCat = cleanCategoryName(category);
+
+    // If still missing or generic, infer from title
+    if (!category || cleanCat === 'Otros Lácteos') {
+      const inferred = inferCategoryFromName(prodName);
+      if (inferred) {
+        cleanCat = inferred;
+        category = `All / Quesos / ${inferred}`;
+      } else {
+        cleanCat = 'Otros Lácteos';
+        category = 'Otros Lácteos';
+      }
+    }
+
+    // Resolve weight: skuMatch.peso > catalogMatch.weight > parseWeightFromTitle
+    let pesoUnitarioKg = (skuMatch && Number(skuMatch.peso) > 0)
+      ? Number(skuMatch.peso)
+      : (catalogMatch && Number(catalogMatch.weight) > 0)
+      ? Number(catalogMatch.weight)
+      : parseWeightFromTitle(prodName);
+
     if (!pesoUnitarioKg || pesoUnitarioKg <= 0) pesoUnitarioKg = 1.0;
 
     // Pieces sold per week (normalized by dividerWeeks)
@@ -270,8 +273,8 @@ export async function calculateProductionForecast(options: {
       piezasSemanalesProyectadas,
       kgSemanalesProyectados,
       montoVentaBase,
-      empaques: skuMatch?.empaques || [],
-      etiqueta: skuMatch?.etiqueta || '',
+      empaques: skuMatch?.empaques || catalogMatch?.empaques || [],
+      etiqueta: skuMatch?.etiqueta || catalogMatch?.etiqueta || '',
       adicionales: skuMatch?.adicionales || [],
       porcentajeCategoria: 0
     });
@@ -609,4 +612,14 @@ export async function calculateProductionForecast(options: {
   }
 
   return result;
+}
+
+export function invalidateForecastCache(): void {
+  try {
+    if (fs.existsSync(FORECAST_CACHE_FILE)) {
+      fs.unlinkSync(FORECAST_CACHE_FILE);
+    }
+  } catch (e) {
+    // ignore
+  }
 }

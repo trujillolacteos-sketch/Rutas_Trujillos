@@ -1879,6 +1879,838 @@
       "adicionales": [],
       "empaques": [],
       "etiqueta": "Etiqueta Siracha 266 mL"
+    },
+    {
+      "product": "Crema Bolsa  5 kg",
+      "category": "All / Crema",
+      "peso": 5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Crema Bolsa en Cubeta 18 kg",
+      "category": "All / Crema",
+      "peso": 17,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Crema Especial Bolsa 1kg",
+      "category": "All / Crema",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Crema Natural Cubeta 4 Kg",
+      "category": "All / Crema",
+      "peso": 4,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Crema Natural cubeta 18 kg",
+      "category": "All / Crema",
+      "peso": 19,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Cebolla 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Cebolla 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Cebollin 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Cebollin 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Chiltepin 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Chiltepin 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Chipotle 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Con Hierbas Finas 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Con Hierbas Finas 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Habanero 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Habanero-Arandano 250 Gr",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Habanero-Arandano 500 Gr",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Jalapeño & Alcachofa 250 g",
+      "category": "All / Jocoque / Jocoque cuarto",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Jalapeño & Alcachofa 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Mango-Habanero 500 Gr",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Natural 1 kg",
+      "category": "All / Jocoque / Jocoque litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Jocoque Seco Natural 500 g",
+      "category": "All / Jocoque / Jocoque medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Mantequilla Barra 1 kg",
+      "category": "Mantequilla",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Mantequilla Barra 250 g",
+      "category": "Mantequilla",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Mantequilla Barra 500 Gr",
+      "category": "Mantequilla",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Mantequilla Caja  18 Kg",
+      "category": "Mantequilla",
+      "peso": 18,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Philadelphia Queso crema 120 g",
+      "category": "Queso Crema",
+      "peso": 0.12,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Philadelphia Queso crema 180 g",
+      "category": "Queso Crema",
+      "peso": 0.18,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso  Adobera De Morral Añejo 1 kg",
+      "category": "All / Quesos / Adobera",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso  Adobera De Morral Añejo 500 g",
+      "category": "All / Quesos / Adobera",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Adobera Con Chipotle 1 kg",
+      "category": "All / Quesos / Adobera",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Adobera Con Chipotle 500 g",
+      "category": "All / Quesos / Adobera",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Adobera Con Jalapeño Y Jamon 1 kg",
+      "category": "All / Quesos / Adobera",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Adobera Con Jalapeño Y Jamon 500 g",
+      "category": "All / Quesos / Adobera",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Adobera Natural 2 kg",
+      "category": "All / Quesos / Adobera",
+      "peso": 2,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Asadero Adobado 1 kg",
+      "category": "All / Quesos / Asadero",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Asadero Adobado 500 g",
+      "category": "All / Quesos / Asadero",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Asadero Rallado 5 kg",
+      "category": "All / Quesos / Asadero",
+      "peso": 5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Cheddar Blanco Rallado 250 g",
+      "category": "All / Quesos / Cheddar",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Chihuahua Rallado 1 kg",
+      "category": "All / Quesos / Chihuahua",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Fresco Barra 1 Kg",
+      "category": "All / Quesos / Fresco",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Fresco Barra 500 Gr",
+      "category": "All / Quesos / Fresco",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Manchego Rallado 1 kg",
+      "category": "All / Quesos / Manchego",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Manchego Rallado 500 g",
+      "category": "All / Quesos / Manchego",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Mozzarella Amarillo Barra 1 kg",
+      "category": "All / Quesos / Mozzarella",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Oaxaca barra Amarilla 1 Kg",
+      "category": "All / Quesos / Oaxaca",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Queso Pizzero 1/2 kg",
+      "category": "Pizzero",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Cereales 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Cereales 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Cereales 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Chabacano 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Chabacano 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Chabacano 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Ciruela Pasa 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Ciruela Pasa 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Ciruela Pasa 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Durazno 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Durazno 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Durazno 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frambuesa 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frambuesa 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frambuesa 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Fresa 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Fresa 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Fresa 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Rojos 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Rojos 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Rojos 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Tropicales 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Tropicales 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Frutos Tropicales 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Guayaba 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Guayaba 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Guayaba 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Higo 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Higo 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Higo 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mango 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mango 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mango 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana/Canela 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana/Canela 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Manzana/Canela 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Maracuya 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Maracuya 300 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.3,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Maracuya 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mora Azul 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mora Azul 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Mora Azul 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Natural 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Natural 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Natural 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Nuez 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Nuez 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Nuez 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Piña Coco 1 Lt",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Piña Coco 250 Ml",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Piña Coco 500 Ml",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Zarzamora 1 L",
+      "category": "All / Yogurt / Yogurt Litro",
+      "peso": 1,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Zarzamora 250 mL",
+      "category": "All / Yogurt / Yogurt trescientos",
+      "peso": 0.25,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
+    },
+    {
+      "product": "Yogurt Zarzamora 500 mL",
+      "category": "All / Yogurt / Yogurt medio",
+      "peso": 0.5,
+      "empaques": [],
+      "etiqueta": "",
+      "adicionales": []
     }
   ],
   "extractedAt": "2026-10-14T13:30:52.444Z"

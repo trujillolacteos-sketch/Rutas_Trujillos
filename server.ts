@@ -58,8 +58,13 @@ import {
 } from './server/productionLinesService.ts';
 
 import {
-  calculateProductionForecast
+  calculateProductionForecast,
+  invalidateForecastCache
 } from './server/productionForecastService.ts';
+import {
+  syncProductsToGoogleSheet,
+  syncSingleProductFromOdoo
+} from './server/productsSheetService.ts';
 
 import {
   initContabilidadOnStartup,
@@ -479,6 +484,18 @@ async function startServer() {
       await triggerWeeklyAutomatedSync();
     } catch (e) {
       console.error('[Cron] Error en sincronización semanal programada:', e);
+    }
+  });
+
+  // Automated Daily Cron at 3:30 AM (Madrugada): Sincronización del catálogo de productos de Odoo a Google Sheets
+  cron.schedule('30 3 * * *', async () => {
+    console.log('[Cron Diario 03:30 AM] Sincronizando catálogo de productos lácteos desde Odoo hacia Google Sheets...');
+    try {
+      const res = await syncProductsToGoogleSheet();
+      invalidateForecastCache();
+      console.log(`[Cron Diario] Catálogo de productos sincronizado con éxito: ${res.count} productos en pestaña Catalogo_Productos.`);
+    } catch (err: any) {
+      console.error('[Cron Diario] Error en sincronización diaria de productos:', err.message);
     }
   });
 
@@ -1231,6 +1248,54 @@ async function startServer() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Sincronizar Catálogo Completo desde Odoo y reflejar en Google Sheets (Exclusivo Gerencia y Admin)
+  app.post('/api/production/sync-odoo-products', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'supervisor'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrativo pueden sincronizar productos desde Odoo." });
+
+      const syncResult = await syncProductsToGoogleSheet();
+      invalidateForecastCache();
+      res.json({
+        success: true,
+        count: syncResult.count,
+        sheetUrl: syncResult.sheetUrl,
+        message: `¡Catálogo sincronizado exitosamente con Odoo! Se actualizaron ${syncResult.count} productos en la hoja Catalogo_Productos de Google Sheets.`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/production/sync-odoo-products] Error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Actualizar un producto específico desde Odoo en tiempo real (Exclusivo Gerencia y Admin)
+  app.post('/api/production/sync-single-product', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor_produccion', 'supervisor'].includes(role);
+      if (!isAllowed) return res.status(403).json({ error: "Acceso restringido: Solo Gerencia y Administrativo pueden actualizar productos desde Odoo." });
+
+      const { query } = req.body;
+      if (!query) return res.status(400).json({ error: "Se requiere nombre o ID del producto." });
+
+      const updated = await syncSingleProductFromOdoo(query);
+      if (!updated) {
+        return res.status(404).json({ success: false, message: `No se encontró el producto "${query}" en Odoo.` });
+      }
+
+      invalidateForecastCache();
+      res.json({
+        success: true,
+        product: updated,
+        message: `Producto "${updated.name}" actualizado con éxito desde Odoo (Categoría: ${updated.cleanCategory}, Peso: ${updated.weight} kg). Sincronizado en Google Sheets.`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/production/sync-single-product] Error:', err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

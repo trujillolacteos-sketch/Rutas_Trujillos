@@ -919,16 +919,29 @@ export default function ProductionView({
 
         <div className="flex items-center gap-2 shrink-0">
           {canAccessSheets && (
-          <a
-            href={SPREADSHEET_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm hover:shadow"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Abrir Google Sheet Oficial</span>
-            <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-80" />
-          </a>
+            <>
+              <a
+                href="https://docs.google.com/spreadsheets/d/1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE/edit#gid=1167506769"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all shadow-sm"
+                title="Abrir Catálogo de Productos en Google Sheets"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Catálogo Productos</span>
+                <ExternalLink className="w-3 h-3 text-emerald-600 ml-0.5" />
+              </a>
+              <a
+                href={SPREADSHEET_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm hover:shadow"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Google Sheet Oficial</span>
+                <ExternalLink className="w-3.5 h-3.5 ml-0.5 opacity-80" />
+              </a>
+            </>
           )}
         </div>
       </div>

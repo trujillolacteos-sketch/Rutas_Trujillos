@@ -11,4 +11,6 @@ google-drive-key.json
 *.key.json
 *.enc
 *.backup.json
+forecast_cache.json
+odoo_products_cache.json
 

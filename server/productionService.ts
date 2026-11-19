@@ -7,7 +7,7 @@ import { loadLocalLineReports } from './productionLinesService.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const KEY_FILE = 'google-drive-key.json';
-const CONFIG_FILE = 'server/productionConfig.json';
+const CONFIG_FILE = path.join(process.cwd(), 'server', 'productionConfig.json');
 const PRODUCTION_STORE_FILE = 'production_store.json';
 const PACKAGING_STORE_FILE = 'packaging_store.json';
 const PURCHASES_STORE_FILE = 'purchases_store.json';
@@ -139,6 +139,14 @@ export function getProductionConfig(): any {
     } catch (e) {}
   }
   return { categories: [], ingredients: [], skus: [] };
+}
+
+export function saveProductionConfig(config: any): void {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error saving productionConfig:', e);
+  }
 }
 
 // Update Master Costs & Sync to Google Sheet 'Costos' tab
