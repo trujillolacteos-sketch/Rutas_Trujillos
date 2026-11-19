@@ -12,6 +12,7 @@ echo  4. Anticipacion y voz coloquial de navegacion en mapa.
 echo  5. Sincronizacion de Catalogo Odoo a Google Sheets (Catalogo_Productos).
 echo  6. Correccion y clasificacion estricta de categorias (Mozzarella, etc.).
 echo  7. Boton y modal para Gerencia/Admin de actualizacion de productos.
+echo  8. Catalogo de Respaldo de Clientes en Google Sheets (Catalogo_Clientes).
 echo.
 "C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" push origin main
 echo.
