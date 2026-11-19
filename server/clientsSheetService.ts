@@ -66,6 +66,18 @@ export function cleanHtmlComment(html: string): string {
 }
 
 /**
+ * Previene que Google Sheets interprete teléfonos con "+" o "=" como fórmulas con error (#ERROR!)
+ */
+export function sanitizeSheetString(str: string): string {
+  if (!str) return '';
+  const s = String(str).trim();
+  if (s.startsWith('+') || s.startsWith('=')) {
+    return `'${s}`;
+  }
+  return s;
+}
+
+/**
  * Asegura que la pestaña Catalogo_Clientes exista en Google Sheets
  */
 async function ensureClientsSheetExists(token: string): Promise<{ exists: boolean; sheetId?: number }> {
@@ -255,22 +267,22 @@ export async function syncClientsToGoogleSheet(clients?: SyncedClientItem[]): Pr
 
     const items = clients && clients.length > 0 ? clients : await fetchLiveOdooClients();
 
-    // Preparar filas para Sheets
+    // Preparar filas para Sheets sanitizando teléfonos para evitar #ERROR!
     const rows = items.map(c => [
       c.id,
-      c.ref,
-      c.name,
-      c.rutaAsignada,
-      c.diaVisita,
-      c.municipio,
-      c.estado,
-      c.calle,
-      c.colonia,
-      c.zip,
-      c.phone,
-      c.mobile,
-      c.email,
-      c.vat,
+      sanitizeSheetString(c.ref),
+      sanitizeSheetString(c.name),
+      sanitizeSheetString(c.rutaAsignada),
+      sanitizeSheetString(c.diaVisita),
+      sanitizeSheetString(c.municipio),
+      sanitizeSheetString(c.estado),
+      sanitizeSheetString(c.calle),
+      sanitizeSheetString(c.colonia),
+      sanitizeSheetString(c.zip),
+      sanitizeSheetString(c.phone),
+      sanitizeSheetString(c.mobile),
+      sanitizeSheetString(c.email),
+      sanitizeSheetString(c.vat),
       c.lat ?? '',
       c.lng ?? '',
       c.customerRank,
