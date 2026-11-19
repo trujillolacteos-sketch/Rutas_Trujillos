@@ -14,9 +14,19 @@ echo  6. Correccion y clasificacion estricta de categorias (Mozzarella, etc.).
 echo  7. Boton y modal para Gerencia/Admin de actualizacion de productos.
 echo  8. Catalogo de Respaldo de Clientes en Google Sheets (Catalogo_Clientes).
 echo.
-"C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" push origin main
+setlocal enabledelayedexpansion
+if exist "%~dp0.github_token" (
+    set /p GHTOKEN=<"%~dp0.github_token"
+    "C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" remote set-url origin "https://!GHTOKEN!@github.com/trujillolacteos-sketch/Rutas_Trujillos.git"
+    "C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" -c credential.helper= push origin main
+    set PUSH_STATUS=!ERRORLEVEL!
+    "C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" remote set-url origin "https://github.com/trujillolacteos-sketch/Rutas_Trujillos.git"
+) else (
+    "C:\Users\truji\.gemini\antigravity\scratch\mingit\cmd\git.exe" push origin main
+    set PUSH_STATUS=%ERRORLEVEL%
+)
 echo.
-if %ERRORLEVEL% EQU 0 (
+if !PUSH_STATUS! EQU 0 (
     echo ========================================================
     echo   [EXITO] Cambios enviados a GitHub correctamente!
     echo   Render comenzara el despliegue a produccion.
