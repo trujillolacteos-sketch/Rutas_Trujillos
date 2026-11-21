@@ -748,6 +748,55 @@ async function startServer() {
     res.json({ success: true, clientOverrides: state.clientOverrides[id], client });
   });
 
+  // Reset masivo de asignación de rutas y días de visita a Automático (Exclusivo Gerencia, Admin y Supervisores)
+  app.post('/api/clients/reset-all-assignments', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const role = await getUserRole(req.user!.uid);
+      const isAllowed = ['admin', 'gerencia', 'supervisor', 'supervisor_produccion'].includes(role);
+      if (!isAllowed) {
+        return res.status(403).json({ error: "Acceso restringido: Solo Administradores, Gerencia y Supervisores pueden resetear asignaciones." });
+      }
+
+      const state = loadState();
+      let count = 0;
+      if (Array.isArray(state.clients)) {
+        state.clients.forEach(c => {
+          c.assignedRouteId = null;
+          c.permanentRouteId = null;
+          c.assignedDay = null;
+          c.permanentDay = null;
+          count++;
+        });
+      }
+
+      if (state.clientOverrides) {
+        for (const clientId of Object.keys(state.clientOverrides)) {
+          const ov = state.clientOverrides[clientId];
+          if (ov) {
+            ov.assignedRouteId = null;
+            ov.permanentRouteId = null;
+            ov.assignedDay = null;
+            ov.permanentDay = null;
+          }
+        }
+      }
+
+      saveState(state);
+      console.log(`[POST /api/clients/reset-all-assignments] ${count} clientes reseteados a Automático por ${req.user!.uid} (${role})`);
+
+      res.json({
+        success: true,
+        count,
+        clients: state.clients,
+        clientOverrides: state.clientOverrides,
+        message: `¡Se han reseteado exitosamente ${count} clientes a modalidad de Ruta Automática y Día Automático!`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/clients/reset-all-assignments] Error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.post('/api/clients/:id/coordinates', async (req, res) => {
     const { id } = req.params;
     const { lat, lng } = req.body;

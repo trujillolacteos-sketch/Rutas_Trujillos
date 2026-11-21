@@ -16,3 +16,5 @@ odoo_products_cache.json
 odoo_clients_cache.json
 .github_token
 
+
+data_store.before_reset.json
