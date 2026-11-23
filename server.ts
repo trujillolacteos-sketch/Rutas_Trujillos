@@ -274,14 +274,23 @@ async function initPersistentDatabase() {
   // Google Sheets Tracking Persistence (Mente Colmena Permanente en tu Google Sheet)
   try {
     const currentState = loadState();
-    if (!currentState.trackingLogs || currentState.trackingLogs.length === 0) {
-      console.log('[trackingSheetService] Restaurando logs de tracking desde Google Sheet...');
-      const sheetLogs = await loadTrackingLogsFromSheet(2000);
-      if (sheetLogs.length > 0) {
-        currentState.trackingLogs = sheetLogs;
-        saveState(currentState);
-        console.log(`[trackingSheetService] Se restauraron ${sheetLogs.length} logs de tracking desde Google Sheet.`);
-      }
+    console.log('[trackingSheetService] Sincronizando logs de tracking desde Google Sheet (Historial_GPS)...');
+    const sheetLogs = await loadTrackingLogsFromSheet(2000);
+    if (sheetLogs.length > 0) {
+      const existingMap = new Map<string, any>();
+      (currentState.trackingLogs || []).forEach((l: any) => {
+        const k = l.id || `${l.routeId}_${l.timestamp}`;
+        existingMap.set(k, l);
+      });
+      sheetLogs.forEach((l: any) => {
+        const k = l.id || `${l.routeId}_${l.timestamp}`;
+        existingMap.set(k, l);
+      });
+      currentState.trackingLogs = Array.from(existingMap.values()).sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      saveState(currentState);
+      console.log(`[trackingSheetService] Se sincronizaron ${currentState.trackingLogs.length} logs de tracking (Mente Colmena lista).`);
     }
   } catch (trackErr: any) {
     console.warn("Google Sheets Tracking notice (continuing with local state):", trackErr.message);
@@ -600,8 +609,8 @@ async function startServer() {
         disabledZones: state.disabledZones || [],
         clientOverrides: state.clientOverrides || {},
         zoneOverrides: state.zoneOverrides || {},
-        visits: deltaVisits,
-        trackingLogs: deltaLogs
+        visits: state.visits || [],
+        trackingLogs: state.trackingLogs || []
       });
     } else {
       res.json({
@@ -620,11 +629,17 @@ async function startServer() {
 
   app.get('/api/tracking', async (req, res) => {
     try {
-      const logs = await db.select().from(gpsLogs).orderBy(desc(gpsLogs.timestamp)).limit(10000);
-      res.json(logs);
+      if (db) {
+        const logs = await db.select().from(gpsLogs).orderBy(desc(gpsLogs.timestamp)).limit(10000);
+        if (logs && logs.length > 0) {
+          return res.json(logs);
+        }
+      }
     } catch(e) {
-      res.status(500).json({ error: 'Failed' });
+      // Continuar con fallback local/sheets
     }
+    const state = loadState();
+    res.json(state.trackingLogs || []);
   });
 
 
