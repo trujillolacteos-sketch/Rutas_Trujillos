@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../lib/api';
 import { AppState, PlannedVisit, ClientData } from '../types';
-import { Map, Volume2, VolumeX, ShoppingCart, CheckCircle, Store, ChevronUp, ChevronDown, Clock, MapPin, AlertTriangle, XCircle, Wand2, Navigation } from 'lucide-react';
+import { Map, Volume2, VolumeX, ShoppingCart, CheckCircle, Store, ChevronUp, ChevronDown, Clock, MapPin, AlertTriangle, XCircle, Wand2, Navigation, FileSpreadsheet } from 'lucide-react';
 import RouteMap from './RouteMap';
 
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -43,6 +43,27 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [voiceVolume, setVoiceVolume] = useState<number>(1.0);
   const [reachedVisit, setReachedVisit] = useState<PlannedVisit | null>(null);
+  const [syncingSheet, setSyncingSheet] = useState(false);
+  const [sheetMsg, setSheetMsg] = useState("");
+
+  const handleSyncSheet = async () => {
+    setSyncingSheet(true);
+    setSheetMsg("");
+    try {
+      const res = await apiFetch('/api/routes/sync-sheet', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSheetMsg(`¡Plan guardado en Google Sheets (${data.rowsCount} visitas)!`);
+        setTimeout(() => setSheetMsg(""), 5000);
+      } else {
+        alert("Error al guardar en Google Sheets: " + (data.error || ""));
+      }
+    } catch (e: any) {
+      alert("Error de conexión: " + e.message);
+    } finally {
+      setSyncingSheet(false);
+    }
+  };
   const [skipVisitModal, setSkipVisitModal] = useState<PlannedVisit | null>(null);
   const lastLocationRef = React.useRef<{ lat: number, lng: number, time: number } | null>(null);
   const wakeLockRef = React.useRef<any>(null);
@@ -785,8 +806,26 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
             {role !== 'operator' && <option value={0}>Todas las rutas</option>}
             {allowedRoutes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          {role !== 'operator' && (
+            <button
+              onClick={handleSyncSheet}
+              disabled={syncingSheet}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold rounded-xl px-3.5 py-2 flex items-center gap-1.5 shadow-sm transition-colors"
+              title="Guardar o respaldar el plan semanal de rutas en Google Sheets"
+            >
+              <FileSpreadsheet className={`w-4 h-4 ${syncingSheet ? 'animate-bounce' : ''}`} />
+              <span>{syncingSheet ? 'Guardando...' : 'Guardar en Sheets'}</span>
+            </button>
+          )}
         </div>
       </header>
+
+      {sheetMsg && (
+        <div className="bg-emerald-50 text-emerald-700 p-3.5 rounded-xl border border-emerald-100 flex items-center gap-2 text-sm font-medium animate-in fade-in">
+          <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />
+          <span>{sheetMsg}</span>
+        </div>
+      )}
 
       {/* Progress & Capacity Header */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

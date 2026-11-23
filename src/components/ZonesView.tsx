@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { apiFetch } from '../lib/api';
 import { AppState } from '../types';
-import { MapIcon, Search, Eye, EyeOff, Save, CheckCircle2 } from 'lucide-react';
+import { MapIcon, Search, Eye, EyeOff, Save, CheckCircle2, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import RouteAnalytics from './RouteAnalytics';
 
 export default function ZonesView({ state, setState }: { state: AppState, setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [saving, setSaving] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [exportingSheet, setExportingSheet] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   
   // Extract unique cities (zones) from all clients
@@ -77,7 +79,7 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
       });
       if (res.ok) {
         setState(prev => ({ ...prev, disabledZones: zonesArray }));
-        setSuccessMsg("Zonas actualizadas. Recuerda sincronizar para aplicar los cambios.");
+        setSuccessMsg("Zonas actualizadas. Puedes recalcular las rutas ahora.");
         setTimeout(() => setSuccessMsg(""), 5000);
       }
     } catch (err) {
@@ -86,28 +88,94 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
     setSaving(false);
   };
 
+  const handleRecalculateRoutes = async () => {
+    setRecalculating(true);
+    setSuccessMsg("");
+    try {
+      const res = await apiFetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          routes: state.routes,
+          clientOverrides: state.clientOverrides,
+          zoneOverrides: state.zoneOverrides
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.state) {
+        setState(prev => ({ ...data.state, settings: prev.settings }));
+        setSuccessMsg("¡Rutas recalculadas con éxito con tus zonas seleccionadas y respaldadas en Google Sheets!");
+        setTimeout(() => setSuccessMsg(""), 8000);
+      } else {
+        alert("Error al recalcular rutas: " + (data.error || "Desconocido"));
+      }
+    } catch (err: any) {
+      alert("Error de conexión al recalcular rutas: " + err.message);
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
+  const handleExportSheet = async () => {
+    setExportingSheet(true);
+    try {
+      const res = await apiFetch('/api/routes/sync-sheet', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg(`¡${data.rowsCount} visitas guardadas exitosamente en la pestaña 'Planes_Rutas_Semanales' de Google Sheets!`);
+        setTimeout(() => setSuccessMsg(""), 8000);
+      } else {
+        alert("Error al guardar en Google Sheets: " + (data.error || ""));
+      }
+    } catch (err: any) {
+      alert("Error de conexión: " + err.message);
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto pb-20 space-y-8">
       
       {/* Nuevo módulo predictivo con Recharts */}
       <RouteAnalytics state={state} />
 
-      <div className="flex items-center justify-between mb-4 mt-12">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 mt-12 gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
             <MapIcon className="w-6 h-6 text-blue-600" />
             Gestión de Zonas (Ciudades)
           </h2>
-          <p className="text-slate-500 mt-1">Activa o desactiva zonas para incluirlas o excluirlas de la próxima sincronización del planificador.</p>
+          <p className="text-slate-500 mt-1">Asigna rutas y días por zona. Al recalcular se respetarán 100% tus zonas y se guardarán en Google Sheets.</p>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
-        >
-          <Save className="w-4 h-4" />
-          {saving ? 'Guardando...' : 'Guardar Cambios'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button 
+            onClick={handleExportSheet}
+            disabled={exportingSheet}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+            title="Exportar plan semanal a la pestaña Planes_Rutas_Semanales de Google Sheets"
+          >
+            <FileSpreadsheet className={`w-4 h-4 ${exportingSheet ? 'animate-bounce' : ''}`} />
+            {exportingSheet ? 'Exportando...' : 'Exportar a Sheets'}
+          </button>
+          <button 
+            onClick={handleRecalculateRoutes}
+            disabled={recalculating}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50 hover:shadow-lg"
+            title="Recalcula el plan de rutas aplicando de inmediato tus zonas asignadas"
+          >
+            <RefreshCw className={`w-4 h-4 ${recalculating ? 'animate-spin' : ''}`} />
+            {recalculating ? 'Calculando...' : 'Calcular y Guardar Rutas'}
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? 'Guardando...' : 'Guardar Zonas'}
+          </button>
+        </div>
       </div>
       
       {successMsg && (

@@ -70,6 +70,9 @@ import {
   syncSingleClientFromOdoo,
   getMasterClientsCatalog
 } from './server/clientsSheetService.ts';
+import {
+  syncRoutePlanToGoogleSheet
+} from './server/routePlansSheetService.ts';
 
 import {
   initContabilidadOnStartup,
@@ -336,6 +339,12 @@ export async function triggerWeeklyAutomatedSync() {
     };
     saveState(state);
     console.log("Cálculo automático semanal completado con éxito.");
+
+    // Respaldo asíncrono permanente de planes y rutas semanales en Google Sheets
+    syncRoutePlanToGoogleSheet(state).catch(e => {
+      console.error("[routePlansSheetService] Error asíncrono volcando plan a Google Sheets:", e.message);
+    });
+
     return state;
   } catch (error: any) {
     console.error("Error en triggerWeeklyAutomatedSync:", error);
@@ -525,6 +534,18 @@ async function startServer() {
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Exportar / sincronizar manualmente el plan de rutas actual a Google Sheets
+  app.post('/api/routes/sync-sheet', async (req, res) => {
+    try {
+      const state = loadState();
+      const result = await syncRoutePlanToGoogleSheet(state);
+      res.json(result);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
