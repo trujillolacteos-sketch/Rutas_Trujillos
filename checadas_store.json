@@ -1,0 +1,882 @@
+{
+  "semanaActiva": {
+    "id": "2026-W48",
+    "semana": 48,
+    "anio": 2026,
+    "fechaInicio": "2026-11-23",
+    "fechaFin": "2026-11-28",
+    "periodo": "23-nov al 28-nov",
+    "cerrada": false,
+    "empleados": [
+      {
+        "rowNumber": 3,
+        "nombre": "JORGE ORTIZ PAREDES",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 4,
+        "nombre": "JOSE ANTONIO SANROMAN ZUNIGA",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 5,
+        "nombre": "ANA ROCIO FLORES SANCHEZ",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 6,
+        "nombre": "ANA ELISELDA CUELLAR MONTOYA",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 7,
+        "nombre": "LIDIA GONZALEZ MAGDALENO",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "hora",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 8,
+        "nombre": "JAIME ORTIZ PAREDES",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 9,
+        "nombre": "ESTELA CAMPOS",
+        "jornada": "58:00",
+        "faltas": 0,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "gerencia",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 10,
+        "nombre": "MARIA DE SAN JUAN GONZALEZ GUTIERRES",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 11,
+        "nombre": "Liliana del Carmen Espinoza Avalos",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 12,
+        "nombre": "CLAUDIA BERENICE MONTES ZANDOVAL",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 13,
+        "nombre": "ALMA AVALOS  ESPINOZA",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 14,
+        "nombre": "LAURA ELIZABETH DE SANTOS  ROMO",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 15,
+        "nombre": "SARAHÍ HERNADEZ CUELLAR",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "0:00",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "jornada",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      },
+      {
+        "rowNumber": 16,
+        "nombre": "JAIME",
+        "jornada": "58:00",
+        "faltas": 7,
+        "jornadaIncompleta": "",
+        "incapacidades": 0,
+        "vacaciones": 0,
+        "tipoJornada": "fijo",
+        "extrasSemana": "0:00",
+        "totalHorasSemana": "0:00",
+        "dias": {
+          "lunes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "martes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "miercoles": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "jueves": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "viernes": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          },
+          "sabado": {
+            "entrada1": "",
+            "salida1": "",
+            "entrada2": "",
+            "salida2": "",
+            "total": "0:00",
+            "extras": "0:00"
+          }
+        }
+      }
+    ]
+  },
+  "historico": []
+}

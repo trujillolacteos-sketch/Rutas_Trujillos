@@ -71,7 +71,7 @@ export interface AppState {
   lastSync: string | null;
   users?: any[];
   clientOverrides?: Record<number, { visitFrequency?: number, isActive?: boolean, assignedRouteId?: number, permanentRouteId?: number, assignedDay?: string, permanentDay?: string, clientType?: string }>;
-  zoneOverrides?: Record<string, { assignedRouteId?: number, assignedDay?: string }>;
+  zoneOverrides?: Record<string, { assignedRouteId?: number, assignedDay?: string, assignedDays?: string[], visitFrequency?: number }>;
   disabledZones?: string[];
   settings?: {
     closeTime: string; // e.g., "18:00"

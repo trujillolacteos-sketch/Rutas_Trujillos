@@ -73,6 +73,10 @@ import {
 import {
   syncRoutePlanToGoogleSheet
 } from './server/routePlansSheetService.ts';
+import {
+  saveZonesToGoogleSheet,
+  loadZonesFromGoogleSheet
+} from './server/zonesSheetService.ts';
 
 import {
   initContabilidadOnStartup,
@@ -303,6 +307,29 @@ async function initPersistentDatabase() {
     }
   } catch (contErr: any) {
     console.warn("Google Sheets Contabilidad notice (continuing with local state):", contErr.message);
+  }
+
+  // Google Sheets Predisposiciones de Zonas Persistence (Garantiza que nunca se pierdan asignaciones de rutas y días)
+  try {
+    const sheetZones = await loadZonesFromGoogleSheet();
+    if (sheetZones) {
+      const currentState = loadState();
+      let changed = false;
+      if (sheetZones.zoneOverrides && Object.keys(sheetZones.zoneOverrides).length > 0) {
+        currentState.zoneOverrides = { ...(sheetZones.zoneOverrides || {}), ...(currentState.zoneOverrides || {}) };
+        changed = true;
+      }
+      if (sheetZones.disabledZones && sheetZones.disabledZones.length > 0) {
+        currentState.disabledZones = Array.from(new Set([...(currentState.disabledZones || []), ...sheetZones.disabledZones]));
+        changed = true;
+      }
+      if (changed) {
+        saveState(currentState);
+        console.log('[zonesSheetService] Predisposiciones de zonas restauradas desde Google Sheets al iniciar.');
+      }
+    }
+  } catch (zErr: any) {
+    console.warn("Google Sheets Zones notice (continuing with local state):", zErr.message);
   }
 }
 
@@ -730,8 +757,21 @@ async function startServer() {
         ...(state.zoneOverrides[zone] || {}), 
         ...updates 
     };
+
+    // Si se enviaron valores nulos o vacíos, eliminarlos limpiamente
+    Object.keys(updates).forEach(k => {
+      if (updates[k] === null || updates[k] === undefined || updates[k] === '') {
+        delete state.zoneOverrides[zone][k];
+      }
+    });
     
     saveState(state);
+
+    // Respaldo asíncrono permanente de la predisposición de zonas a Google Sheets
+    saveZonesToGoogleSheet(state).catch(e => {
+      console.error('[zonesSheetService] Error asíncrono guardando zonas en Google Sheets:', e.message);
+    });
+
     res.json({ success: true, zoneOverrides: state.zoneOverrides });
   });
 
@@ -740,7 +780,43 @@ async function startServer() {
     const state = loadState();
     state.disabledZones = disabledZones;
     saveState(state);
+
+    // Respaldo asíncrono permanente a Google Sheets
+    saveZonesToGoogleSheet(state).catch(e => {
+      console.error('[zonesSheetService] Error asíncrono guardando zonas en Google Sheets:', e.message);
+    });
+
     res.json({ success: true, disabledZones: state.disabledZones });
+  });
+
+  // Exportar manualmente todas las predisposiciones de zonas a Google Sheets
+  app.post('/api/settings/zones/sync-sheet', async (req, res) => {
+    try {
+      const state = loadState();
+      const result = await saveZonesToGoogleSheet(state);
+      res.json(result);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Restaurar / importar predisposiciones de zonas desde Google Sheets
+  app.post('/api/settings/zones/restore-sheet', async (req, res) => {
+    try {
+      const sheetZones = await loadZonesFromGoogleSheet();
+      if (!sheetZones) {
+        return res.status(404).json({ success: false, error: 'No se encontraron predisposiciones de zonas en Google Sheets' });
+      }
+      const state = loadState();
+      state.zoneOverrides = { ...(sheetZones.zoneOverrides || {}), ...(state.zoneOverrides || {}) };
+      state.disabledZones = Array.from(new Set([...(state.disabledZones || []), ...(sheetZones.disabledZones || [])]));
+      saveState(state);
+      res.json({ success: true, zoneOverrides: state.zoneOverrides, disabledZones: state.disabledZones });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   app.post('/api/settings/client-overrides/:id', (req, res) => {

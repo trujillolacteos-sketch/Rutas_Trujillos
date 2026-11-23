@@ -216,6 +216,7 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     return fallback || "Sin Ubicación";
   }
   const DEPOT = { lat: 21.343263, lng: -102.264407 };
+  const safeDisabled = new Set(Array.isArray(disabledZones) ? disabledZones.map((z: any) => String(z).toLowerCase().trim()) : []);
   const allClients = rawClients.map((c) => {
     const sales = salesByClient[c.id] || { volume: 0, orderCount: 0, boughtThisWeek: false };
     const lat = c.partner_latitude || 0;
@@ -229,7 +230,7 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     const isCompany = c.company_type === "company" || c.is_company;
     const clientType = isCompany ? "company" : "person";
     let isActive = true;
-    if (disabledZones.includes(cityStr.trim().toLowerCase())) {
+    if (safeDisabled.has(cityStr.trim().toLowerCase())) {
       isActive = false;
     }
     if (clientOverrides[c.id] && clientOverrides[c.id].isActive !== void 0) {
@@ -416,9 +417,6 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       const matchR = activeRoutes.find((r: any) => r.id === zOverride.assignedRouteId);
       if (matchR) {
         c.assignedRouteId = matchR.id;
-        if (zOverride.assignedDay) {
-          c.assignedDay = zOverride.assignedDay;
-        }
         routeClientsMap[matchR.id].push(c);
         return;
       }
@@ -497,38 +495,92 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
 
     const dailyVisits: any[][] = Array(6).fill(null).map(() => []);
 
-    // 1. Clientes con día fijo o explícito (por permanentDay, clientOverrides, o zoneOverrides):
-    const clientsWithExplicitDay: any[] = [];
-    const clientsFlexible: any[] = [];
+    // Clasificación de clientes en la ruta:
+    // A. Clientes con día fijo individual (permanentDay o clientOverrides.assignedDay)
+    // B. Clientes de zonas que tienen días asignados en zoneOverrides (assignedDays con 1 o más días, o assignedDay)
+    // C. Clientes flexibles (sin día forzado de zona ni de cliente)
+
+    const individualFixedClients: any[] = [];
+    const zoneDayClientsMap = new Map<string, { days: string[]; clients: any[] }>();
+    const flexibleClients: any[] = [];
 
     clientsInRoute.forEach((c: any) => {
       const cOverride = clientOverrides[c.id] || {};
       const zOverride = getZoneOverride(zoneOverrides, c.city);
-      const explicitDay = c.permanentDay || cOverride.assignedDay || zOverride.assignedDay || c.assignedDay;
 
-      if (explicitDay && DAYS.includes(explicitDay)) {
-        c.assignedDay = explicitDay;
-        clientsWithExplicitDay.push(c);
-      } else {
-        clientsFlexible.push(c);
+      // 1. Candado individual de cliente
+      if (c.permanentDay && DAYS.includes(c.permanentDay)) {
+        c.assignedDay = c.permanentDay;
+        individualFixedClients.push(c);
+        return;
       }
+      if (cOverride.assignedDay && DAYS.includes(cOverride.assignedDay)) {
+        c.assignedDay = cOverride.assignedDay;
+        individualFixedClients.push(c);
+        return;
+      }
+
+      // 2. Días asignados a la Zona (soporta múltiples días específicos, ej. 2 días para Encarnación de Díaz)
+      const rawDays: string[] = Array.isArray(zOverride.assignedDays) && zOverride.assignedDays.length > 0
+        ? zOverride.assignedDays
+        : (zOverride.assignedDay ? [zOverride.assignedDay] : []);
+      const validZDays = rawDays.filter((d: string) => DAYS.includes(d));
+
+      if (validZDays.length > 0) {
+        const normCity = normalizeZoneKey(c.city || '');
+        if (!zoneDayClientsMap.has(normCity)) {
+          zoneDayClientsMap.set(normCity, { days: validZDays, clients: [] });
+        }
+        zoneDayClientsMap.get(normCity)!.clients.push(c);
+        return;
+      }
+
+      // 3. Clientes flexibles
+      flexibleClients.push(c);
     });
 
-    // Colocar inmediatamente los clientes con día explícito en su día correspondiente
-    clientsWithExplicitDay.forEach((c: any) => {
+    // 1. Asignar clientes con día individual fijo
+    individualFixedClients.forEach((c: any) => {
       const dayIdx = DAYS.indexOf(c.assignedDay);
       if (dayIdx !== -1) {
         dailyVisits[dayIdx].push(c);
       }
     });
 
-    // 2. Para los clientes flexibles (sin día explícito seleccionado):
-    // Separar foráneos vs locales
-    const foreignFlexible = clientsFlexible.filter((c: any) => {
+    // 2. Asignar clientes de zonas con días específicos (si son 2 o más días, se reparten por TSP entre esos días)
+    zoneDayClientsMap.forEach(({ days, clients }) => {
+      if (clients.length === 0) return;
+
+      if (days.length === 1) {
+        // Toda la zona en un solo día
+        const dayIdx = DAYS.indexOf(days[0]);
+        if (dayIdx !== -1) {
+          clients.forEach((c: any) => c.assignedDay = days[0]);
+          dailyVisits[dayIdx].push(...clients);
+        }
+      } else {
+        // Zona con múltiples días (ej. 2 días: Martes y Jueves, o Miércoles y Jueves)
+        // Se ordenan por proximidad TSP para agrupar microzonas continuas y se reparten equitativamente
+        const orderedClients = nearestNeighborTSP(clients, DEPOT.lat, DEPOT.lng);
+        const perDay = Math.ceil(orderedClients.length / days.length);
+
+        days.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
+          if (dayIdx !== -1) {
+            const slice = orderedClients.slice(step * perDay, (step + 1) * perDay);
+            slice.forEach((c: any) => c.assignedDay = dayName);
+            dailyVisits[dayIdx].push(...slice);
+          }
+        });
+      }
+    });
+
+    // 3. Clientes flexibles (distribución por defecto de cada corredor):
+    const foreignFlexible = flexibleClients.filter((c: any) => {
       const nc = (c.city || '').trim().toLowerCase();
       return nc && !nc.includes('san juan');
     });
-    const localFlexible = clientsFlexible.filter((c: any) => {
+    const localFlexible = flexibleClients.filter((c: any) => {
       const nc = (c.city || '').trim().toLowerCase();
       return !nc || nc.includes('san juan');
     });
@@ -536,8 +588,8 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     if (route.id === r1Route.id) {
       // --- RUTA 1: NORTE ---
       // Lunes: Aguascalientes
-      // Martes a Jueves (3 días): Encarnación de Díaz microzonas TSP
-      // Viernes y Sábado (2 días): San Juan de los Lagos Norte
+      // Miércoles y Jueves (o Martes a Jueves): Encarnación de Díaz distribuido para que NUNCA queden vacíos
+      // Viernes y Sábado: San Juan de los Lagos Norte
       const agsClients = foreignFlexible.filter((c: any) => {
         const nc = (c.city || '').toLowerCase();
         return nc.includes('ags') || nc.includes('aguascalientes');
@@ -549,16 +601,20 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       const otherForeign = foreignFlexible.filter((c: any) => !agsClients.includes(c) && !encClients.includes(c));
 
       // Lunes: Aguascalientes
+      agsClients.forEach((c: any) => c.assignedDay = 'Lunes');
       dailyVisits[0].push(...agsClients);
 
-      // Martes a Jueves (3 días): Encarnación de Díaz ordenado por microzonas TSP
+      // Encarnación de Díaz (si no tenía días configurados):
+      // Se reparte en 3 días: Martes, Miércoles y Jueves (asegura clientes en Miércoles y Jueves)
       if (encClients.length > 0) {
         const orderedEnc = nearestNeighborTSP(encClients, DEPOT.lat, DEPOT.lng);
-        const encDays = [1, 2, 3]; // Martes, Miércoles, Jueves
+        const encDays = ['Martes', 'Miércoles', 'Jueves'];
         const encPerDay = Math.ceil(orderedEnc.length / 3);
-        encDays.forEach((dIdx: number, step: number) => {
+        encDays.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
           const slice = orderedEnc.slice(step * encPerDay, (step + 1) * encPerDay);
-          dailyVisits[dIdx].push(...slice);
+          slice.forEach((c: any) => c.assignedDay = dayName);
+          dailyVisits[dayIdx].push(...slice);
         });
       }
 
@@ -570,17 +626,19 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       // Viernes y Sábado (2 días): San Juan de los Lagos Norte
       if (localFlexible.length > 0) {
         const orderedLocals = nearestNeighborTSP(localFlexible, DEPOT.lat, DEPOT.lng);
-        const r1LocalDays = [4, 5]; // Viernes, Sábado
+        const r1LocalDays = ['Viernes', 'Sábado'];
         const r1LocalPerDay = Math.ceil(orderedLocals.length / 2);
-        r1LocalDays.forEach((dIdx: number, step: number) => {
+        r1LocalDays.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
           const slice = orderedLocals.slice(step * r1LocalPerDay, (step + 1) * r1LocalPerDay);
-          dailyVisits[dIdx].push(...slice);
+          slice.forEach((c: any) => c.assignedDay = dayName);
+          dailyVisits[dayIdx].push(...slice);
         });
       }
 
     } else if (route.id === r2Route.id) {
       // --- RUTA 2: SUR ---
-      // Martes: Corredor Altos Sur
+      // Martes: Corredor Altos Sur (Jalos, San Miguel, Valle, Tepatitlán)
       // Miércoles: Arandas / Jesús María
       // Lunes, Jueves, Viernes, Sábado: San Juan de los Lagos Sur
       const arandasClients = foreignFlexible.filter((c: any) => {
@@ -589,16 +647,20 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       });
       const altosSurClients = foreignFlexible.filter((c: any) => !arandasClients.includes(c));
 
+      altosSurClients.forEach((c: any) => c.assignedDay = 'Martes');
+      arandasClients.forEach((c: any) => c.assignedDay = 'Miércoles');
       dailyVisits[1].push(...altosSurClients);
       dailyVisits[2].push(...arandasClients);
 
       if (localFlexible.length > 0) {
         const orderedLocals = nearestNeighborTSP(localFlexible, DEPOT.lat, DEPOT.lng);
-        const r2LocalDays = [0, 3, 4, 5]; // Lunes, Jueves, Viernes, Sábado
+        const r2LocalDays = ['Lunes', 'Jueves', 'Viernes', 'Sábado'];
         const r2LocalPerDay = Math.ceil(orderedLocals.length / 4);
-        r2LocalDays.forEach((dIdx: number, step: number) => {
+        r2LocalDays.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
           const slice = orderedLocals.slice(step * r2LocalPerDay, (step + 1) * r2LocalPerDay);
-          dailyVisits[dIdx].push(...slice);
+          slice.forEach((c: any) => c.assignedDay = dayName);
+          dailyVisits[dayIdx].push(...slice);
         });
       }
 
@@ -606,15 +668,18 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       // --- RUTA 3: OESTE ---
       // Lunes: Foráneos (Yahualica, Cuquio, etc.)
       // Martes a Sábado: San Juan Poniente
+      foreignFlexible.forEach((c: any) => c.assignedDay = 'Lunes');
       dailyVisits[0].push(...foreignFlexible);
 
       if (localFlexible.length > 0) {
         const orderedLocals = nearestNeighborTSP(localFlexible, DEPOT.lat, DEPOT.lng);
-        const r3LocalDays = [1, 2, 3, 4, 5]; // Martes a Sábado
+        const r3LocalDays = ['Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
         const perDay = Math.ceil(orderedLocals.length / 5);
-        r3LocalDays.forEach((dIdx: number, step: number) => {
+        r3LocalDays.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
           const slice = orderedLocals.slice(step * perDay, (step + 1) * perDay);
-          dailyVisits[dIdx].push(...slice);
+          slice.forEach((c: any) => c.assignedDay = dayName);
+          dailyVisits[dayIdx].push(...slice);
         });
       }
 
@@ -622,15 +687,18 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       // --- RUTA 4: ESTE ---
       // Jueves: Lagos de Moreno
       // Lunes, Martes, Miércoles, Viernes, Sábado: San Juan Oriente
+      foreignFlexible.forEach((c: any) => c.assignedDay = 'Jueves');
       dailyVisits[3].push(...foreignFlexible);
 
       if (localFlexible.length > 0) {
         const orderedLocals = nearestNeighborTSP(localFlexible, DEPOT.lat, DEPOT.lng);
-        const r4LocalDays = [0, 1, 2, 4, 5]; // Lunes, Martes, Miércoles, Viernes, Sábado
+        const r4LocalDays = ['Lunes', 'Martes', 'Miércoles', 'Viernes', 'Sábado'];
         const r4LocalPerDay = Math.ceil(orderedLocals.length / 5);
-        r4LocalDays.forEach((dIdx: number, step: number) => {
+        r4LocalDays.forEach((dayName: string, step: number) => {
+          const dayIdx = DAYS.indexOf(dayName);
           const slice = orderedLocals.slice(step * r4LocalPerDay, (step + 1) * r4LocalPerDay);
-          dailyVisits[dIdx].push(...slice);
+          slice.forEach((c: any) => c.assignedDay = dayName);
+          dailyVisits[dayIdx].push(...slice);
         });
       }
 
@@ -640,7 +708,10 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
       const ordered = nearestNeighborTSP(allFlex, DEPOT.lat, DEPOT.lng);
       const perDay = Math.ceil(ordered.length / 6);
       for (let d = 0; d < 6; d++) {
-        dailyVisits[d].push(...ordered.slice(d * perDay, (d + 1) * perDay));
+        const slice = ordered.slice(d * perDay, (d + 1) * perDay);
+        const dayName = DAYS[d];
+        slice.forEach((c: any) => c.assignedDay = dayName);
+        dailyVisits[d].push(...slice);
       }
     }
 

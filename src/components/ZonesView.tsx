@@ -9,6 +9,7 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
   const [saving, setSaving] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [exportingSheet, setExportingSheet] = useState(false);
+  const [restoringSheet, setRestoringSheet] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   
   // Extract unique cities (zones) from all clients
@@ -18,6 +19,9 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
       const city = c.city ? c.city.toLowerCase().trim() : "desconocida";
       if (city) zonesSet.add(city);
     });
+    // Zonas clave aseguradas
+    zonesSet.add("zona metropolitana ags");
+    zonesSet.add("encarnación de díaz");
     return Array.from(zonesSet).sort();
   }, [state.clients]);
 
@@ -40,29 +44,76 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
     });
   };
 
-
-  const handleZoneOverrideChange = async (zone, field, value) => {
-    // Optimistic UI update
+  const handleZoneOverrideChange = async (zone: string, field: string, value: any) => {
     setState(prev => {
       const zOverrides = { ...(prev.zoneOverrides || {}) };
       if (!zOverrides[zone]) zOverrides[zone] = {};
       
-      if (value === "") {
+      if (value === "" || value === null || value === undefined) {
         delete zOverrides[zone][field];
       } else {
-        zOverrides[zone][field] = field === 'assignedRouteId' ? parseInt(value) : value;
+        zOverrides[zone][field] = field === 'assignedRouteId' ? parseInt(value, 10) : value;
       }
       return { ...prev, zoneOverrides: zOverrides };
     });
 
     try {
-      const val = value === "" ? undefined : (field === 'assignedRouteId' ? parseInt(value) : value);
+      const val = (value === "" || value === null || value === undefined) ? null : (field === 'assignedRouteId' ? parseInt(value, 10) : value);
       await apiFetch(`/api/settings/zone-overrides/${encodeURIComponent(zone)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [field]: val })
       });
     } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const toggleZoneDay = async (zone: string, day: string) => {
+    const currentOverride = state.zoneOverrides?.[zone] || {};
+    const rawDays = Array.isArray(currentOverride.assignedDays) && currentOverride.assignedDays.length > 0
+      ? currentOverride.assignedDays
+      : (currentOverride.assignedDay ? [currentOverride.assignedDay] : []);
+
+    let newDays: string[];
+    if (rawDays.includes(day)) {
+      newDays = rawDays.filter(d => d !== day);
+    } else {
+      newDays = [...rawDays, day];
+    }
+
+    const DAYS_ORDER = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    newDays.sort((a, b) => DAYS_ORDER.indexOf(a) - DAYS_ORDER.indexOf(b));
+
+    const primaryDay = newDays.length > 0 ? newDays[0] : '';
+    const frequency = newDays.length;
+
+    setState(prev => {
+      const zOverrides = { ...(prev.zoneOverrides || {}) };
+      if (!zOverrides[zone]) zOverrides[zone] = {};
+      if (newDays.length === 0) {
+        delete zOverrides[zone].assignedDays;
+        delete zOverrides[zone].assignedDay;
+        delete zOverrides[zone].visitFrequency;
+      } else {
+        zOverrides[zone].assignedDays = newDays;
+        zOverrides[zone].assignedDay = primaryDay;
+        zOverrides[zone].visitFrequency = frequency;
+      }
+      return { ...prev, zoneOverrides: zOverrides };
+    });
+
+    try {
+      await apiFetch(`/api/settings/zone-overrides/${encodeURIComponent(zone)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignedDays: newDays.length > 0 ? newDays : null,
+          assignedDay: primaryDay || null,
+          visitFrequency: frequency > 0 ? frequency : null
+        })
+      });
+    } catch (e) {
       console.error(e);
     }
   };
@@ -79,7 +130,7 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
       });
       if (res.ok) {
         setState(prev => ({ ...prev, disabledZones: zonesArray }));
-        setSuccessMsg("Zonas actualizadas. Puedes recalcular las rutas ahora.");
+        setSuccessMsg("Zonas actualizadas y respaldadas en Google Sheets.");
         setTimeout(() => setSuccessMsg(""), 5000);
       }
     } catch (err) {
@@ -119,18 +170,48 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
   const handleExportSheet = async () => {
     setExportingSheet(true);
     try {
-      const res = await apiFetch('/api/routes/sync-sheet', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMsg(`¡${data.rowsCount} visitas guardadas exitosamente en la pestaña 'Planes_Rutas_Semanales' de Google Sheets!`);
+      const [resPlans, resZones] = await Promise.all([
+        apiFetch('/api/routes/sync-sheet', { method: 'POST' }),
+        apiFetch('/api/settings/zones/sync-sheet', { method: 'POST' })
+      ]);
+      const dataPlans = await resPlans.json();
+      const dataZones = await resZones.json();
+      if (dataPlans.success && dataZones.success) {
+        setSuccessMsg(`¡${dataPlans.rowsCount} visitas guardadas en 'Planes_Rutas_Semanales' y ${dataZones.count} zonas en 'Predisposicion_Zonas' de Google Sheets!`);
         setTimeout(() => setSuccessMsg(""), 8000);
       } else {
-        alert("Error al guardar en Google Sheets: " + (data.error || ""));
+        alert("Resultado: " + (dataPlans.error || dataZones.error || "Guardado completado"));
       }
     } catch (err: any) {
       alert("Error de conexión: " + err.message);
     } finally {
       setExportingSheet(false);
+    }
+  };
+
+  const handleRestoreFromSheet = async () => {
+    setRestoringSheet(true);
+    try {
+      const res = await apiFetch('/api/settings/zones/restore-sheet', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.zoneOverrides) {
+        setState(prev => ({
+          ...prev,
+          zoneOverrides: data.zoneOverrides,
+          disabledZones: data.disabledZones || prev.disabledZones
+        }));
+        if (data.disabledZones) {
+          setDisabledZones(new Set(data.disabledZones));
+        }
+        setSuccessMsg("¡Predisposiciones de zonas restauradas exitosamente desde Google Sheets!");
+        setTimeout(() => setSuccessMsg(""), 8000);
+      } else {
+        alert("No se pudieron cargar zonas: " + (data.error || ""));
+      }
+    } catch (err: any) {
+      alert("Error restaurando de Sheets: " + err.message);
+    } finally {
+      setRestoringSheet(false);
     }
   };
 
@@ -144,16 +225,25 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
         <div>
           <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
             <MapIcon className="w-6 h-6 text-blue-600" />
-            Gestión de Zonas (Ciudades)
+            Gestión y Predisposición de Zonas
           </h2>
-          <p className="text-slate-500 mt-1">Asigna rutas y días por zona. Al recalcular se respetarán 100% tus zonas y se guardarán en Google Sheets.</p>
+          <p className="text-slate-500 mt-1">Configura la ruta y selecciona uno o varios días de visita para cada zona (ej. Encarnación de Díaz 2 días por semana). Se respaldan automáticamente en Google Sheets.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
+          <button 
+            onClick={handleRestoreFromSheet}
+            disabled={restoringSheet}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-colors border border-slate-200 flex items-center gap-1.5 disabled:opacity-50"
+            title="Recuperar la configuración de zonas guardada en la pestaña Predisposicion_Zonas de Google Sheets"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${restoringSheet ? 'animate-spin' : ''}`} />
+            {restoringSheet ? 'Cargando...' : 'Restaurar de Sheets'}
+          </button>
           <button 
             onClick={handleExportSheet}
             disabled={exportingSheet}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
-            title="Exportar plan semanal a la pestaña Planes_Rutas_Semanales de Google Sheets"
+            title="Guardar planes de visitas y predisposición de zonas en Google Sheets"
           >
             <FileSpreadsheet className={`w-4 h-4 ${exportingSheet ? 'animate-bounce' : ''}`} />
             {exportingSheet ? 'Exportando...' : 'Exportar a Sheets'}
@@ -209,55 +299,82 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
               {filteredZones.map(zone => {
                 const isDisabled = disabledZones.has(zone);
                 const count = state.clients.filter(c => (c.city || "desconocida").toLowerCase().trim() === zone).length;
+                const zoneConfig = state.zoneOverrides?.[zone] || {};
+                
+                const selectedDays: string[] = Array.isArray(zoneConfig.assignedDays) && zoneConfig.assignedDays.length > 0
+                  ? zoneConfig.assignedDays
+                  : (zoneConfig.assignedDay ? [zoneConfig.assignedDay] : []);
+
                 return (
-                  <div key={zone} className="p-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-slate-50 transition-colors gap-4">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-slate-800 capitalize">{zone}</h4>
-                      <p className="text-xs text-slate-500">{count} clientes en esta zona</p>
+                  <div key={zone} className="p-4 flex flex-col lg:flex-row lg:items-center justify-between hover:bg-slate-50 transition-colors gap-4">
+                    <div className="flex-1 min-w-[200px]">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-slate-800 capitalize text-base">{zone}</h4>
+                        {selectedDays.length > 1 && (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            {selectedDays.length} días de visita
+                          </span>
+                        )}
+                        {selectedDays.length === 1 && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            Fijo: {selectedDays[0]}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{count} clientes en esta zona</p>
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-3">
-                      <div className="flex items-center gap-2">
+                      {/* Ruta Selector */}
+                      <div className="flex items-center gap-1.5">
                         <label className="text-xs font-semibold text-slate-500">Ruta:</label>
                         <select
-                          value={state.zoneOverrides?.[zone]?.assignedRouteId || ""}
+                          value={zoneConfig.assignedRouteId || ""}
                           onChange={(e) => handleZoneOverrideChange(zone, 'assignedRouteId', e.target.value)}
-                          className="text-sm bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[140px]"
+                          className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[140px]"
                         >
-                          <option value="">Cualquiera</option>
+                          <option value="">⚡ Automático</option>
                           {state.routes.map(r => (
                             <option key={r.id} value={r.id}>{r.name}</option>
                           ))}
                         </select>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-semibold text-slate-500">Día:</label>
-                        <select
-                          value={state.zoneOverrides?.[zone]?.assignedDay || ""}
-                          onChange={(e) => handleZoneOverrideChange(zone, 'assignedDay', e.target.value)}
-                          className="text-sm bg-white border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">Cualquiera</option>
-                          <option value="Lunes">Lunes</option>
-                          <option value="Martes">Martes</option>
-                          <option value="Miércoles">Miércoles</option>
-                          <option value="Jueves">Jueves</option>
-                          <option value="Viernes">Viernes</option>
-                          <option value="Sábado">Sábado</option>
-                        </select>
+                      {/* Day Pills (Selección Múltiple interactiva) */}
+                      <div className="flex items-center gap-1">
+                        <label className="text-xs font-semibold text-slate-500 mr-1">Días:</label>
+                        {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'].map(day => {
+                          const shortName = day.slice(0, 3);
+                          const isSelected = selectedDays.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => toggleZoneDay(zone, day)}
+                              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                                isSelected 
+                                  ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-600 hover:bg-blue-700' 
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                              }`}
+                              title={`Alternar ${day} para ${zone}`}
+                            >
+                              {shortName}
+                            </button>
+                          );
+                        })}
                       </div>
 
+                      {/* Active/Inactive Toggle */}
                       <button
                         onClick={() => toggleZone(zone)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors min-w-[100px] ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors min-w-[90px] ${
                           isDisabled 
                           ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200' 
                           : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                         }`}
                       >
-                        {isDisabled && <EyeOff className="w-3 h-3" />}
-                        {!isDisabled && <Eye className="w-3 h-3" />}
+                        {isDisabled && <EyeOff className="w-3.5 h-3.5" />}
+                        {!isDisabled && <Eye className="w-3.5 h-3.5" />}
                         <span>{isDisabled ? 'Inactiva' : 'Activa'}</span>
                       </button>
                     </div>
