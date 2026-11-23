@@ -316,11 +316,11 @@ async function initPersistentDatabase() {
       const currentState = loadState();
       let changed = false;
       if (sheetZones.zoneOverrides && Object.keys(sheetZones.zoneOverrides).length > 0) {
-        currentState.zoneOverrides = { ...(sheetZones.zoneOverrides || {}), ...(currentState.zoneOverrides || {}) };
+        currentState.zoneOverrides = { ...(currentState.zoneOverrides || {}), ...(sheetZones.zoneOverrides || {}) };
         changed = true;
       }
       if (sheetZones.disabledZones && sheetZones.disabledZones.length > 0) {
-        currentState.disabledZones = Array.from(new Set([...(currentState.disabledZones || []), ...sheetZones.disabledZones]));
+        currentState.disabledZones = Array.from(new Set([...(sheetZones.disabledZones || [])]));
         changed = true;
       }
       if (changed) {
@@ -809,8 +809,8 @@ async function startServer() {
         return res.status(404).json({ success: false, error: 'No se encontraron predisposiciones de zonas en Google Sheets' });
       }
       const state = loadState();
-      state.zoneOverrides = { ...(sheetZones.zoneOverrides || {}), ...(state.zoneOverrides || {}) };
-      state.disabledZones = Array.from(new Set([...(state.disabledZones || []), ...(sheetZones.disabledZones || [])]));
+      state.zoneOverrides = { ...(state.zoneOverrides || {}), ...(sheetZones.zoneOverrides || {}) };
+      state.disabledZones = Array.from(new Set([...(sheetZones.disabledZones || [])]));
       saveState(state);
       res.json({ success: true, zoneOverrides: state.zoneOverrides, disabledZones: state.disabledZones });
     } catch (err: any) {
