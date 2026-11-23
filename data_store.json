@@ -17396,10 +17396,6 @@
     }
   },
   "zoneOverrides": {
-    "yahualica": {
-      "assignedRouteId": 3,
-      "assignedDay": "Lunes"
-    },
     "encarnación de díaz": {
       "assignedRouteId": 1,
       "assignedDays": [
@@ -17408,6 +17404,10 @@
       ],
       "assignedDay": "Miércoles",
       "visitFrequency": 2
+    },
+    "yahualica": {
+      "assignedRouteId": 3,
+      "assignedDay": "Lunes"
     },
     "zona metropolitana ags": {
       "assignedRouteId": 1,
@@ -17541,9 +17541,11 @@
       "password": "Maria.1234",
       "extraMenus": [
         "checadas",
-        "nomina"
+        "nomina",
+        "planner",
+        "dashboard"
       ],
-      "extraMenusExpiresAt": null
+      "extraMenusExpiresAt": "2026-11-27"
     },
     {
       "id": 1793632170157,
@@ -18122,5 +18124,5 @@
   ],
   "lastWeekReset": "2026-11-23",
   "lastSync": "2026-11-18T14:12:11.769Z",
-  "stateVersion": 1795444803863
+  "stateVersion": 1795450800788
 }
