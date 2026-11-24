@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { generateMasterPlan } from './server/algorithm';
-import { executeKw } from './server/odoo';
+import { executeKw, reconcileSinglePosSession } from './server/odoo';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import { startOdooSync, syncCommissions, loadLocalCommissions, saveLocalCommissions } from './server/odooSync.ts';
 import { getSalesReport } from './server/reportsService';
@@ -208,6 +208,10 @@ async function initPersistentDatabase() {
           try {
             const dbState = JSON.parse(res.rows[0].data);
             if (dbState && typeof dbState === 'object') {
+              if (!dbState.settings) dbState.settings = {};
+              if (typeof dbState.settings.commissionRatePerson !== 'number') dbState.settings.commissionRatePerson = 1.5;
+              if (typeof dbState.settings.commissionRateCompany !== 'number') dbState.settings.commissionRateCompany = 1.0;
+              if (typeof dbState.settings.commissionAdjustmentMultiplier !== 'number') dbState.settings.commissionAdjustmentMultiplier = 1.0;
               _cachedState = dbState;
               fs.writeFileSync(STORE_FILE, JSON.stringify(dbState, null, 2));
               console.log("Master state restored from PostgreSQL database.");
@@ -245,6 +249,10 @@ async function initPersistentDatabase() {
         try {
           const fsState = JSON.parse(dataObj.data);
           if (fsState && typeof fsState === 'object' && Array.isArray(fsState.clients) && fsState.clients.length > 0) {
+            if (!fsState.settings) fsState.settings = {};
+            if (typeof fsState.settings.commissionRatePerson !== 'number') fsState.settings.commissionRatePerson = 1.5;
+            if (typeof fsState.settings.commissionRateCompany !== 'number') fsState.settings.commissionRateCompany = 1.0;
+            if (typeof fsState.settings.commissionAdjustmentMultiplier !== 'number') fsState.settings.commissionAdjustmentMultiplier = 1.0;
             _cachedState = fsState;
             fs.writeFileSync(STORE_FILE, JSON.stringify(fsState, null, 2));
             console.log("Master state restored from Google Cloud Firestore.");
@@ -418,7 +426,7 @@ function checkWeeklyReset(state: any) {
 function loadState(): AppState {
   let state: any = _cachedState;
   if (!state) {
-    state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00" }, lastSync: null, lastWeekReset: null };
+    state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00", commissionRatePerson: 1.5, commissionRateCompany: 1.0, commissionAdjustmentMultiplier: 1.0 }, lastSync: null, lastWeekReset: null };
     const candidates = [STORE_FILE, 'data_store.backup.json', 'backup_live_state.json'];
     for (const f of candidates) {
       if (fs.existsSync(f)) {
@@ -434,6 +442,11 @@ function loadState(): AppState {
       }
     }
   }
+
+  if (!state.settings) state.settings = {};
+  if (typeof state.settings.commissionRatePerson !== 'number') state.settings.commissionRatePerson = 1.5;
+  if (typeof state.settings.commissionRateCompany !== 'number') state.settings.commissionRateCompany = 1.0;
+  if (typeof state.settings.commissionAdjustmentMultiplier !== 'number') state.settings.commissionAdjustmentMultiplier = 1.0;
 
   // Always check weekly reset even when cached state is present!
   checkWeeklyReset(state);
@@ -704,6 +717,20 @@ async function startServer() {
     }
   });
 
+  // Acceso directo optimizado a TPV de Odoo para el rutero
+  app.get('/api/pos/open/:routeId', async (req, res) => {
+    const routeId = parseInt(req.params.routeId);
+    if (!isNaN(routeId) && routeId > 0) {
+      try {
+        await reconcileSinglePosSession(routeId);
+      } catch (err: any) {
+        console.warn(`[POS Open Route ${routeId}] Advertencia reconciliando sesión:`, err?.message || err);
+      }
+      return res.redirect(`https://lacteos-trujillos2.odoo.com/pos/ui?config_id=${routeId}`);
+    }
+    return res.redirect('https://lacteos-trujillos2.odoo.com/pos/ui');
+  });
+
   app.post('/api/routes/:id', (req, res) => {
     const { id } = req.params;
     const { isDelivery, isAuthorized } = req.body;
@@ -740,7 +767,7 @@ async function startServer() {
     )) {
         try {
             const rateCompany = (typeof state.settings.commissionRateCompany === 'number' ? state.settings.commissionRateCompany : 1.0) / 100;
-            const ratePerson = (typeof state.settings.commissionRatePerson === 'number' ? state.settings.commissionRatePerson : 2.0) / 100;
+            const ratePerson = (typeof state.settings.commissionRatePerson === 'number' ? state.settings.commissionRatePerson : 1.5) / 100;
             const multiplier = (typeof state.settings.commissionAdjustmentMultiplier === 'number' && Number.isFinite(state.settings.commissionAdjustmentMultiplier))
               ? Math.max(0, state.settings.commissionAdjustmentMultiplier)
               : 1.0;
@@ -1190,7 +1217,7 @@ async function startServer() {
       
       const state = loadState();
       let rateCompany = 0.01;
-      let ratePerson = 0.02;
+      let ratePerson = 0.015;
       let multiplier = 1.0;
       if (state.settings) {
          if (typeof state.settings.commissionRateCompany === 'number') rateCompany = state.settings.commissionRateCompany / 100;

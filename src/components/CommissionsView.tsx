@@ -391,7 +391,7 @@ export default function CommissionsView({
 
   // CÁLCULO EXACTO DE NÓMINA POR RUTA CON PORCENTAJES ORIGINALES DE INDIVIDUALES Y EMPRESAS
   const rateCompany = state?.settings?.commissionRateCompany ?? 1.0;
-  const ratePerson = state?.settings?.commissionRatePerson ?? 2.0;
+  const ratePerson = state?.settings?.commissionRatePerson ?? 1.5;
 
   const diasSemanaMap: Record<number, 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo'> = {
     1: 'lunes',

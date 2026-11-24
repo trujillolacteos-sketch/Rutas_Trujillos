@@ -557,12 +557,11 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
   const atRiskCount = visitsWithETA.filter(v => v.isAtRisk).length;
 
   const getPosUrl = (routeId?: number | null, clientId?: number | null) => {
-    const baseUrl = 'https://lacteos-trujillos2.odoo.com';
     if (routeId) {
-      // In Odoo POS, config_id opens the direct POS session for this specific truck/route
-      return `${baseUrl}/pos/ui?config_id=${routeId}`;
+      // Endpoint que asegura la pertenencia de la sesión en Odoo al rutero y redirige al TPV
+      return `/api/pos/open/${routeId}`;
     }
-    return `${baseUrl}/pos/ui`;
+    return 'https://lacteos-trujillos2.odoo.com/pos/ui';
   };
 
   const renderReachedModal = () => {

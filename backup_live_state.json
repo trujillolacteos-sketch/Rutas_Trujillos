@@ -21321,7 +21321,10 @@
       "Ruta 2": 2200,
       "Ruta 3": 2200,
       "Ruta 4": 2200
-    }
+    },
+    "commissionRatePerson": 1.5,
+    "commissionRateCompany": 1,
+    "commissionAdjustmentMultiplier": 1
   },
   "users": [
     {

@@ -447,7 +447,7 @@ export default function SettingsView({
                 step="0.1"
                 min="0"
                 max="100"
-                value={state.settings?.commissionRatePerson ?? 2.0} 
+                value={state.settings?.commissionRatePerson ?? 1.5} 
                 onChange={(e) => setState({ ...state, settings: { ...state.settings, commissionRatePerson: parseFloat(e.target.value) } })}
                 className="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
               />

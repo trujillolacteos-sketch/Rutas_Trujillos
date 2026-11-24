@@ -17426,6 +17426,15 @@
       ],
       "assignedDay": "Jueves",
       "visitFrequency": 1
+    },
+    "jalostotitlán": {
+      "assignedRouteId": 2,
+      "assignedDays": [
+        "Lunes",
+        "Viernes"
+      ],
+      "assignedDay": "Lunes",
+      "visitFrequency": 2
     }
   },
   "settings": {
@@ -17435,7 +17444,10 @@
       "Ruta 2": 2200,
       "Ruta 3": 2200,
       "Ruta 4": 2200
-    }
+    },
+    "commissionRatePerson": 1.5,
+    "commissionRateCompany": 1,
+    "commissionAdjustmentMultiplier": 1
   },
   "users": [
     {
@@ -18750,6 +18762,16 @@
       "notes": "App minimizada o en segundo plano (Posible evasión)"
     },
     {
+      "id": "vxytz0kky",
+      "routeId": 3,
+      "timestamp": "2026-11-23T15:56:54.822Z",
+      "type": "parada",
+      "lat": 21.4227102,
+      "lng": -102.2463638,
+      "duration": 8925,
+      "notes": "Parada de 149 minutos"
+    },
+    {
       "id": "zxybjyeo2",
       "routeId": 3,
       "timestamp": "2026-11-23T15:56:55.013Z",
@@ -18838,9 +18860,159 @@
       "lng": -102.3347433,
       "duration": 0,
       "notes": "App minimizada o en segundo plano (Posible evasión)"
+    },
+    {
+      "id": "tsl9wb7i8",
+      "routeId": 1,
+      "timestamp": "2026-11-23T17:31:03.631Z",
+      "type": "evasion",
+      "lat": 21.34568193,
+      "lng": -102.27211,
+      "duration": 0,
+      "notes": "El usuario salió de la navegación durante la ruta (Posible evasión)"
+    },
+    {
+      "id": "ple96rjwu",
+      "routeId": 1,
+      "timestamp": "2026-11-23T17:31:06.726Z",
+      "type": "evasion",
+      "lat": 21.34568193,
+      "lng": -102.27211,
+      "duration": 0,
+      "notes": "El usuario ha pausado la ruta (Posible evasión)"
+    },
+    {
+      "id": "n50pkwqgf",
+      "routeId": 3,
+      "timestamp": "2026-11-23T18:25:38.197Z",
+      "type": "evasion",
+      "lat": 21.4227102,
+      "lng": -102.2463638,
+      "duration": 0,
+      "notes": "App regresó a primer plano"
+    },
+    {
+      "id": "t7g6hcpfw",
+      "routeId": 3,
+      "timestamp": "2026-11-23T18:26:11.205Z",
+      "type": "evasion",
+      "lat": 21.5169944,
+      "lng": -102.2246537,
+      "duration": 0,
+      "notes": "El usuario salió de la navegación durante la ruta (Posible evasión)"
+    },
+    {
+      "id": "4w1bpn5cg",
+      "routeId": 3,
+      "timestamp": "2026-11-23T19:02:48.127Z",
+      "type": "evasion",
+      "lat": 21.5289194,
+      "lng": -102.234223,
+      "duration": 0,
+      "notes": "App minimizada o en segundo plano (Posible evasión)"
+    },
+    {
+      "id": "kyimb4h9n",
+      "routeId": 3,
+      "timestamp": "2026-11-23T19:02:57.314Z",
+      "type": "evasion",
+      "lat": 21.5289194,
+      "lng": -102.234223,
+      "duration": 0,
+      "notes": "App regresó a primer plano"
+    },
+    {
+      "id": "eugwy5elg",
+      "routeId": 3,
+      "timestamp": "2026-11-23T19:03:01.245Z",
+      "type": "evasion",
+      "lat": 21.5289194,
+      "lng": -102.234223,
+      "duration": 0,
+      "notes": "App minimizada o en segundo plano (Posible evasión)"
+    },
+    {
+      "id": "4a6gi8gsf",
+      "routeId": 3,
+      "timestamp": "2026-11-23T21:35:11.982Z",
+      "type": "evasion",
+      "lat": 21.5288546,
+      "lng": -102.2335985,
+      "duration": 0,
+      "notes": "App regresó a primer plano"
+    },
+    {
+      "id": "tv45tcfsb",
+      "routeId": 3,
+      "timestamp": "2026-11-23T21:35:42.928Z",
+      "type": "evasion",
+      "lat": 21.3459573,
+      "lng": -102.2721386,
+      "duration": 0,
+      "notes": "App minimizada o en segundo plano (Posible evasión)"
+    },
+    {
+      "id": "x8oivtsgp",
+      "routeId": 3,
+      "timestamp": "2026-11-23T21:35:43.085Z",
+      "type": "evasion",
+      "lat": 21.3459573,
+      "lng": -102.2721386,
+      "duration": 0,
+      "notes": "App cerrada o recargada durante ruta (Posible evasión)"
+    },
+    {
+      "id": "2ueaydsie",
+      "routeId": 1,
+      "timestamp": "2026-11-24T13:21:31.640Z",
+      "type": "evasion",
+      "lat": 21.34561327,
+      "lng": -102.2721769,
+      "duration": 0,
+      "notes": "El usuario salió de la navegación durante la ruta (Posible evasión)"
+    },
+    {
+      "id": "j22l67po4",
+      "routeId": 1,
+      "timestamp": "2026-11-24T13:21:34.815Z",
+      "type": "evasion",
+      "lat": 21.34561327,
+      "lng": -102.2721769,
+      "duration": 0,
+      "notes": "El usuario ha pausado la ruta (Posible evasión)"
+    },
+    {
+      "id": "n8xvr9n7p",
+      "routeId": 1,
+      "timestamp": "2026-11-24T13:36:02.423Z",
+      "type": "evasion",
+      "lat": 21.34561371,
+      "lng": -102.2721769,
+      "duration": 0,
+      "notes": "El usuario salió de la navegación durante la ruta (Posible evasión)"
+    },
+    {
+      "id": "w9hm0tce0",
+      "routeId": 1,
+      "timestamp": "2026-11-24T13:36:06.962Z",
+      "type": "evasion",
+      "lat": 21.34561371,
+      "lng": -102.2721769,
+      "duration": 0,
+      "notes": "El usuario ha pausado la ruta (Posible evasión)"
+    },
+    {
+      "id": "kf7d8vs19",
+      "routeId": 1,
+      "timestamp": "2026-11-24T13:42:19.826Z",
+      "type": "evasion",
+      "lat": 21.34561371,
+      "lng": -102.2721769,
+      "duration": 0,
+      "notes": "El usuario ha pausado la ruta (Posible evasión)"
     }
   ],
   "lastWeekReset": "2026-11-23",
   "lastSync": "2026-11-18T14:12:11.769Z",
-  "stateVersion": 1795450800788
+  "stateVersion": 1795529680936
 }

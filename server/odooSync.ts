@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { executeKw } from './odoo';
+import { executeKw, ensureOpenSessionsAssignedToRouteDrivers } from './odoo';
 import { db } from '../src/db/index.ts';
 import { commissions } from '../src/db/schema.ts';
 import { inArray } from 'drizzle-orm';
@@ -36,7 +36,7 @@ function isCustomerAccountPayment(paymentMethod: any) {
 
 function getCommissionSettings() {
   let rateCompany = 0.01;
-  let ratePerson = 0.02;
+  let ratePerson = 0.015;
   let adjustmentMultiplier = 1;
   let clientOverrides: Record<string, any> = {};
 
@@ -89,14 +89,28 @@ export function saveLocalCommissions(records: any[]) {
   }
 }
 
-// Sync every 15 minutes
+// Sync every 15 minutes, with POS auto-assignment every 3 minutes
 export function startOdooSync() {
+  // Verificación y asignación inicial de sesiones de TPV
+  setTimeout(() => {
+    ensureOpenSessionsAssignedToRouteDrivers().catch(e => console.error('[OdooSync] Initial POS assign error:', e));
+  }, 5000);
+
   cron.schedule('*/15 * * * *', async () => {
     console.log('Running Odoo Sync...');
     try {
       await syncCommissions();
     } catch (e) {
       console.error('Error in Odoo sync:', e);
+    }
+  });
+
+  // Reconciliación continua de sesiones abiertas de POS cada 3 minutos
+  cron.schedule('*/3 * * * *', async () => {
+    try {
+      await ensureOpenSessionsAssignedToRouteDrivers();
+    } catch (e) {
+      console.error('Error in POS sessions periodic auto-assign:', e);
     }
   });
 }
