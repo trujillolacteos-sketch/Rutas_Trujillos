@@ -1843,7 +1843,9 @@ async function startServer() {
         cuentaFiscal,
         folio,
         litros,
-        precioPorLitro
+        precioPorLitro,
+        routeId,
+        routeName
       } = req.body;
 
       if (!fecha) return res.status(400).json({ error: "La fecha es obligatoria" });
@@ -1860,7 +1862,9 @@ async function startServer() {
         cuentaFiscal: cuentaFiscal || 'Efectivo',
         folio: folio || '',
         litros: litros !== undefined && litros !== '' ? Number(litros) : undefined,
-        precioPorLitro: precioPorLitro !== undefined && precioPorLitro !== '' ? Number(precioPorLitro) : undefined
+        precioPorLitro: precioPorLitro !== undefined && precioPorLitro !== '' ? Number(precioPorLitro) : undefined,
+        routeId: routeId || undefined,
+        routeName: routeName || undefined
       });
 
       res.json({ success: true, movimiento: newMov });
@@ -2461,6 +2465,32 @@ async function startServer() {
       const { routeId } = req.params;
       const semanaId = req.body?.semanaId;
       const updated = updateNominaRuta(routeId, req.body, semanaId);
+
+      // Sincronizar en memoria _cachedState para que ninguna otra llamada lo sobreescriba
+      try {
+        const curState = loadState();
+        if (!curState.settings) curState.settings = {};
+        if (!curState.settings.routeEmployees) curState.settings.routeEmployees = {};
+        if (!curState.settings.baseSalaries) curState.settings.baseSalaries = {};
+        const rName = String(routeId).startsWith('Ruta') ? String(routeId) : `Ruta ${routeId}`;
+        const numId = String(routeId).replace(/\D/g, '');
+
+        if (req.body?.empleadoNombre !== undefined) {
+          curState.settings.routeEmployees[String(routeId)] = req.body.empleadoNombre;
+          curState.settings.routeEmployees[rName] = req.body.empleadoNombre;
+          if (numId) curState.settings.routeEmployees[numId] = req.body.empleadoNombre;
+        }
+        if (req.body?.salarioBase !== undefined) {
+          const salNum = Number(req.body.salarioBase);
+          curState.settings.baseSalaries[String(routeId)] = salNum;
+          curState.settings.baseSalaries[rName] = salNum;
+          if (numId) curState.settings.baseSalaries[numId] = salNum;
+        }
+        saveState(curState);
+      } catch (stErr: any) {
+        console.error('[PUT /api/rh/nomina-rutas/:routeId] Error sincronizando state:', stErr?.message);
+      }
+
       res.json({ success: true, ruta: updated });
     } catch (err: any) {
       console.error('[nominaService] Error en PUT /api/rh/nomina-rutas/:routeId:', err);

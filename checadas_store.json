@@ -10,68 +10,6 @@
     "empleados": [
       {
         "rowNumber": 3,
-        "nombre": "JORGE ORTIZ PAREDES",
-        "jornada": "58:00",
-        "faltas": 7,
-        "jornadaIncompleta": "",
-        "incapacidades": 0,
-        "vacaciones": 0,
-        "tipoJornada": "fijo",
-        "extrasSemana": "0:00",
-        "totalHorasSemana": "0:00",
-        "dias": {
-          "lunes": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          },
-          "martes": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          },
-          "miercoles": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          },
-          "jueves": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          },
-          "viernes": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          },
-          "sabado": {
-            "entrada1": "",
-            "salida1": "",
-            "entrada2": "",
-            "salida2": "",
-            "total": "0:00",
-            "extras": "0:00"
-          }
-        }
-      },
-      {
-        "rowNumber": 4,
         "nombre": "JOSE ANTONIO SANROMAN ZUNIGA",
         "jornada": "58:00",
         "faltas": 7,
@@ -133,7 +71,7 @@
         }
       },
       {
-        "rowNumber": 5,
+        "rowNumber": 4,
         "nombre": "ANA ROCIO FLORES SANCHEZ",
         "jornada": "58:00",
         "faltas": 7,
@@ -195,7 +133,7 @@
         }
       },
       {
-        "rowNumber": 6,
+        "rowNumber": 5,
         "nombre": "ANA ELISELDA CUELLAR MONTOYA",
         "jornada": "58:00",
         "faltas": 7,
@@ -257,7 +195,7 @@
         }
       },
       {
-        "rowNumber": 7,
+        "rowNumber": 6,
         "nombre": "LIDIA GONZALEZ MAGDALENO",
         "jornada": "58:00",
         "faltas": 7,
@@ -319,7 +257,7 @@
         }
       },
       {
-        "rowNumber": 8,
+        "rowNumber": 7,
         "nombre": "JAIME ORTIZ PAREDES",
         "jornada": "58:00",
         "faltas": 7,
@@ -381,7 +319,7 @@
         }
       },
       {
-        "rowNumber": 9,
+        "rowNumber": 8,
         "nombre": "ESTELA CAMPOS",
         "jornada": "58:00",
         "faltas": 0,
@@ -443,7 +381,7 @@
         }
       },
       {
-        "rowNumber": 10,
+        "rowNumber": 9,
         "nombre": "MARIA DE SAN JUAN GONZALEZ GUTIERRES",
         "jornada": "58:00",
         "faltas": 7,
@@ -505,7 +443,7 @@
         }
       },
       {
-        "rowNumber": 11,
+        "rowNumber": 10,
         "nombre": "Liliana del Carmen Espinoza Avalos",
         "jornada": "58:00",
         "faltas": 7,
@@ -567,7 +505,7 @@
         }
       },
       {
-        "rowNumber": 12,
+        "rowNumber": 11,
         "nombre": "CLAUDIA BERENICE MONTES ZANDOVAL",
         "jornada": "58:00",
         "faltas": 7,
@@ -629,7 +567,7 @@
         }
       },
       {
-        "rowNumber": 13,
+        "rowNumber": 12,
         "nombre": "ALMA AVALOS  ESPINOZA",
         "jornada": "58:00",
         "faltas": 7,
@@ -691,7 +629,7 @@
         }
       },
       {
-        "rowNumber": 14,
+        "rowNumber": 13,
         "nombre": "LAURA ELIZABETH DE SANTOS  ROMO",
         "jornada": "58:00",
         "faltas": 7,
@@ -753,7 +691,7 @@
         }
       },
       {
-        "rowNumber": 15,
+        "rowNumber": 14,
         "nombre": "SARAHÍ HERNADEZ CUELLAR",
         "jornada": "58:00",
         "faltas": 7,
@@ -815,7 +753,7 @@
         }
       },
       {
-        "rowNumber": 16,
+        "rowNumber": 15,
         "nombre": "JAIME",
         "jornada": "58:00",
         "faltas": 7,

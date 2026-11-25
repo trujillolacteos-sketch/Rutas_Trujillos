@@ -50,7 +50,7 @@
     "tipoSalario": "jornada",
     "jornada": "58:00",
     "rowNumber": 3,
-    "edad": 54,
+    "edad": 55,
     "antiguedad": "8 meses"
   },
   {
@@ -109,7 +109,7 @@
   {
     "id": "1005",
     "numeroEmpleado": 1005,
-    "estatus": "ACTIVO",
+    "estatus": "INACTIVO",
     "primerApellido": "ORTIZ",
     "segundoApellido": "PAREDES",
     "nombre": "JORGE",
@@ -125,12 +125,13 @@
     "sueldoBase": 6000,
     "sueldoBaseTexto": "$6,000.00",
     "fechaIngreso": "10/2/2025",
+    "fechaBaja": "14/11/2026",
     "departamento": "PRODUCCIÓN",
     "tipoSalario": "fijo",
-    "jornada": "58:00",
+    "jornada": "58:00:00",
     "rowNumber": 6,
     "edad": 43,
-    "antiguedad": "1 a, 8 m"
+    "antiguedad": "1 a, 9 m"
   },
   {
     "id": "1006",
@@ -317,7 +318,7 @@
     "jornada": "58:00",
     "rowNumber": 12,
     "edad": 17,
-    "antiguedad": "1 a, 7 m"
+    "antiguedad": "1 a, 8 m"
   },
   {
     "id": "1012",
@@ -343,7 +344,7 @@
     "tipoSalario": "jornada",
     "jornada": "58:00",
     "rowNumber": 13,
-    "edad": 26,
+    "edad": 27,
     "antiguedad": "Reciente"
   },
   {
@@ -369,7 +370,7 @@
     "tipoSalario": "fijo",
     "jornada": "58:00",
     "rowNumber": 14,
-    "edad": 37,
+    "edad": 38,
     "antiguedad": "1 a, 3 m"
   },
   {
@@ -423,7 +424,7 @@
     "jornada": "58:00",
     "rowNumber": 16,
     "edad": 37,
-    "antiguedad": "1 a, 2 m"
+    "antiguedad": "1 a, 3 m"
   },
   {
     "id": "1016",
@@ -476,7 +477,7 @@
     "jornada": "58:00",
     "rowNumber": 18,
     "edad": 34,
-    "antiguedad": "1 a, 1 m"
+    "antiguedad": "1 a, 2 m"
   },
   {
     "id": "1018",
@@ -655,7 +656,7 @@
     "tipoSalario": "fijo",
     "jornada": "58:00",
     "rowNumber": 26,
-    "antiguedad": "9 meses"
+    "antiguedad": "10 meses"
   },
   {
     "id": "1026",
@@ -797,7 +798,7 @@
     "tipoSalario": "jornada",
     "jornada": "58:00",
     "rowNumber": 32,
-    "edad": 20,
+    "edad": 21,
     "antiguedad": "8 meses"
   },
   {
@@ -894,7 +895,7 @@
     "tipoSalario": "jornada",
     "jornada": "58:00",
     "rowNumber": 36,
-    "edad": 20,
+    "edad": 21,
     "antiguedad": "6 meses"
   },
   {
@@ -1181,7 +1182,7 @@
     "jornada": "58:00",
     "rowNumber": 50,
     "edad": 43,
-    "antiguedad": "4 meses"
+    "antiguedad": "5 meses"
   },
   {
     "id": "1050",
@@ -1296,22 +1297,22 @@
     "jornada": "58:00",
     "rowNumber": 55,
     "edad": 32,
-    "antiguedad": "3 meses"
+    "antiguedad": "4 meses"
   },
   {
     "id": "1055",
     "numeroEmpleado": 1055,
     "estatus": "ACTIVO",
-    "primerApellido": "",
+    "primerApellido": "AGUIRRE",
     "segundoApellido": "",
     "nombre": "MARIANA",
-    "nombreCompleto": "MARIANA",
-    "puesto": "RUTA",
-    "sueldoBase": 3000,
-    "sueldoBaseTexto": "$3,000.00",
+    "nombreCompleto": "MARIANA AGUIRRE",
+    "puesto": "RUTERO",
+    "sueldoBase": 2200,
+    "sueldoBaseTexto": "$2,200.00",
     "departamento": "RUTA",
     "tipoSalario": "rutero",
-    "jornada": "58:00",
+    "jornada": "58:00:00",
     "rowNumber": 56,
     "antiguedad": "No registrada"
   },
@@ -1336,7 +1337,7 @@
     "jornada": "58:00",
     "rowNumber": 57,
     "edad": 21,
-    "antiguedad": "2 meses"
+    "antiguedad": "3 meses"
   },
   {
     "id": "1057",
@@ -1378,6 +1379,60 @@
     "tipoSalario": "fijo",
     "jornada": "58:00",
     "rowNumber": 59,
-    "antiguedad": "16 días"
+    "antiguedad": "1 meses"
+  },
+  {
+    "id": "1059",
+    "numeroEmpleado": 1059,
+    "estatus": "ACTIVO",
+    "primerApellido": "CAMPOS",
+    "segundoApellido": "",
+    "nombre": "ANGEL",
+    "nombreCompleto": "ANGEL CAMPOS",
+    "puesto": "RUTERO",
+    "sueldoBase": 2200,
+    "sueldoBaseTexto": "$2,200.00",
+    "fechaIngreso": "5/11/2020",
+    "departamento": "RUTA",
+    "tipoSalario": "rutero",
+    "jornada": "58:00:00",
+    "rowNumber": 60,
+    "antiguedad": "6 a"
+  },
+  {
+    "id": "1060",
+    "numeroEmpleado": 1060,
+    "estatus": "ACTIVO",
+    "primerApellido": "",
+    "segundoApellido": "",
+    "nombre": "MIGUEL",
+    "nombreCompleto": "MIGUEL",
+    "puesto": "RUTERO",
+    "sueldoBase": 2200,
+    "sueldoBaseTexto": "$2,200.00",
+    "fechaIngreso": "14/11/2026",
+    "departamento": "RUTA",
+    "tipoSalario": "rutero",
+    "jornada": "58:00:00",
+    "rowNumber": 61,
+    "antiguedad": "10 días"
+  },
+  {
+    "id": "1061",
+    "numeroEmpleado": 1061,
+    "estatus": "ACTIVO",
+    "primerApellido": "",
+    "segundoApellido": "",
+    "nombre": "GEOVANY",
+    "nombreCompleto": "GEOVANY",
+    "puesto": "RUTERO",
+    "sueldoBase": 2200,
+    "sueldoBaseTexto": "$2,200.00",
+    "fechaIngreso": "14/11/2026",
+    "departamento": "RUTA",
+    "tipoSalario": "rutero",
+    "jornada": "58:00:00",
+    "rowNumber": 62,
+    "antiguedad": "10 días"
   }
 ]

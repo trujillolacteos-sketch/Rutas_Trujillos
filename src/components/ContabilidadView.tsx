@@ -5,7 +5,7 @@ import {
   ArrowUpRight, ArrowDownLeft, Download, Trash2, PieChart, Layers, 
   Milk, User, CreditCard, ChevronLeft, ChevronRight, FileSpreadsheet,
   AlertCircle, BarChart3, HelpCircle, Eye, ArrowRight, Wallet,
-  Landmark, ArrowLeftRight, X
+  Landmark, ArrowLeftRight, X, Truck
 } from 'lucide-react';
 import EstadoResultadosView from './EstadoResultadosView';
 
@@ -30,6 +30,8 @@ interface MovimientoContable {
   totalNeto: number;
   dia: string;
   rowNumber?: number;
+  routeId?: number | string;
+  routeName?: string;
 }
 
 interface ContabilidadViewProps {
@@ -41,9 +43,11 @@ interface ContabilidadViewProps {
 
 const CUENTAS_MENORES = [
   // Ingresos Activos
-  { value: 'Ruta', label: 'Ruta', tipoDefault: 'Entrada', group: 'Ingresos Activos' },
+  { value: 'Ruta', label: 'Ruta (Venta de ruta)', tipoDefault: 'Entrada', group: 'Ingresos Activos' },
   { value: 'Venta directa', label: 'Venta directa', tipoDefault: 'Entrada', group: 'Ingresos Activos' },
+  { value: 'Sobrante Ruta', label: 'Sobrante Ruta (Ajuste liquidación)', tipoDefault: 'Entrada', group: 'Liquidación de Rutas' },
   // Egresos y Gastos Activos
+  { value: 'Faltante Ruta', label: 'Faltante Ruta (Deducción chofer en nómina)', tipoDefault: 'Salida', group: 'Liquidación de Rutas' },
   { value: 'Gastos', label: 'Gastos generales', tipoDefault: 'Salida', group: 'Egresos Activos' },
   { value: 'Gastos Rutas', label: 'Gastos Rutas', tipoDefault: 'Salida', group: 'Egresos Activos' },
   { value: 'Insumos', label: 'Insumos y Materias', tipoDefault: 'Salida', group: 'Egresos Activos' },
@@ -104,6 +108,23 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
   const [folio, setFolio] = useState('');
   const [litros, setLitros] = useState<string>('');
   const [precioPorLitro, setPrecioPorLitro] = useState<string>('');
+
+  // Rutas y Arqueo (Sobrante / Faltante en liquidación de venta)
+  const activeRoutes = useMemo(() => {
+    if (state?.routes && Array.isArray(state.routes) && state.routes.length > 0) {
+      return state.routes.filter((r: any) => r.isAuthorized !== false);
+    }
+    return [
+      { id: 1, name: 'Ruta 1' },
+      { id: 2, name: 'Ruta 2' },
+      { id: 3, name: 'Ruta 3' },
+      { id: 5, name: 'Ruta 4' },
+      { id: 9, name: 'Ruta 5' }
+    ];
+  }, [state?.routes]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string>('1');
+  const [tipoArqueoRuta, setTipoArqueoRuta] = useState<'ninguno' | 'faltante' | 'sobrante'>('ninguno');
+  const [montoArqueoRuta, setMontoArqueoRuta] = useState<string>('');
 
   // UI status
   const [saving, setSaving] = useState(false);
@@ -406,6 +427,10 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
         ? `Recepción leche: ${litros} Lts a $${precioPorLitro}/Lt`
         : motivo.trim();
 
+      const isRouteRelated = cuentaMenor === 'Ruta' || cuentaMenor === 'Sobrante Ruta' || cuentaMenor === 'Faltante Ruta';
+      const matchedRoute = activeRoutes.find((r: any) => String(r.id) === String(selectedRouteId));
+      const matchedRouteName = matchedRoute?.name || `Ruta ${selectedRouteId}`;
+
       const payload: any = {
         fecha,
         empresa: 'Quesería',
@@ -417,6 +442,11 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
         cuentaFiscal: autoCuentaFiscal,
         folio: folio.trim()
       };
+
+      if (isRouteRelated) {
+        payload.routeId = selectedRouteId;
+        payload.routeName = matchedRouteName;
+      }
 
       if (isLeche) {
         payload.litros = parseFloat(litros) || 0;
@@ -434,12 +464,68 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
 
       const data = await res.json();
       if (data.success) {
-        setSaveSuccess(`¡Movimiento registrado con éxito! Folio/ID: ${data.movimiento.id}. Sincronizado a Google Sheets.`);
+        let extraMovMsg = '';
+        const arqM = parseFloat(montoArqueoRuta) || 0;
+        if (cuentaMenor === 'Ruta' && arqM > 0) {
+          try {
+            if (tipoArqueoRuta === 'faltante') {
+              await fetch('/api/contabilidad/movimientos', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  fecha,
+                  empresa: 'Quesería',
+                  tipoMovimiento: 'Salida',
+                  cuentaMenor: 'Faltante Ruta',
+                  monto: arqM,
+                  motivo: `Faltante en liquidación de venta - ${matchedRouteName} (Descuento automático en nómina)`,
+                  autoriza: autoUsuario,
+                  cuentaFiscal: autoCuentaFiscal,
+                  folio: folio.trim(),
+                  routeId: selectedRouteId,
+                  routeName: matchedRouteName
+                })
+              });
+              extraMovMsg = ` y se registró Faltante de Ruta por $${arqM.toFixed(2)} (impactará en la nómina del rutero).`;
+            } else if (tipoArqueoRuta === 'sobrante') {
+              await fetch('/api/contabilidad/movimientos', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  fecha,
+                  empresa: 'Quesería',
+                  tipoMovimiento: 'Entrada',
+                  cuentaMenor: 'Sobrante Ruta',
+                  monto: arqM,
+                  motivo: `Sobrante en liquidación de venta - ${matchedRouteName}`,
+                  autoriza: autoUsuario,
+                  cuentaFiscal: autoCuentaFiscal,
+                  folio: folio.trim(),
+                  routeId: selectedRouteId,
+                  routeName: matchedRouteName
+                })
+              });
+              extraMovMsg = ` y se registró Sobrante de Ruta por $${arqM.toFixed(2)}.`;
+            }
+          } catch (arqErr: any) {
+            console.error('Error registrando arqueo de ruta:', arqErr);
+          }
+        }
+
+        setSaveSuccess(`¡Movimiento registrado con éxito! Folio/ID: ${data.movimiento?.id || 'OK'}${extraMovMsg} Sincronizado a Google Sheets.`);
         setMonto('');
         setMotivo('');
         setFolio('');
         setLitros('');
         setPrecioPorLitro('');
+        setMontoArqueoRuta('');
+        setTipoArqueoRuta('ninguno');
         loadMovimientos(1);
         loadCajaChica();
       } else {
@@ -668,8 +754,12 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold bg-white"
                   >
                     <optgroup label="Ingresos Activos (Entradas)">
-                      <option value="Ruta">Ruta</option>
+                      <option value="Ruta">Ruta (Venta de ruta)</option>
                       <option value="Venta directa">Venta directa</option>
+                      <option value="Sobrante Ruta">Sobrante Ruta (Ajuste liquidación)</option>
+                    </optgroup>
+                    <optgroup label="Liquidación de Rutas (Deducciones)">
+                      <option value="Faltante Ruta">Faltante Ruta (Deducción chofer en nómina)</option>
                     </optgroup>
                     <optgroup label="Egresos y Gastos Activos (Salidas)">
                       <option value="Gastos">Gastos generales</option>
@@ -698,7 +788,170 @@ export default function ContabilidadView({ token, state, role, user }: Contabili
                     </optgroup>
                   </select>
                 </div>
+
+                {/* Selector de Ruta para movimientos asociados a rutas */}
+                {(cuentaMenor === 'Ruta' || cuentaMenor === 'Sobrante Ruta' || cuentaMenor === 'Faltante Ruta') && (
+                  <div className="sm:col-span-2 p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 shrink-0">
+                        <Truck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-blue-900 block">
+                          Ruta de Distribución *
+                        </label>
+                        <span className="text-[10px] text-blue-700">
+                          {cuentaMenor === 'Faltante Ruta' 
+                            ? 'El faltante se descontará en nómina del chofer de esta ruta' 
+                            : 'Asocia el movimiento a la ruta correspondiente'}
+                        </span>
+                      </div>
+                    </div>
+                    <select
+                      value={selectedRouteId}
+                      onChange={(e) => setSelectedRouteId(e.target.value)}
+                      className="px-3.5 py-2 text-xs rounded-xl border border-blue-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 cursor-pointer shrink-0"
+                    >
+                      {activeRoutes.map((r: any) => (
+                        <option key={r.id} value={String(r.id)}>
+                          {r.name || `Ruta ${r.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
+
+              {/* Mensajes informativos directos para Faltante y Sobrante */}
+              {cuentaMenor === 'Faltante Ruta' && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <div>
+                    <span className="font-bold block">Deducción de nómina de fin de semana:</span>
+                    <span>
+                      Este faltante se registrará como egreso en caja y <strong>se descontará automáticamente en el pago de nómina del chofer</strong> asignado a <strong>{activeRoutes.find((r: any) => String(r.id) === String(selectedRouteId))?.name || `Ruta ${selectedRouteId}`}</strong>.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {cuentaMenor === 'Sobrante Ruta' && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-center gap-2.5">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold block">Ajuste de caja a favor:</span>
+                    <span>
+                      Este sobrante se registrará como ingreso para cuadrar la caja física de <strong>{activeRoutes.find((r: any) => String(r.id) === String(selectedRouteId))?.name || `Ruta ${selectedRouteId}`}</strong>.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Arqueo / Liquidación automática al capturar Venta de Ruta */}
+              {cuentaMenor === 'Ruta' && (
+                <div className="p-4 bg-gradient-to-br from-slate-50 to-amber-50/40 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      ⚖️ Arqueo / Liquidación de la Ruta (Faltante o Sobrante)
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      Impacto automático en nómina semanal
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setTipoArqueoRuta('ninguno'); setMontoArqueoRuta(''); }}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                        tipoArqueoRuta === 'ninguno'
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      ✓ Cuadre Exacto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipoArqueoRuta('faltante')}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                        tipoArqueoRuta === 'faltante'
+                          ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                          : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+                      }`}
+                    >
+                      🔻 Faltante Ruta
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTipoArqueoRuta('sobrante')}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border ${
+                        tipoArqueoRuta === 'sobrante'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                          : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                      }`}
+                    >
+                      ➕ Sobrante Ruta
+                    </button>
+                  </div>
+
+                  {tipoArqueoRuta === 'faltante' && (
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl space-y-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-rose-900">
+                          Monto Faltante ($ MXN) *
+                        </label>
+                        <span className="text-[10px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                          Deducción chofer en nómina
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <DollarSign className="w-4 h-4 text-rose-500 absolute left-3 top-3 pointer-events-none" />
+                        <input
+                          type="number"
+                          step="any"
+                          required
+                          placeholder="0.00"
+                          value={montoArqueoRuta}
+                          onChange={(e) => setMontoArqueoRuta(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 text-sm font-black rounded-xl border border-rose-300 bg-white text-rose-950 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                      </div>
+                      <p className="text-[11px] text-rose-800 leading-tight">
+                        📌 <strong>Impacto en nómina:</strong> Al guardar la venta, se generará el movimiento de faltante para <strong>{activeRoutes.find((r: any) => String(r.id) === String(selectedRouteId))?.name || `Ruta ${selectedRouteId}`}</strong> y se descontará del pago de nómina de fin de semana del chofer.
+                      </p>
+                    </div>
+                  )}
+
+                  {tipoArqueoRuta === 'sobrante' && (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-emerald-900">
+                          Monto Sobrante ($ MXN) *
+                        </label>
+                        <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          Ajuste a favor en caja
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <DollarSign className="w-4 h-4 text-emerald-500 absolute left-3 top-3 pointer-events-none" />
+                        <input
+                          type="number"
+                          step="any"
+                          required
+                          placeholder="0.00"
+                          value={montoArqueoRuta}
+                          onChange={(e) => setMontoArqueoRuta(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 text-sm font-black rounded-xl border border-emerald-300 bg-white text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <p className="text-[11px] text-emerald-800 leading-tight">
+                        Al guardar la venta, se registrará el ingreso por sobrante para cuadrar la caja física de <strong>{activeRoutes.find((r: any) => String(r.id) === String(selectedRouteId))?.name || `Ruta ${selectedRouteId}`}</strong>.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Special block for LECHE: Litros & Precio */}
               {cuentaMenor.toLowerCase() === 'leche' && (

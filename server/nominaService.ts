@@ -4,6 +4,7 @@ import { getGoogleAccessToken } from './googleCredentials.ts';
 import { loadLocalRH, getEmpleadosActivosRH, normalizeEmployeeName, EmpleadoRH } from './rhService.ts';
 import { loadStore as loadChecadasStore, SemanaChecadas, EmpleadoChecada, getWeekDetails } from './checadasService.ts';
 import { loadLocalCommissions } from './odooSync.ts';
+import { loadLocalContabilidad } from './contabilidadService.ts';
 
 const NEW_SPREADSHEET_ID = process.env.NEW_SPREADSHEET_ID || '1Qh14NXamdskjHWPQj2VaijhwBGPSvSaPl2d76fEvElE';
 const NOMINA_STORE_FILE = 'nomina_store.json';
@@ -108,6 +109,8 @@ export interface NominaStore {
   historico: SemanaNomina[];
   saldosPrestamos?: Record<string, number>; // Mapa maestro de saldos pendientes de préstamo por colaborador
   rutasAjustes?: Record<string, Record<string, any>>; // [semanaKey][routeName]: ajustes manuales de rutas
+  rutaChoferesPermanentes?: Record<string, string>; // Asignación persistente maestra de chofer por ruta (no se borra)
+  rutaSalariosPermanentes?: Record<string, number>; // Salarios base permanentes por ruta
 }
 
 function getStorePath(): string {
@@ -365,6 +368,9 @@ export function loadNominaStore(): NominaStore {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.semanaActiva) {
         if (!parsed.saldosPrestamos) parsed.saldosPrestamos = {};
+        if (!parsed.rutasAjustes) parsed.rutasAjustes = {};
+        if (!parsed.rutaChoferesPermanentes) parsed.rutaChoferesPermanentes = {};
+        if (!parsed.rutaSalariosPermanentes) parsed.rutaSalariosPermanentes = {};
         return parsed;
       }
     }
@@ -395,7 +401,10 @@ export function loadNominaStore(): NominaStore {
       }
     },
     historico: [],
-    saldosPrestamos: {}
+    saldosPrestamos: {},
+    rutasAjustes: {},
+    rutaChoferesPermanentes: {},
+    rutaSalariosPermanentes: {}
   };
 
   saveNominaStore(store);
@@ -981,6 +990,11 @@ export interface NominaRutaItem {
   notasQueseria: number;
   tienda: number;
   cobrosPendientes: number;
+  faltanteRuta?: number;
+  faltanteContable?: number;
+  sobranteRuta?: number;
+  sobranteContable?: number;
+  faltantesDetalle?: Array<{ id: string; fecha: string; monto: number; motivo: string; cuentaFiscal: string }>;
   percepciones: number;
   descuentos: number;
   pagoFinal: number;
@@ -1023,12 +1037,20 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
   let routes: any[] = [];
   let routeEmployees: Record<string, string> = {};
   let baseSalaries: Record<string, number> = {};
+  let commissionRatePerson = 1.5;
+  let commissionRateCompany = 1.0;
   try {
     if (fs.existsSync('data_store.json')) {
       const parsed = JSON.parse(fs.readFileSync('data_store.json', 'utf8'));
       routes = (parsed.routes || []).filter((r: any) => r.isAuthorized !== false);
       routeEmployees = parsed.settings?.routeEmployees || {};
       baseSalaries = parsed.settings?.baseSalaries || {};
+      if (typeof parsed.settings?.commissionRatePerson === 'number') {
+        commissionRatePerson = parsed.settings.commissionRatePerson;
+      }
+      if (typeof parsed.settings?.commissionRateCompany === 'number') {
+        commissionRateCompany = parsed.settings.commissionRateCompany;
+      }
     }
   } catch (e) {
     console.error('[getNominaRutas] Error leyendo data_store.json:', e);
@@ -1084,7 +1106,11 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
     const routeName = r.name || `Ruta ${r.id}`;
     const adj = store.rutasAjustes?.[semanaKey]?.[routeName] || store.rutasAjustes?.[semanaKey]?.[String(r.id)] || {};
 
-    const assignedEmpName = adj.empleadoNombre || routeEmployees[routeName] || routeEmployees[String(r.id)] || '';
+    const permEmp = store.rutaChoferesPermanentes?.[routeName] || 
+                    store.rutaChoferesPermanentes?.[String(r.id)] ||
+                    store.rutaChoferesPermanentes?.[String(r.id).replace(/\D/g, '')] || '';
+
+    const assignedEmpName = adj.empleadoNombre || permEmp || routeEmployees[routeName] || routeEmployees[String(r.id)] || '';
     const rhMatch = assignedEmpName 
       ? rhActivos.find(e => normalizeEmployeeName(e.nombreCompleto) === normalizeEmployeeName(assignedEmpName))
       : null;
@@ -1095,16 +1121,20 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
     const fechaIngreso = rhMatch?.fechaIngreso || '';
     const telefonoWhatsapp = rhMatch?.telefonoWhatsapp || adj.telefonoWhatsapp || '';
 
-    // Sueldo base: ajustado manualmente o tomado de RH o settings baseSalaries
+    // Sueldo base: ajustado manualmente o tomado de asignación permanente, RH o settings baseSalaries
+    const permSalary = store.rutaSalariosPermanentes?.[routeName] || 
+                       store.rutaSalariosPermanentes?.[String(r.id)] || 
+                       store.rutaSalariosPermanentes?.[String(r.id).replace(/\D/g, '')];
+
     const salarioBase = adj.salarioBase !== undefined 
       ? Number(adj.salarioBase) 
-      : (rhMatch?.sueldoBase ? Number(rhMatch.sueldoBase) : (baseSalaries[routeName] || 0));
+      : (permSalary !== undefined ? Number(permSalary) : (rhMatch?.sueldoBase ? Number(rhMatch.sueldoBase) : (baseSalaries[routeName] || 0)));
 
     // Ventas por día y comisiones
     const routeTickets = weekCommissions.filter(c => c.routeId === r.id || c.routeName === routeName);
 
-    const ratePerson = Number(state?.settings?.commissionRatePerson ?? 2.0);
-    const rateCompany = Number(state?.settings?.commissionRateCompany ?? 1.0);
+    const ratePerson = Number(commissionRatePerson ?? 1.5);
+    const rateCompany = Number(commissionRateCompany ?? 1.0);
 
     const ventasPorDia = {
       lunes: { efectivo: 0, transferencias: 0, total: 0, tickets: 0 },
@@ -1170,8 +1200,47 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
     const tienda = Number(adj.tienda) || 0;
     const cobrosPendientes = Number(adj.cobrosPendientes) || 0;
 
+    // Faltantes y Sobrantes registrados en Contabilidad para esta ruta y semana
+    let allMovsContabilidad: any[] = [];
+    try {
+      allMovsContabilidad = loadLocalContabilidad();
+    } catch (e) {}
+
+    const rNum = String(r.id).replace(/\D/g, '');
+    const faltantesMovs = allMovsContabilidad.filter(m => {
+      const cta = (m.cuentaMenor || '').toLowerCase().trim();
+      if (cta !== 'faltante ruta' && cta !== 'faltante') return false;
+      const mSemNum = m.semanaNum || (m.semana ? parseInt(String(m.semana).replace(/\D/g, ''), 10) : 0);
+      if (mSemNum !== targetSemanaNum) return false;
+
+      if (m.routeId != null && (String(m.routeId) === String(r.id) || String(m.routeId) === rNum)) return true;
+      if (m.routeName && m.routeName.toLowerCase().trim() === routeName.toLowerCase().trim()) return true;
+      const mot = (m.motivo || '').toLowerCase();
+      if (mot.includes(`ruta ${rNum}`) || mot.includes(`ruta ${r.id}`) || mot.includes(routeName.toLowerCase())) return true;
+      return false;
+    });
+    const faltanteContable = faltantesMovs.reduce((sum, m) => sum + (Number(m.monto) || 0), 0);
+    const faltanteRutaManual = adj.faltanteRuta !== undefined ? Number(adj.faltanteRuta) : 0;
+    const totalFaltante = Number((faltanteRutaManual + faltanteContable).toFixed(2));
+
+    const sobrantesMovs = allMovsContabilidad.filter(m => {
+      const cta = (m.cuentaMenor || '').toLowerCase().trim();
+      if (cta !== 'sobrante ruta' && cta !== 'sobrante') return false;
+      const mSemNum = m.semanaNum || (m.semana ? parseInt(String(m.semana).replace(/\D/g, ''), 10) : 0);
+      if (mSemNum !== targetSemanaNum) return false;
+
+      if (m.routeId != null && (String(m.routeId) === String(r.id) || String(m.routeId) === rNum)) return true;
+      if (m.routeName && m.routeName.toLowerCase().trim() === routeName.toLowerCase().trim()) return true;
+      const mot = (m.motivo || '').toLowerCase();
+      if (mot.includes(`ruta ${rNum}`) || mot.includes(`ruta ${r.id}`) || mot.includes(routeName.toLowerCase())) return true;
+      return false;
+    });
+    const sobranteContable = sobrantesMovs.reduce((sum, m) => sum + (Number(m.monto) || 0), 0);
+    const sobranteRutaManual = adj.sobranteRuta !== undefined ? Number(adj.sobranteRuta) : 0;
+    const totalSobrante = Number((sobranteRutaManual + sobranteContable).toFixed(2));
+
     const percepciones = Number((salarioBase + comisionRuta + bonosExtras + pagosPendientes + prestamos).toFixed(2));
-    const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+    const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes + totalFaltante).toFixed(2));
     const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
 
     // WhatsApp Link
@@ -1201,6 +1270,7 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
         (tienda > 0 ? `  • Tienda: -${formatMoney(tienda)}\n` : '') +
         (notasQueseria > 0 ? `  • Notas Quesería: -${formatMoney(notasQueseria)}\n` : '') +
         (cobrosPendientes > 0 ? `  • Cobros Pendientes: -${formatMoney(cobrosPendientes)}\n` : '') +
+        (totalFaltante > 0 ? `  • Faltante en Ruta: -${formatMoney(totalFaltante)}\n` : '') +
         (abonos > 0 ? `  • Abono Préstamo: -${formatMoney(abonos)}\n` : '') +
         `  *TOTAL DEDUCCIONES: -${formatMoney(descuentos)}*\n\n` +
         (saldoPrestamoAnterior > 0 || prestamos > 0 || abonos > 0
@@ -1249,6 +1319,17 @@ export function getNominaRutas(semanaNumOrId?: string | number): NominaRutaItem[
       notasQueseria,
       tienda,
       cobrosPendientes,
+      faltanteRuta: totalFaltante,
+      faltanteContable: Number(faltanteContable.toFixed(2)),
+      sobranteRuta: totalSobrante,
+      sobranteContable: Number(sobranteContable.toFixed(2)),
+      faltantesDetalle: faltantesMovs.map(m => ({
+        id: m.id,
+        fecha: m.fecha,
+        monto: m.monto,
+        motivo: m.motivo,
+        cuentaFiscal: m.cuentaFiscal
+      })),
       percepciones,
       descuentos,
       pagoFinal,
@@ -1316,12 +1397,29 @@ export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNu
 
   store.rutasAjustes[semanaKey][routeIdentifier] = updatedAdj;
   const numId = String(routeIdentifier).replace(/\D/g, '');
+  const rName = String(routeIdentifier).startsWith('Ruta') ? String(routeIdentifier) : `Ruta ${routeIdentifier}`;
   if (numId) {
     store.rutasAjustes[semanaKey][numId] = updatedAdj;
     store.rutasAjustes[semanaKey][`Ruta ${numId}`] = updatedAdj;
   }
 
-  // Si se asignó o cambió el empleado, guardarlo en settings de data_store.json para permanencia
+  // Guardar asignación permanente maestra en nomina_store.json para que NUNCA se borre entre semanas o reinicios
+  if (!store.rutaChoferesPermanentes) store.rutaChoferesPermanentes = {};
+  if (!store.rutaSalariosPermanentes) store.rutaSalariosPermanentes = {};
+
+  if (updates.empleadoNombre !== undefined) {
+    store.rutaChoferesPermanentes[routeIdentifier] = updates.empleadoNombre;
+    store.rutaChoferesPermanentes[rName] = updates.empleadoNombre;
+    if (numId) store.rutaChoferesPermanentes[numId] = updates.empleadoNombre;
+  }
+  if (updates.salarioBase !== undefined) {
+    const salNum = Number(updates.salarioBase);
+    store.rutaSalariosPermanentes[routeIdentifier] = salNum;
+    store.rutaSalariosPermanentes[rName] = salNum;
+    if (numId) store.rutaSalariosPermanentes[numId] = salNum;
+  }
+
+  // Si se asignó o cambió el empleado, guardarlo también en settings de data_store.json para permanencia general
   if (updates.empleadoNombre !== undefined) {
     try {
       if (fs.existsSync('data_store.json')) {
@@ -1329,6 +1427,7 @@ export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNu
         if (!stateData.settings) stateData.settings = {};
         if (!stateData.settings.routeEmployees) stateData.settings.routeEmployees = {};
         stateData.settings.routeEmployees[routeIdentifier] = updates.empleadoNombre;
+        stateData.settings.routeEmployees[rName] = updates.empleadoNombre;
         if (numId) {
           stateData.settings.routeEmployees[numId] = updates.empleadoNombre;
           stateData.settings.routeEmployees[`Ruta ${numId}`] = updates.empleadoNombre;
@@ -1336,6 +1435,7 @@ export function updateNominaRuta(routeIdentifier: string, updates: any, semanaNu
         if (updates.salarioBase !== undefined) {
           if (!stateData.settings.baseSalaries) stateData.settings.baseSalaries = {};
           stateData.settings.baseSalaries[routeIdentifier] = Number(updates.salarioBase);
+          stateData.settings.baseSalaries[rName] = Number(updates.salarioBase);
           if (numId) {
             stateData.settings.baseSalaries[numId] = Number(updates.salarioBase);
             stateData.settings.baseSalaries[`Ruta ${numId}`] = Number(updates.salarioBase);

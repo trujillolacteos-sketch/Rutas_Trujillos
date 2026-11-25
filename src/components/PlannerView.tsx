@@ -560,23 +560,6 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
 
   const atRiskCount = visitsWithETA.filter(v => v.isAtRisk).length;
 
-  const copyToClipboard = (text: string, fieldName: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).catch(() => {});
-      setCopiedField(fieldName);
-      setTimeout(() => setCopiedField(null), 2500);
-    }
-  };
-
-  const handleOpenPosModal = (visit: PlannedVisit) => {
-    if (visit?.clientName && navigator.clipboard) {
-      navigator.clipboard.writeText(visit.clientName).catch(() => {});
-      setCopiedField('client');
-      setTimeout(() => setCopiedField(null), 2500);
-    }
-    setPosModalVisit(visit);
-  };
-
   const getPosUrl = (routeId?: number | null, clientId?: number | null, clientName?: string | null) => {
     const params = new URLSearchParams();
     if (clientId) params.set('clientId', String(clientId));
@@ -588,244 +571,12 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
     return `https://lacteos-trujillos2.odoo.com/pos/ui${qs}`;
   };
 
-  const renderCredsOnlyModal = () => {
-    if (!showCredsOnlyModal) return null;
-    return (
-      <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">
-                <Key className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">Acceso a Odoo y POS</h3>
-                <p className="text-xs text-slate-500 font-medium">Cuenta unificada de rutas</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setShowCredsOnlyModal(false)}
-              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-600">
-            Utiliza estas credenciales si Odoo te solicita iniciar sesión o identificarte para acceder al Punto de Venta:
-          </p>
-
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-3">
-            {/* Estancia */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Estancia / URL</span>
-                <span className="text-xs font-bold text-slate-800 truncate block">https://lacteos-trujillos2.odoo.com/odoo</span>
-              </div>
-              <button
-                onClick={() => copyToClipboard('https://lacteos-trujillos2.odoo.com/odoo', 'creds_instance')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar URL de la Estancia"
-              >
-                {copiedField === 'creds_instance' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Usuario */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Usuario</span>
-                <span className="text-xs font-bold text-slate-800 truncate block">lacteostrujillosrutas@gmail.com</span>
-              </div>
-              <button
-                onClick={() => copyToClipboard('lacteostrujillosrutas@gmail.com', 'creds_user')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar usuario"
-              >
-                {copiedField === 'creds_user' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Contraseña */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2 flex items-center gap-2">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Contraseña</span>
-                  <span className="text-xs font-bold text-slate-800 font-mono tracking-wider">
-                    {showPassword ? 'Rutas.1234' : '••••••••••'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
-                  title={showPassword ? "Ocultar" : "Mostrar"}
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <button
-                onClick={() => copyToClipboard('Rutas.1234', 'creds_pass')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar contraseña"
-              >
-                {copiedField === 'creds_pass' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="pt-1">
-            <button
-              onClick={() => setShowCredsOnlyModal(false)}
-              className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-2xl font-bold text-xs transition-colors"
-            >
-              Entendido / Cerrar
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPosModal = () => {
-    if (!posModalVisit) return null;
-    return (
-      <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-2xs">
-                <ShoppingCart className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">Punto de Venta Odoo</h3>
-                <p className="text-xs text-slate-500 font-medium">{posModalVisit.routeName} • {posModalVisit.day}</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setPosModalVisit(null)}
-              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Cliente a Surtir ("Jalar Cliente") */}
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                <User className="w-3.5 h-3.5 text-emerald-600" /> Cliente de esta Parada
-              </span>
-              <button
-                onClick={() => copyToClipboard(posModalVisit.clientName, 'client')}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-2xs active:scale-95"
-                title="Copiar nombre para pegarlo en la búsqueda de cliente del POS"
-              >
-                {copiedField === 'client' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedField === 'client' ? '¡Copiado!' : 'Copiar Nombre'}</span>
-              </button>
-            </div>
-            <p className="text-base font-extrabold text-slate-900 leading-snug">{posModalVisit.clientName}</p>
-            <div className="text-[11px] text-emerald-900/80 bg-white/80 p-2 rounded-xl border border-emerald-100/60 leading-relaxed">
-              ⚡ <b>¡Nombre copiado en tu portapapeles!</b> Al abrir el POS en Odoo, pulsa en <b>"Cliente"</b> y dale <b>"Pegar"</b> para asignarlo al ticket en 1 segundo.
-            </div>
-          </div>
-
-          {/* Acceso e Identificación Odoo */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-blue-600" /> Acceso Odoo (si pide identificarte)
-              </span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                Cuenta Rutas
-              </span>
-            </div>
-
-            {/* Estancia */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Estancia / URL</span>
-                <span className="text-xs font-bold text-slate-800 truncate block">https://lacteos-trujillos2.odoo.com/odoo</span>
-              </div>
-              <button
-                onClick={() => copyToClipboard('https://lacteos-trujillos2.odoo.com/odoo', 'instance')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar URL de la Estancia"
-              >
-                {copiedField === 'instance' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Usuario */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase">Usuario</span>
-                <span className="text-xs font-bold text-slate-800 truncate block">lacteostrujillosrutas@gmail.com</span>
-              </div>
-              <button
-                onClick={() => copyToClipboard('lacteostrujillosrutas@gmail.com', 'user')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar usuario"
-              >
-                {copiedField === 'user' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Contraseña */}
-            <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="min-w-0 pr-2 flex items-center gap-2">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Contraseña</span>
-                  <span className="text-xs font-bold text-slate-800 font-mono tracking-wider">
-                    {showPassword ? 'Rutas.1234' : '••••••••••'}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-slate-400 hover:text-slate-600 p-1"
-                  title={showPassword ? "Ocultar" : "Mostrar"}
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-              <button
-                onClick={() => copyToClipboard('Rutas.1234', 'pass')}
-                className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors shrink-0"
-                title="Copiar contraseña"
-              >
-                {copiedField === 'pass' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Botones de Acción */}
-          <div className="space-y-2 pt-1">
-            <a
-              href={getPosUrl(posModalVisit.routeId, posModalVisit.clientId, posModalVisit.clientName)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => {
-                handleStatusChange(posModalVisit, 'VISITADO');
-                setPosModalVisit(null);
-              }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 active:scale-98 transition-all text-sm text-center"
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span>🚀 Abrir Punto de Venta en Odoo</span>
-              <ExternalLink className="w-4 h-4 opacity-80" />
-            </a>
-
-            <button
-              onClick={() => setPosModalVisit(null)}
-              className="w-full py-2.5 rounded-xl text-slate-500 hover:text-slate-800 font-bold text-xs transition-colors"
-            >
-              Volver a la ruta
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  const handleDirectOpenPos = (visit: PlannedVisit) => {
+    if (visit?.clientName && navigator.clipboard) {
+      navigator.clipboard.writeText(visit.clientName).catch(() => {});
+    }
+    const url = getPosUrl(visit.routeId, visit.clientId, visit.clientName);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const renderReachedModal = () => {
@@ -854,9 +605,9 @@ export default function PlannerView({ state, role, user, setState }: { state: Ap
             <button
               onClick={() => {
                 setProcessedVisits(prev => new Set(prev).add(reachedVisit.id));
-                const v = reachedVisit;
+                handleDirectOpenPos(reachedVisit);
+                handleStatusChange(reachedVisit, 'VISITADO');
                 setReachedVisit(null);
-                handleOpenPosModal(v);
               }}
               className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold transition-colors shadow-sm flex items-center justify-center gap-2 text-sm text-center"
               title={`Abrir ticket de POS para ${reachedVisit.clientName}`}

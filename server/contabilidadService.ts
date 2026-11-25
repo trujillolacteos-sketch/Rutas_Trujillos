@@ -28,6 +28,8 @@ export interface MovimientoContable {
   dia: string; // 'lunes'
   fechaCaptura?: string;
   rowNumber?: number;
+  routeId?: number | string;
+  routeName?: string;
 }
 
 const MESES = [
@@ -278,13 +280,17 @@ export async function appendMovimientoToSheet(mov: MovimientoContable): Promise<
     const token = await getGoogleAccessToken(['https://www.googleapis.com/auth/spreadsheets']);
     if (!token) return false;
 
+    const motivoFinal = (mov.routeName && !mov.motivo.toLowerCase().includes(mov.routeName.toLowerCase()))
+      ? `[${mov.routeName}] ${mov.motivo}`
+      : mov.motivo;
+
     const row = [
       mov.fechaSheet || mov.fecha, // A: Fecha
       mov.empresa, // B: Cuenta mayor
       mov.tipoMovimiento, // C: Tipo movimiento
       mov.cuentaMenor, // D: Cuenta menor
       mov.monto, // E: Monto
-      mov.motivo, // F: Motivo
+      motivoFinal, // F: Motivo
       mov.autoriza, // G: Autoriza
       mov.cuentaFiscal, // H: Cuenta fiscal
       mov.folio || '', // I: Folio
@@ -336,6 +342,8 @@ export async function createMovimiento(data: {
   folio?: string;
   litros?: number;
   precioPorLitro?: number;
+  routeId?: number | string;
+  routeName?: string;
 }): Promise<{ success: boolean; message: string; movimiento?: MovimientoContable; sheetSynced?: boolean }> {
   try {
     if (!data.fecha) {
@@ -377,6 +385,8 @@ export async function createMovimiento(data: {
       folio: data.folio || '',
       litros,
       precioPorLitro,
+      routeId: data.routeId,
+      routeName: data.routeName,
       semana,
       semanaNum: semNum,
       mes,
@@ -620,7 +630,7 @@ export function calculateContabilidadBalances(targetYear?: number): Contabilidad
     const ingresoNeto = isEntrada ? monto : (isSalida ? -monto : 0);
 
     // Ingresos
-    if (cta === 'ruta') col.ruta += ingresoNeto;
+    if (cta === 'ruta' || cta === 'sobrante ruta' || cta === 'sobrante' || cta === 'faltante ruta' || cta === 'faltante') col.ruta += ingresoNeto;
     else if (cta === 'manzanillo ruta 6') col.manzanilloRuta6 += ingresoNeto;
     else if (cta === 'ventas manzanillo') col.ventasManzanillo += ingresoNeto;
     else if (cta === 'venta directa') col.ventaDirecta += ingresoNeto;
@@ -886,7 +896,7 @@ function aggregateMovimientos(movs: MovimientoContable[]) {
     const ingresoNeto = isEntrada ? monto : (isSalida ? -monto : 0);
 
     // Ingresos
-    if (cta === 'ruta') ruta += ingresoNeto;
+    if (cta === 'ruta' || cta === 'sobrante ruta' || cta === 'sobrante' || cta === 'faltante ruta' || cta === 'faltante') ruta += ingresoNeto;
     else if (cta === 'manzanillo ruta 6') manzanilloRuta6 += ingresoNeto;
     else if (cta === 'ventas manzanillo') ventasManzanillo += ingresoNeto;
     else if (cta === 'venta directa') ventaDirecta += ingresoNeto;

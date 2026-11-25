@@ -69,6 +69,10 @@ export interface RutaNominaData {
   tienda: number;
   notasQueseria: number;
   cobrosPendientes: number;
+  faltanteRuta?: number;
+  faltanteContable?: number;
+  sobranteRuta?: number;
+  faltantesDetalle?: Array<{ id: string; fecha: string; monto: number; motivo: string; cuentaFiscal: string }>;
   // Saldos de préstamos
   saldoPrestamoAnterior: number;
   saldoPrestamoActual: number;
@@ -155,7 +159,8 @@ export default function CommissionsView({
     notasQueseria: 0,
     cobrosPendientes: 0,
     abonos: 0,
-    salarioBase: 0
+    salarioBase: 0,
+    faltanteRuta: 0
   });
   const [savingAjustes, setSavingAjustes] = useState(false);
 
@@ -328,7 +333,8 @@ export default function CommissionsView({
       notasQueseria: r.notasQueseria || 0,
       cobrosPendientes: r.cobrosPendientes || 0,
       abonos: r.abonos || 0,
-      salarioBase: r.salarioBase || 0
+      salarioBase: r.salarioBase || 0,
+      faltanteRuta: r.faltanteRuta || 0
     });
   };
 
@@ -518,9 +524,15 @@ export default function CommissionsView({
       const saldoPrestamoAnterior = Number(serverItem?.saldoPrestamoAnterior) || 0;
       const saldoPrestamoActual = Math.max(0, Number((saldoPrestamoAnterior + prestamos - abonos).toFixed(2)));
 
-      // Percepciones y Deducciones
+      // Faltantes y sobrantes desde Contabilidad / Servidor
+      const faltanteRuta = Number(serverItem?.faltanteRuta) || 0;
+      const faltanteContable = Number(serverItem?.faltanteContable) || 0;
+      const sobranteRuta = Number(serverItem?.sobranteRuta) || 0;
+      const faltantesDetalle = serverItem?.faltantesDetalle || [];
+
+      // Percepciones y Deducciones (incluye deducción de faltantes de ruta)
       const percepciones = Number((salarioBase + totalComisiones + bonosExtras + pagosPendientes + prestamos).toFixed(2));
-      const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes).toFixed(2));
+      const descuentos = Number((faltasMonto + abonos + gasolina + notasQueseria + tienda + cobrosPendientes + faltanteRuta).toFixed(2));
       const pagoFinal = Math.max(0, Math.round(percepciones - descuentos));
 
       // WhatsApp Message
@@ -549,6 +561,7 @@ export default function CommissionsView({
           (tienda > 0 ? `  • Tienda: -${formatMoney(tienda)}\n` : '') +
           (notasQueseria > 0 ? `  • Notas Quesería: -${formatMoney(notasQueseria)}\n` : '') +
           (cobrosPendientes > 0 ? `  • Cobros Pendientes: -${formatMoney(cobrosPendientes)}\n` : '') +
+          (faltanteRuta > 0 ? `  • Faltante en Ruta: -${formatMoney(faltanteRuta)}\n` : '') +
           (abonos > 0 ? `  • Abono Préstamo: -${formatMoney(abonos)}\n` : '') +
           `  *TOTAL DEDUCCIONES: -${formatMoney(descuentos)}*\n\n` +
           (saldoPrestamoAnterior > 0 || prestamos > 0 || abonos > 0
@@ -590,6 +603,10 @@ export default function CommissionsView({
         tienda,
         notasQueseria,
         cobrosPendientes,
+        faltanteRuta,
+        faltanteContable,
+        sobranteRuta,
+        faltantesDetalle,
         saldoPrestamoAnterior,
         saldoPrestamoActual,
         percepciones,
@@ -898,7 +915,12 @@ export default function CommissionsView({
                           {formatMoney(r.percepciones)}
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-rose-700">
-                          -{formatMoney(r.descuentos)}
+                          <div>-{formatMoney(r.descuentos)}</div>
+                          {((r.faltanteRuta || 0) > 0) && (
+                            <span className="text-[10px] font-bold text-rose-800 bg-rose-100 px-1.5 py-0.5 rounded block whitespace-nowrap mt-0.5" title="Faltante de ruta descontado">
+                              Faltante: -{formatMoney(r.faltanteRuta)}
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 text-right font-mono font-bold text-amber-800">
                           {formatMoney(r.saldoPrestamoActual)}
@@ -1253,6 +1275,19 @@ export default function CommissionsView({
                             </span>
                           </div>
                         )}
+                        {((activeRouteItem.faltanteRuta || 0) > 0) && (
+                          <div className="flex justify-between items-center bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200">
+                            <div>
+                              <span className="text-rose-900 font-bold block text-xs">Faltante en Ruta:</span>
+                              {activeRouteItem.faltanteContable ? (
+                                <span className="text-[10px] text-rose-700 block">Registrado en Contabilidad</span>
+                              ) : null}
+                            </div>
+                            <span className="font-mono font-black text-rose-800">
+                              -{formatMoney(activeRouteItem.faltanteRuta)}
+                            </span>
+                          </div>
+                        )}
                         {activeRouteItem.abonos > 0 && (
                           <div className="flex justify-between items-center">
                             <span className="text-slate-600">Abono a Préstamo:</span>
@@ -1542,6 +1577,29 @@ export default function CommissionsView({
                   onChange={(e) => setAjustesForm({ ...ajustesForm, abonos: parseFloat(e.target.value) || 0 })}
                   className="w-full bg-white border border-rose-300 rounded-lg p-2 font-mono font-bold"
                 />
+              </div>
+
+              {/* Faltante en Ruta (Deducción Contable) */}
+              <div className="bg-rose-50/80 p-2.5 rounded-lg border border-rose-200 col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-rose-900 block">- Faltante en Ruta ($):</label>
+                  {editingRuta.faltanteContable ? (
+                    <span className="text-[10px] bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full font-bold">
+                      Registrado en Contabilidad: {formatMoney(editingRuta.faltanteContable)}
+                    </span>
+                  ) : null}
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={ajustesForm.faltanteRuta || ""}
+                  onChange={(e) => setAjustesForm({ ...ajustesForm, faltanteRuta: parseFloat(e.target.value) || 0 })}
+                  className="w-full bg-white border border-rose-300 rounded-lg p-2 font-mono font-bold text-rose-950"
+                  placeholder="0.00"
+                />
+                <p className="text-[10px] text-rose-700 mt-1">
+                  Descuento directo del conteo de nómina de fin de semana del chofer de esta ruta (alimentado desde arqueo contable de ventas).
+                </p>
               </div>
             </div>
 
