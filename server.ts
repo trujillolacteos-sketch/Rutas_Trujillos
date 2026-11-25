@@ -718,18 +718,41 @@ async function startServer() {
   });
 
   // Acceso directo optimizado a TPV de Odoo para el rutero
+  const ROUTE_TO_CONFIG_MAP: Record<number, number> = { 1: 1, 2: 2, 3: 3, 4: 5, 5: 9 };
+
   app.get('/api/pos/open/:routeId', async (req, res) => {
     const routeId = parseInt(req.params.routeId);
     if (!isNaN(routeId) && routeId > 0) {
-      const configId = routeId === 4 ? 5 : routeId;
+      const configId = ROUTE_TO_CONFIG_MAP[routeId] || routeId;
       try {
         await reconcileSinglePosSession(configId);
       } catch (err: any) {
         console.warn(`[POS Open Route ${routeId}] Advertencia reconciliando sesión:`, err?.message || err);
       }
-      return res.redirect(`https://lacteos-trujillos2.odoo.com/pos/ui?config_id=${configId}`);
+
+      const clientId = req.query.clientId ? parseInt(String(req.query.clientId)) : null;
+      const clientName = req.query.clientName ? String(req.query.clientName) : '';
+
+      let targetUrl = `https://lacteos-trujillos2.odoo.com/pos/ui?config_id=${configId}`;
+      if (clientId) {
+        targetUrl += `&partner_id=${clientId}&customer_id=${clientId}`;
+      }
+      if (clientName) {
+        targetUrl += `&customer_name=${encodeURIComponent(clientName)}`;
+      }
+
+      return res.redirect(targetUrl);
     }
     return res.redirect('https://lacteos-trujillos2.odoo.com/pos/ui');
+  });
+
+  // Credenciales unificadas de Odoo para POS en campo
+  app.get('/api/pos/credentials', (req, res) => {
+    res.json({
+      instanceUrl: 'https://lacteos-trujillos2.odoo.com/odoo',
+      login: 'lacteostrujillosrutas@gmail.com',
+      password: 'Rutas.1234'
+    });
   });
 
   app.post('/api/routes/:id', (req, res) => {
