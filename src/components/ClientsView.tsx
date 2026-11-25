@@ -245,15 +245,16 @@ export default function ClientsView({
     if (dayFilter !== "all") {
       if (dayFilter === "auto") {
         list = list.filter((c) => {
-          const pDay = state.clientOverrides?.[c.id]?.permanentDay ?? c.permanentDay;
-          const aDay = state.clientOverrides?.[c.id]?.assignedDay ?? c.assignedDay;
-          return !pDay && !aDay;
+          const pDays = state.clientOverrides?.[c.id]?.permanentDays ?? c.permanentDays ?? (state.clientOverrides?.[c.id]?.permanentDay ? [state.clientOverrides[c.id].permanentDay!] : (c.permanentDay ? [c.permanentDay] : []));
+          const aDays = state.clientOverrides?.[c.id]?.assignedDays ?? c.assignedDays ?? (state.clientOverrides?.[c.id]?.assignedDay ? [state.clientOverrides[c.id].assignedDay!] : (c.assignedDay ? [c.assignedDay] : []));
+          return pDays.length === 0 && aDays.length === 0;
         });
       } else {
         list = list.filter((c) => {
-          const pDay = state.clientOverrides?.[c.id]?.permanentDay ?? c.permanentDay;
-          const aDay = state.clientOverrides?.[c.id]?.assignedDay ?? c.assignedDay;
-          return pDay === dayFilter || aDay === dayFilter;
+          const pDays = state.clientOverrides?.[c.id]?.permanentDays ?? c.permanentDays ?? (state.clientOverrides?.[c.id]?.permanentDay ? [state.clientOverrides[c.id].permanentDay!] : (c.permanentDay ? [c.permanentDay] : []));
+          const aDays = state.clientOverrides?.[c.id]?.assignedDays ?? c.assignedDays ?? (state.clientOverrides?.[c.id]?.assignedDay ? [state.clientOverrides[c.id].assignedDay!] : (c.assignedDay ? [c.assignedDay] : []));
+          const allDays = Array.from(new Set([...pDays, ...aDays]));
+          return allDays.includes(dayFilter);
         });
       }
     }
@@ -350,9 +351,12 @@ export default function ClientsView({
       if (prev.includes(day)) {
         newDays = prev.filter(d => d !== day);
       } else {
-        newDays = [...prev, day];
-        if (newDays.length > (editFreq || 1)) {
-          setEditFreq(newDays.length);
+        const targetCount = editFreq || 1;
+        if (prev.length >= targetCount) {
+          // Si ya completó los días según su frecuencia, reemplazar el primero seleccionado (FIFO)
+          newDays = [...prev.slice(1), day];
+        } else {
+          newDays = [...prev, day];
         }
       }
       const DAYS_ORDER = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -697,7 +701,15 @@ export default function ClientsView({
                   const tempRouteId = state.clientOverrides?.[client.id]?.assignedRouteId ?? client.assignedRouteId;
                   const permDay = state.clientOverrides?.[client.id]?.permanentDay ?? client.permanentDay;
                   const tempDay = state.clientOverrides?.[client.id]?.assignedDay ?? client.assignedDay;
-                  const assignedDay = permDay || tempDay;
+                  const clientDays: string[] = (state.clientOverrides?.[client.id]?.permanentDays && state.clientOverrides[client.id].permanentDays!.length > 0)
+                    ? state.clientOverrides[client.id].permanentDays!
+                    : (state.clientOverrides?.[client.id]?.assignedDays && state.clientOverrides[client.id].assignedDays!.length > 0)
+                    ? state.clientOverrides[client.id].assignedDays!
+                    : (client.permanentDays && client.permanentDays.length > 0)
+                    ? client.permanentDays
+                    : (client.assignedDays && client.assignedDays.length > 0)
+                    ? client.assignedDays
+                    : (permDay ? [permDay] : (tempDay ? [tempDay] : []));
                   const permRoute = permRouteId ? state.routes.find((r) => r.id === permRouteId) : null;
                   const tempRoute = tempRouteId ? state.routes.find((r) => r.id === tempRouteId) : null;
 
@@ -758,12 +770,12 @@ export default function ClientsView({
                             </span>
                           )}
 
-                          {assignedDay ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 w-fit" title="Día fijo programado">
-                              <Calendar className="w-3 h-3 text-indigo-500" /> {assignedDay}
+                          {clientDays.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 w-fit" title={`Días programados: ${clientDays.join(', ')}`}>
+                              <Calendar className="w-3 h-3 text-indigo-500" /> {clientDays.join(', ')}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-400">Día: Histórico</span>
+                            <span className="text-[10px] text-slate-400">Día: Automático</span>
                           )}
                         </div>
                       </td>
@@ -1006,7 +1018,11 @@ export default function ClientsView({
                     min={1}
                     max={6}
                     value={editFreq || ""}
-                    onChange={(e) => setEditFreq(parseInt(e.target.value) || 1)}
+                    onChange={(e) => {
+                      const newFreq = Math.max(1, Math.min(6, parseInt(e.target.value) || 1));
+                      setEditFreq(newFreq);
+                      setEditAssignedDays(prev => prev.slice(0, newFreq));
+                    }}
                     className="flex-1 bg-white border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 text-lg font-bold"
                   />
                 </div>

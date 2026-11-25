@@ -134,11 +134,12 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
 
   const handleZoneRoutePerDayChange = async (zone: string, day: string, routeIdStr: string) => {
     const routeId = routeIdStr === "" ? null : parseInt(routeIdStr, 10);
+    let updatedRpd: Record<string, number> = {};
 
     setState(prev => {
       const zOverrides = { ...(prev.zoneOverrides || {}) };
-      if (!zOverrides[zone]) zOverrides[zone] = {};
-      const currentRpd = { ...(zOverrides[zone].routePerDay || {}) };
+      const currentZoneConfig = { ...(zOverrides[zone] || {}) };
+      const currentRpd = { ...(currentZoneConfig.routePerDay || {}) };
 
       if (routeId === null) {
         delete currentRpd[day];
@@ -146,28 +147,23 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
         currentRpd[day] = routeId;
       }
 
+      updatedRpd = { ...currentRpd };
+
       if (Object.keys(currentRpd).length === 0) {
-        delete zOverrides[zone].routePerDay;
+        delete currentZoneConfig.routePerDay;
       } else {
-        zOverrides[zone].routePerDay = currentRpd;
+        currentZoneConfig.routePerDay = currentRpd;
       }
+      zOverrides[zone] = currentZoneConfig;
       return { ...prev, zoneOverrides: zOverrides };
     });
 
     try {
-      const currentOverride = state.zoneOverrides?.[zone] || {};
-      const currentRpd = { ...(currentOverride.routePerDay || {}) };
-      if (routeId === null) {
-        delete currentRpd[day];
-      } else {
-        currentRpd[day] = routeId;
-      }
-
       await apiFetch(`/api/settings/zone-overrides/${encodeURIComponent(zone)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          routePerDay: Object.keys(currentRpd).length > 0 ? currentRpd : null
+          routePerDay: Object.keys(updatedRpd).length > 0 ? updatedRpd : null
         })
       });
     } catch (e) {
@@ -183,7 +179,10 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
       const res = await apiFetch('/api/settings/zones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disabledZones: zonesArray })
+        body: JSON.stringify({ 
+          disabledZones: zonesArray,
+          zoneOverrides: state.zoneOverrides 
+        })
       });
       if (res.ok) {
         setState(prev => ({ ...prev, disabledZones: zonesArray }));
@@ -387,9 +386,10 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
                         <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
                           <span className="text-xs font-bold text-slate-700">Ruta por día:</span>
                           {selectedDays.map(day => {
-                            const assignedForDay = zoneConfig.routePerDay?.[day] || zoneConfig.assignedRouteId || "";
+                            const hasDaySpecific = zoneConfig.routePerDay && zoneConfig.routePerDay[day] !== undefined && zoneConfig.routePerDay[day] !== null;
+                            const assignedForDay = hasDaySpecific ? zoneConfig.routePerDay![day] : (zoneConfig.assignedRouteId || "");
                             return (
-                              <div key={day} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                              <div key={day} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-2xs transition-colors ${assignedForDay ? 'bg-indigo-50/70 border-indigo-200' : 'bg-white border-slate-200'}`}>
                                 <span className="text-xs font-bold text-indigo-700">{day}:</span>
                                 <select
                                   value={assignedForDay}

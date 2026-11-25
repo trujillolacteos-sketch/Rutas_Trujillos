@@ -578,6 +578,19 @@ async function startServer() {
   // Sync / Calculate Routes
   app.post('/api/sync', async (req, res) => {
     try {
+      if (req.body?.zoneOverrides || req.body?.clientOverrides || req.body?.disabledZones) {
+        const existing = loadState();
+        if (req.body?.zoneOverrides) {
+          existing.zoneOverrides = { ...(existing.zoneOverrides || {}), ...req.body.zoneOverrides };
+        }
+        if (req.body?.clientOverrides) {
+          existing.clientOverrides = { ...(existing.clientOverrides || {}), ...req.body.clientOverrides };
+        }
+        if (req.body?.disabledZones) {
+          existing.disabledZones = req.body.disabledZones;
+        }
+        saveState(existing);
+      }
       const state = await triggerWeeklyAutomatedSync();
       res.json({ success: true, state });
     } catch (error: any) {
@@ -842,9 +855,14 @@ async function startServer() {
   });
 
   app.post('/api/settings/zones', (req, res) => {
-    const { disabledZones } = req.body;
+    const { disabledZones, zoneOverrides } = req.body;
     const state = loadState();
-    state.disabledZones = disabledZones;
+    if (disabledZones !== undefined) {
+      state.disabledZones = disabledZones;
+    }
+    if (zoneOverrides !== undefined) {
+      state.zoneOverrides = { ...(state.zoneOverrides || {}), ...zoneOverrides };
+    }
     saveState(state);
 
     // Respaldo asíncrono permanente a Google Sheets
@@ -852,7 +870,7 @@ async function startServer() {
       console.error('[zonesSheetService] Error asíncrono guardando zonas en Google Sheets:', e.message);
     });
 
-    res.json({ success: true, disabledZones: state.disabledZones });
+    res.json({ success: true, disabledZones: state.disabledZones, zoneOverrides: state.zoneOverrides });
   });
 
   // Exportar manualmente todas las predisposiciones de zonas a Google Sheets
