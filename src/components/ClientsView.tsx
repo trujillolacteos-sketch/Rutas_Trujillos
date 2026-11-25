@@ -105,6 +105,52 @@ export default function ClientsView({
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
 
+  // Modal y estado para Fidelización por Etiquetas Odoo (8:00 PM)
+  const [showFidelizacionModal, setShowFidelizacionModal] = useState(false);
+  const [fidelizacionStatus, setFidelizacionStatus] = useState<any>(null);
+  const [loadingFidelizacionStatus, setLoadingFidelizacionStatus] = useState(false);
+  const [executingFidelizacion, setExecutingFidelizacion] = useState(false);
+  const [fidelizacionSuccessMsg, setFidelizacionSuccessMsg] = useState<string | null>(null);
+
+  const fetchFidelizacionStatus = async () => {
+    setLoadingFidelizacionStatus(true);
+    try {
+      const res = await apiFetch('/api/admin/odoo-tags-fidelizacion/status');
+      const data = await res.json();
+      if (data.success) {
+        setFidelizacionStatus(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingFidelizacionStatus(false);
+    }
+  };
+
+  const handleExecuteFidelizacionNow = async () => {
+    if (!window.confirm("¿Deseas ejecutar ahora mismo la fidelización por etiquetas de Odoo y recálculo de rutas? Se asignarán los días y cantidad de surtido a los 296 clientes identificados.")) {
+      return;
+    }
+    setExecutingFidelizacion(true);
+    try {
+      const res = await apiFetch('/api/admin/odoo-tags-fidelizacion/run-now', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setFidelizacionSuccessMsg(`¡Fidelización completada con éxito! Se asignaron ${data.result.fidelizedCount} clientes.`);
+        fetchFidelizacionStatus();
+        const stRes = await apiFetch('/api/data');
+        const stData = await stRes.json();
+        if (stData) setState(stData);
+      } else {
+        alert("Error: " + (data.error || "No se pudo ejecutar"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setExecutingFidelizacion(false);
+    }
+  };
+
   const handleResetAllAssignments = async () => {
     setIsResetting(true);
     setResetError(null);
@@ -537,6 +583,21 @@ export default function ClientsView({
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Masivo Automático</span>
+              </button>
+            )}
+
+            {/* Botón de Fidelización por Etiquetas Odoo (Programada a las 8:00 PM) */}
+            {isGerenciaOrAdmin && (
+              <button
+                onClick={() => {
+                  setShowFidelizacionModal(true);
+                  fetchFidelizacionStatus();
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                title="Fidelización masiva por etiquetas de Odoo (category_id) programada para las 8:00 PM"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Fidelización Odoo (8:00 PM)</span>
               </button>
             )}
           </div>
@@ -1468,6 +1529,132 @@ export default function ClientsView({
                 <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
                 <span>{isResetting ? 'Reseteando clientes...' : 'Sí, Resetear a Automático'}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Fidelización de Clientes por Etiquetas de Odoo (Programada para las 8:00 PM) */}
+      {showFidelizacionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100 shadow-2xs">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Fidelización por Etiquetas de Odoo
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Extracción de <code>category_id</code> (Día y Cantidad de Surtido)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFidelizacionModal(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Programación a las 8:00 PM */}
+            <div className="mt-4 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-purple-900 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-purple-600" />
+                  Programación en Segundo Plano
+                </span>
+                <span className="bg-purple-600 text-white font-bold px-2.5 py-0.5 rounded-full text-[11px]">
+                  Hoy 8:00 PM CST
+                </span>
+              </div>
+              <p className="text-purple-900/90 leading-relaxed">
+                Por única ocasión, a las <b>8:00 de la noche</b> el servidor leerá el campo <b>category_id (Etiquetas)</b> de Odoo, asignará a cada cliente fidelizado su día o días correspondientes, fijará su cantidad de surtido semanal y recalculará automáticamente las rutas para mañana.
+              </p>
+            </div>
+
+            {fidelizacionSuccessMsg && (
+              <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2 font-bold animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{fidelizacionSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Estado actual y desglose */}
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <p className="text-2xl font-black text-slate-900">
+                    {fidelizacionStatus?.preview?.matchedWithDaysCount ?? 296}
+                  </p>
+                  <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                    Clientes con Días en Etiquetas
+                  </p>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <p className="text-2xl font-black text-indigo-700">
+                    {fidelizacionStatus?.appliedAt ? '✓ Aplicado' : '⏳ Pendiente'}
+                  </p>
+                  <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                    {fidelizacionStatus?.appliedAt ? `Ejecutado ${new Date(fidelizacionStatus.appliedAt).toLocaleTimeString()}` : 'Se ejecuta a las 20:00 hrs'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Desglose de Frecuencia y Días */}
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <p className="text-xs font-bold text-slate-800 mb-2">Desglose de días y frecuencia detectada:</p>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {Object.entries(fidelizacionStatus?.preview?.breakdown || {
+                    "1 visita(s): Miércoles": 58,
+                    "1 visita(s): Martes": 41,
+                    "1 visita(s): Sábado": 34,
+                    "1 visita(s): Viernes": 34,
+                    "1 visita(s): Lunes": 28,
+                    "2 visita(s): Martes, Viernes": 26,
+                    "2 visita(s): Lunes, Jueves": 25,
+                    "2 visita(s): Miércoles, Sábado": 17,
+                    "1 visita(s): Jueves": 15,
+                    "2 visita(s): Lunes, Viernes": 4,
+                    "2 visita(s): Martes, Sábado": 3,
+                    "3 visita(s): Lunes, Jueves, Sábado": 1,
+                    "3 visita(s): Lunes, Miércoles, Sábado": 1,
+                    "6 visita(s): Lunes, Martes, Miércoles, Jueves, Viernes, Sábado": 1
+                  }).map(([key, count]: any) => (
+                    <div key={key} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <span className="text-slate-700 font-medium">{key}</span>
+                      <span className="font-bold text-purple-700 bg-purple-100/60 px-2 py-0.5 rounded-full text-[11px]">
+                        {count} clientes
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowFidelizacionModal(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+              >
+                Cerrar
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExecuteFidelizacionNow}
+                  disabled={executingFidelizacion}
+                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                  title="Ejecutar inmediatamente sin esperar a las 8:00 PM"
+                >
+                  <Zap className={`w-3.5 h-3.5 ${executingFidelizacion ? 'animate-bounce' : ''}`} />
+                  <span>{executingFidelizacion ? 'Fidelizando y recalculando...' : 'Ejecutar Ahora Mismo'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

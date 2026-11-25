@@ -77,6 +77,10 @@ import {
   saveZonesToGoogleSheet,
   loadZonesFromGoogleSheet
 } from './server/zonesSheetService.ts';
+import {
+  executeOdooTagsFidelizacion,
+  getOdooTagsFidelizacionPreview
+} from './server/odooFidelizacionService';
 
 import {
   initContabilidadOnStartup,
@@ -423,7 +427,7 @@ function checkWeeklyReset(state: any) {
   }
 }
 
-function loadState(): AppState {
+export function loadState(): AppState {
   let state: any = _cachedState;
   if (!state) {
     state = { clients: [], visits: [], routes: [], users: [], trackingLogs: [], disabledZones: [], clientOverrides: {}, zoneOverrides: {}, settings: { closeTime: "18:00", commissionRatePerson: 1.5, commissionRateCompany: 1.0, commissionAdjustmentMultiplier: 1.0 }, lastSync: null, lastWeekReset: null };
@@ -499,7 +503,7 @@ function loadState(): AppState {
   return state;
 }
 
-function saveState(state: any) {
+export function saveState(state: any) {
   state.stateVersion = Date.now();
   _cachedState = state;
   try {
@@ -573,7 +577,55 @@ async function startServer() {
     }
   });
 
+  // Tarea Programada: 8:00 PM (20:00 CST / America/Mexico_City)
+  // Fidelización por única ocasión de clientes desde etiquetas Odoo (Días y cantidad de surtido) y recálculo de rutas
+  cron.schedule('0 20 * * *', async () => {
+    console.log('[Cron 20:00 CST] Evaluando tarea de fidelización de clientes desde etiquetas Odoo...');
+    try {
+      const currentState = loadState();
+      if (currentState.odooTagsFidelizacionAppliedAt) {
+        console.log(`[Cron 20:00 CST] Tarea ya ejecutada previamente el ${currentState.odooTagsFidelizacionAppliedAt}.`);
+        return;
+      }
+      console.log('[Cron 20:00 CST] Iniciando fidelización masiva por única ocasión y recálculo de rutas a las 8:00 PM...');
+      const result = await executeOdooTagsFidelizacion(loadState, saveState, triggerWeeklyAutomatedSync);
+      console.log('[Cron 20:00 CST] Fidelización y recálculo completado exitosamente:', result);
+    } catch (err: any) {
+      console.error('[Cron 20:00 CST] Error en ejecución de fidelización Odoo:', err);
+    }
+  }, {
+    timezone: 'America/Mexico_City'
+  });
+
   const PORT = parseInt(String(process.env.PORT || 3000), 10);
+
+  // Estado e información de la fidelización programada por etiquetas de Odoo
+  app.get('/api/admin/odoo-tags-fidelizacion/status', async (req, res) => {
+    try {
+      const state = loadState();
+      const preview = await getOdooTagsFidelizacionPreview(state.clients || []);
+      res.json({
+        success: true,
+        appliedAt: state.odooTagsFidelizacionAppliedAt || null,
+        fidelizedCount: state.odooTagsFidelizacionCount || null,
+        scheduledFor: '2026-11-25T20:00:00-06:00 (8:00 PM CST)',
+        isPending: !state.odooTagsFidelizacionAppliedAt,
+        preview
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Ejecución manual inmediata si Gerencia/Admin lo requiere antes de las 8:00 PM
+  app.post('/api/admin/odoo-tags-fidelizacion/run-now', async (req, res) => {
+    try {
+      const result = await executeOdooTagsFidelizacion(loadState, saveState, triggerWeeklyAutomatedSync);
+      res.json({ success: true, result });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 
   // Sync / Calculate Routes
   app.post('/api/sync', async (req, res) => {
