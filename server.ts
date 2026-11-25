@@ -721,12 +721,13 @@ async function startServer() {
   app.get('/api/pos/open/:routeId', async (req, res) => {
     const routeId = parseInt(req.params.routeId);
     if (!isNaN(routeId) && routeId > 0) {
+      const configId = routeId === 4 ? 5 : routeId;
       try {
-        await reconcileSinglePosSession(routeId);
+        await reconcileSinglePosSession(configId);
       } catch (err: any) {
         console.warn(`[POS Open Route ${routeId}] Advertencia reconciliando sesión:`, err?.message || err);
       }
-      return res.redirect(`https://lacteos-trujillos2.odoo.com/pos/ui?config_id=${routeId}`);
+      return res.redirect(`https://lacteos-trujillos2.odoo.com/pos/ui?config_id=${configId}`);
     }
     return res.redirect('https://lacteos-trujillos2.odoo.com/pos/ui');
   });

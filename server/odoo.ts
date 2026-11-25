@@ -122,16 +122,25 @@ export async function fetchRecentSales() {
   );
 }
 
+export const RUTAS_USER_ID = 18;
+export const RUTAS_USER_EMAIL = 'lacteostrujillosrutas@gmail.com';
+
+// Mapeo unificado de TPVs / Rutas en Odoo:
+// Todas las rutas en campo utilizan la cuenta unificada lacteostrujillosrutas@gmail.com (ID: 18)
+// y Estela Campos (ID: 2) se mantiene como administradora / cerebro para la sincronización y reportes del servidor.
 export const ROUTE_USER_MAPPING: Record<number, { userId: number; name: string; email: string }> = {
-  1: { userId: 9, name: 'Ruta 1', email: 'angelito26campos@gmail.com' },
-  2: { userId: 11, name: 'Ruta 2', email: 'moransalvador644@gmail.com' },
-  3: { userId: 12, name: 'Ruta 3', email: 'gjuanmartin250@gmail.com' },
-  5: { userId: 6, name: 'Ruta 4', email: 'luis.beto1592@gmail.com' },
+  1: { userId: RUTAS_USER_ID, name: 'Ruta 1', email: RUTAS_USER_EMAIL },
+  2: { userId: RUTAS_USER_ID, name: 'Ruta 2', email: RUTAS_USER_EMAIL },
+  3: { userId: RUTAS_USER_ID, name: 'Ruta 3', email: RUTAS_USER_EMAIL },
+  4: { userId: RUTAS_USER_ID, name: 'Ruta 4', email: RUTAS_USER_EMAIL },
+  5: { userId: RUTAS_USER_ID, name: 'Ruta 4', email: RUTAS_USER_EMAIL },
+  9: { userId: RUTAS_USER_ID, name: 'Ruta 5', email: RUTAS_USER_EMAIL },
 };
 
 /**
  * Revisa todas las sesiones abiertas de TPV / POS en Odoo y las asigna automáticamente
- * al usuario de ruta correspondiente para evitar bloqueos por usuario ajeno (ej. Estela Campos).
+ * a la cuenta unificada de rutas (lacteostrujillosrutas@gmail.com - ID 18) para evitar bloqueos
+ * cuando Estela Campos u otro supervisor abre las sesiones en la mañana.
  */
 export async function ensureOpenSessionsAssignedToRouteDrivers() {
   try {
@@ -146,16 +155,14 @@ export async function ensureOpenSessionsAssignedToRouteDrivers() {
 
     for (const session of openSessions) {
       const configId = Array.isArray(session.config_id) ? session.config_id[0] : session.config_id;
-      const targetUser = ROUTE_USER_MAPPING[configId];
-      if (targetUser) {
-        const currentUserId = Array.isArray(session.user_id) ? session.user_id[0] : session.user_id;
-        if (currentUserId !== targetUser.userId) {
-          console.log(`[POS Auto-Assign] Reasignando sesión ${session.id} (${session.name}) del TPV ${configId} del usuario ${currentUserId} a ${targetUser.userId} (${targetUser.name})`);
-          await executeKw('pos.session', 'write', [
-            [session.id],
-            { user_id: targetUser.userId }
-          ]);
-        }
+      const targetUser = ROUTE_USER_MAPPING[configId] || { userId: RUTAS_USER_ID, name: `Ruta ${configId}`, email: RUTAS_USER_EMAIL };
+      const currentUserId = Array.isArray(session.user_id) ? session.user_id[0] : session.user_id;
+      if (currentUserId !== targetUser.userId) {
+        console.log(`[POS Auto-Assign] Reasignando sesión ${session.id} (${session.name}) del TPV ${configId} del usuario ${currentUserId} a cuenta unificada ${targetUser.userId} (${targetUser.email})`);
+        await executeKw('pos.session', 'write', [
+          [session.id],
+          { user_id: targetUser.userId }
+        ]);
       }
     }
   } catch (err: any) {
@@ -164,11 +171,11 @@ export async function ensureOpenSessionsAssignedToRouteDrivers() {
 }
 
 /**
- * Asegura inmediatamente que la sesión activa del configId dado pertenezca al rutero.
+ * Asegura inmediatamente que la sesión activa del configId dado pertenezca al usuario de rutas (18).
  */
-export async function reconcileSinglePosSession(configId: number) {
-  const targetUser = ROUTE_USER_MAPPING[configId];
-  if (!targetUser) return;
+export async function reconcileSinglePosSession(routeOrConfigId: number) {
+  const configId = routeOrConfigId === 4 ? 5 : routeOrConfigId;
+  const targetUser = ROUTE_USER_MAPPING[configId] || { userId: RUTAS_USER_ID, name: `Ruta ${configId}`, email: RUTAS_USER_EMAIL };
   try {
     const sessions = await executeKw(
       'pos.session',
@@ -180,7 +187,7 @@ export async function reconcileSinglePosSession(configId: number) {
     if (Array.isArray(sessions) && sessions.length > 0) {
       const currentUserId = Array.isArray(sessions[0].user_id) ? sessions[0].user_id[0] : sessions[0].user_id;
       if (currentUserId !== targetUser.userId) {
-        console.log(`[POS Auto-Assign] Reconciliando sesión ${sessions[0].id} de TPV ${configId} para usuario ${targetUser.userId} (${targetUser.name})`);
+        console.log(`[POS Auto-Assign] Reconciliando sesión ${sessions[0].id} de TPV ${configId} para usuario unificado ${targetUser.userId} (${targetUser.email})`);
         await executeKw('pos.session', 'write', [
           [sessions[0].id],
           { user_id: targetUser.userId }
