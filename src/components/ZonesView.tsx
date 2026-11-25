@@ -95,22 +95,79 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
         delete zOverrides[zone].assignedDays;
         delete zOverrides[zone].assignedDay;
         delete zOverrides[zone].visitFrequency;
+        delete zOverrides[zone].routePerDay;
       } else {
         zOverrides[zone].assignedDays = newDays;
         zOverrides[zone].assignedDay = primaryDay;
         zOverrides[zone].visitFrequency = frequency;
+        if (zOverrides[zone].routePerDay) {
+          const updatedRpd = { ...zOverrides[zone].routePerDay };
+          Object.keys(updatedRpd).forEach(d => {
+            if (!newDays.includes(d)) delete updatedRpd[d];
+          });
+          zOverrides[zone].routePerDay = Object.keys(updatedRpd).length > 0 ? updatedRpd : undefined;
+        }
       }
       return { ...prev, zoneOverrides: zOverrides };
     });
 
     try {
+      const currentRpd = { ...(currentOverride.routePerDay || {}) };
+      Object.keys(currentRpd).forEach(d => {
+        if (!newDays.includes(d)) delete currentRpd[d];
+      });
+
       await apiFetch(`/api/settings/zone-overrides/${encodeURIComponent(zone)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assignedDays: newDays.length > 0 ? newDays : null,
           assignedDay: primaryDay || null,
-          visitFrequency: frequency > 0 ? frequency : null
+          visitFrequency: frequency > 0 ? frequency : null,
+          routePerDay: Object.keys(currentRpd).length > 0 ? currentRpd : null
+        })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleZoneRoutePerDayChange = async (zone: string, day: string, routeIdStr: string) => {
+    const routeId = routeIdStr === "" ? null : parseInt(routeIdStr, 10);
+
+    setState(prev => {
+      const zOverrides = { ...(prev.zoneOverrides || {}) };
+      if (!zOverrides[zone]) zOverrides[zone] = {};
+      const currentRpd = { ...(zOverrides[zone].routePerDay || {}) };
+
+      if (routeId === null) {
+        delete currentRpd[day];
+      } else {
+        currentRpd[day] = routeId;
+      }
+
+      if (Object.keys(currentRpd).length === 0) {
+        delete zOverrides[zone].routePerDay;
+      } else {
+        zOverrides[zone].routePerDay = currentRpd;
+      }
+      return { ...prev, zoneOverrides: zOverrides };
+    });
+
+    try {
+      const currentOverride = state.zoneOverrides?.[zone] || {};
+      const currentRpd = { ...(currentOverride.routePerDay || {}) };
+      if (routeId === null) {
+        delete currentRpd[day];
+      } else {
+        currentRpd[day] = routeId;
+      }
+
+      await apiFetch(`/api/settings/zone-overrides/${encodeURIComponent(zone)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          routePerDay: Object.keys(currentRpd).length > 0 ? currentRpd : null
         })
       });
     } catch (e) {
@@ -325,20 +382,45 @@ export default function ZonesView({ state, setState }: { state: AppState, setSta
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-3">
-                      {/* Ruta Selector */}
-                      <div className="flex items-center gap-1.5">
-                        <label className="text-xs font-semibold text-slate-500">Ruta:</label>
-                        <select
-                          value={zoneConfig.assignedRouteId || ""}
-                          onChange={(e) => handleZoneOverrideChange(zone, 'assignedRouteId', e.target.value)}
-                          className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[140px]"
-                        >
-                          <option value="">⚡ Automático</option>
-                          {state.routes.map(r => (
-                            <option key={r.id} value={r.id}>{r.name}</option>
-                          ))}
-                        </select>
-                      </div>
+                      {/* Si tiene 2 o más días seleccionados, permitir asignar una ruta por día */}
+                      {selectedDays.length > 1 ? (
+                        <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                          <span className="text-xs font-bold text-slate-700">Ruta por día:</span>
+                          {selectedDays.map(day => {
+                            const assignedForDay = zoneConfig.routePerDay?.[day] || zoneConfig.assignedRouteId || "";
+                            return (
+                              <div key={day} className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                <span className="text-xs font-bold text-indigo-700">{day}:</span>
+                                <select
+                                  value={assignedForDay}
+                                  onChange={(e) => handleZoneRoutePerDayChange(zone, day, e.target.value)}
+                                  className="text-xs bg-transparent font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                                >
+                                  <option value="">⚡ Auto</option>
+                                  {state.routes.map(r => (
+                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* Ruta Selector estándar cuando tiene 1 día o ninguno */
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-xs font-semibold text-slate-500">Ruta:</label>
+                          <select
+                            value={zoneConfig.assignedRouteId || ""}
+                            onChange={(e) => handleZoneOverrideChange(zone, 'assignedRouteId', e.target.value)}
+                            className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[140px]"
+                          >
+                            <option value="">⚡ Automático</option>
+                            {state.routes.map(r => (
+                              <option key={r.id} value={r.id}>{r.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       {/* Day Pills (Selección Múltiple interactiva) */}
                       <div className="flex items-center gap-1">

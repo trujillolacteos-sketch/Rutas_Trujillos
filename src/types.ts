@@ -28,6 +28,8 @@ export interface ClientData {
   permanentRouteId?: number;
   assignedDay?: string;
   permanentDay?: string;
+  assignedDays?: string[];
+  permanentDays?: string[];
   clientType?: 'company' | 'person';
 }
 
@@ -70,8 +72,8 @@ export interface AppState {
   trackingLogs?: TrackingLog[]; // Added tracking logs
   lastSync: string | null;
   users?: any[];
-  clientOverrides?: Record<number, { visitFrequency?: number, isActive?: boolean, assignedRouteId?: number, permanentRouteId?: number, assignedDay?: string, permanentDay?: string, clientType?: string }>;
-  zoneOverrides?: Record<string, { assignedRouteId?: number, assignedDay?: string, assignedDays?: string[], visitFrequency?: number }>;
+  clientOverrides?: Record<number, { visitFrequency?: number, isActive?: boolean, assignedRouteId?: number, permanentRouteId?: number, assignedDay?: string, permanentDay?: string, assignedDays?: string[], permanentDays?: string[], clientType?: string }>;
+  zoneOverrides?: Record<string, { assignedRouteId?: number, assignedDay?: string, assignedDays?: string[], visitFrequency?: number, routePerDay?: Record<string, number> }>;
   disabledZones?: string[];
   settings?: {
     closeTime: string; // e.g., "18:00"

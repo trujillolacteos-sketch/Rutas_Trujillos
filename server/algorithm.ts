@@ -216,68 +216,6 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     return fallback || "Sin Ubicación";
   }
   const DEPOT = { lat: 21.343263, lng: -102.264407 };
-  const safeDisabled = new Set(Array.isArray(disabledZones) ? disabledZones.map((z: any) => String(z).toLowerCase().trim()) : []);
-  const allClients = rawClients.map((c) => {
-    const sales = salesByClient[c.id] || { volume: 0, orderCount: 0, boughtThisWeek: false };
-    const lat = c.partner_latitude || 0;
-    const lng = c.partner_longitude || 0;
-    const distKm = Math.sqrt((lat - DEPOT.lat) ** 2 + (lng - DEPOT.lng) ** 2) * 111;
-    const cityStr = getCityFromCoords(lat, lng, c.city);
-    c.city = cityStr;
-    const isForeign = distKm > 45 && !cityStr.includes("san juan");
-    let freq = isForeign ? 1 : Math.min(Math.ceil(sales.orderCount / 14), 3);
-    freq = Math.max(1, freq);
-    const isCompany = c.company_type === "company" || c.is_company;
-    const clientType = isCompany ? "company" : "person";
-    let isActive = true;
-    if (safeDisabled.has(cityStr.trim().toLowerCase())) {
-      isActive = false;
-    }
-    if (clientOverrides[c.id] && clientOverrides[c.id].isActive !== void 0) {
-      isActive = clientOverrides[c.id].isActive;
-    }
-    if (clientOverrides[c.id] && clientOverrides[c.id].visitFrequency !== void 0) {
-      freq = clientOverrides[c.id].visitFrequency;
-    }
-    const normCity = cityStr.trim().toLowerCase();
-    const zOverride = zoneOverrides[normCity] || {};
-    const cOverride = clientOverrides[c.id] || {};
-    const permanentRouteId = cOverride.permanentRouteId !== void 0 ? cOverride.permanentRouteId : (c.permanentRouteId || undefined);
-    const permanentDay = cOverride.permanentDay !== void 0 ? cOverride.permanentDay : (c.permanentDay || undefined);
-    const finalRouteId = permanentRouteId !== void 0 ? permanentRouteId : (cOverride.assignedRouteId !== void 0 ? cOverride.assignedRouteId : zOverride.assignedRouteId);
-    const finalDay = permanentDay !== void 0 ? permanentDay : (cOverride.assignedDay !== void 0 ? cOverride.assignedDay : zOverride.assignedDay);
-    return {
-      id: c.id,
-      isActive,
-      assignedRouteId: finalRouteId,
-      permanentRouteId: permanentRouteId,
-      assignedDay: finalDay,
-      permanentDay: permanentDay,
-      name: c.name,
-      lat,
-      lng,
-      city: c.city || "Desconocida",
-      street: c.street || "",
-      salesVolume: sales.volume,
-      visitFrequency: freq,
-      isForeign,
-      distKm: distKm || 0,
-      boughtThisWeek: sales.boughtThisWeek,
-      clientType
-    };
-  });
-  const validClients = allClients.filter((c) => c.lat !== 0 && c.lng !== 0 && c.isActive !== false);
-  const invalidClients = allClients.filter((c) => (c.lat === 0 || c.lng === 0) && c.isActive !== false);
-  if (invalidClients.length > 0) {
-    addLog("warning", "'Se encontraron ' + invalidClients.length + ' clientes sin coordenadas. Se agrupar\xE1n al final.'");
-  }
-  const activeRoutes = routes.filter((r) => r.isDelivery && r.isAuthorized);
-  const k = activeRoutes.length;
-  if (k === 0 || validClients.length === 0) {
-    addLog("error", "No hay rutas activas o clientes.");
-    return { clients: allClients, visits: [], routes, logs };
-  }
-  // --- ALGORITMO DE MICROZONAS Y CORREDORES ESTRICTOS (UN SOLO MUNICIPIO AL DÍA) ---
   const SJ_CENTER = { lat: 21.25113, lng: -102.32519 };
 
   function getBearing(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -310,11 +248,84 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
     return {};
   }
 
+  const safeDisabled = new Set(Array.isArray(disabledZones) ? disabledZones.map((z: any) => String(z).toLowerCase().trim()) : []);
+  const allClients = rawClients.map((c) => {
+    const sales = salesByClient[c.id] || { volume: 0, orderCount: 0, boughtThisWeek: false };
+    const lat = c.partner_latitude || 0;
+    const lng = c.partner_longitude || 0;
+    const distKm = Math.sqrt((lat - DEPOT.lat) ** 2 + (lng - DEPOT.lng) ** 2) * 111;
+    const cityStr = getCityFromCoords(lat, lng, c.city);
+    c.city = cityStr;
+    const isForeign = distKm > 45 && !cityStr.includes("san juan");
+    let freq = isForeign ? 1 : Math.min(Math.ceil(sales.orderCount / 14), 3);
+    freq = Math.max(1, freq);
+    const isCompany = c.company_type === "company" || c.is_company;
+    const clientType = isCompany ? "company" : "person";
+    let isActive = true;
+    if (safeDisabled.has(cityStr.trim().toLowerCase())) {
+      isActive = false;
+    }
+    const cOverride = clientOverrides[c.id] || {};
+    const zOverride = getZoneOverride(zoneOverrides, cityStr);
+
+    if (cOverride.isActive !== void 0) {
+      isActive = cOverride.isActive;
+    }
+    if (cOverride.visitFrequency !== void 0) {
+      freq = cOverride.visitFrequency;
+    }
+
+    const permanentRouteId = cOverride.permanentRouteId !== void 0 ? cOverride.permanentRouteId : (c.permanentRouteId || undefined);
+    const permanentDay = cOverride.permanentDay !== void 0 ? cOverride.permanentDay : (c.permanentDay || undefined);
+    const permanentDays = cOverride.permanentDays !== void 0 ? cOverride.permanentDays : (c.permanentDays || undefined);
+    const assignedDays = cOverride.assignedDays !== void 0 ? cOverride.assignedDays : (c.assignedDays || undefined);
+    
+    // Si tiene días permanentes o asignados, la frecuencia mínima coincide con la cantidad de días
+    const explicitDays = (permanentDays && permanentDays.length > 0) ? permanentDays : (assignedDays && assignedDays.length > 0 ? assignedDays : undefined);
+    if (explicitDays && explicitDays.length > 0) {
+      freq = Math.max(freq, explicitDays.length);
+    }
+
+    const finalRouteId = permanentRouteId !== void 0 ? permanentRouteId : (cOverride.assignedRouteId !== void 0 ? cOverride.assignedRouteId : zOverride.assignedRouteId);
+    const primaryAssignedDay = (explicitDays && explicitDays.length > 0) ? explicitDays[0] : (cOverride.assignedDay !== void 0 ? cOverride.assignedDay : zOverride.assignedDay);
+    const finalDay = permanentDay !== void 0 ? permanentDay : primaryAssignedDay;
+
+    return {
+      id: c.id,
+      isActive,
+      assignedRouteId: finalRouteId,
+      permanentRouteId: permanentRouteId,
+      assignedDay: finalDay,
+      permanentDay: permanentDay,
+      assignedDays: explicitDays || (finalDay ? [finalDay] : undefined),
+      permanentDays: permanentDays,
+      name: c.name,
+      lat,
+      lng,
+      city: c.city || "Desconocida",
+      street: c.street || "",
+      salesVolume: sales.volume,
+      visitFrequency: freq,
+      isForeign,
+      distKm: distKm || 0,
+      boughtThisWeek: sales.boughtThisWeek,
+      clientType
+    };
+  });
+
+  const validClients = allClients.filter((c) => c.lat !== 0 && c.lng !== 0 && c.isActive !== false);
+  const invalidClients = allClients.filter((c) => (c.lat === 0 || c.lng === 0) && c.isActive !== false);
+  if (invalidClients.length > 0) {
+    addLog("warning", "Se encontraron " + invalidClients.length + " clientes sin coordenadas. Se agruparán al final.");
+  }
+  const activeRoutes = routes.filter((r) => r.isDelivery && r.isAuthorized);
+  const k = activeRoutes.length;
+  if (k === 0 || validClients.length === 0) {
+    addLog("error", "No hay rutas activas o clientes.");
+    return { clients: allClients, visits: [], routes, logs };
+  }
+
   // Mapeo canónico de municipios foráneos a su corredor geográfico natural
-  // Ruta 1: Norte (Aguascalientes y Encarnación de Díaz / La Chona)
-  // Ruta 2: Sur / Altos (Arandas, Jalostotitlán, Valle de Guadalupe, San Miguel, Tepatitlán)
-  // Ruta 3: Oeste (Yahualica y Cuquio)
-  // Ruta 4: Este (Lagos de Moreno)
   const CITY_CORRIDORS: Record<string, { targetName: string; corridor: string; preferredDay?: string }> = {
     'zona metropolitana ags': { targetName: 'Ruta 1', corridor: 'NORTE', preferredDay: 'Lunes' },
     'zona metropolitana aguascalientes': { targetName: 'Ruta 1', corridor: 'NORTE', preferredDay: 'Lunes' },
@@ -377,304 +388,302 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
   const r3Route = getRouteForName('Ruta 3', 2);
   const r4Route = getRouteForName('Ruta 4', 3);
 
-  // Clasificar clientes entre Rutas según la estricta jerarquía de prioridades:
-  // 1. Asignación permanente individual de cliente (permanentRouteId)
-  // 2. Asignación manual temporal de cliente (clientOverrides)
-  // 3. Asignación de ZONA elegida por el supervisor (zoneOverrides) - ¡PREVALECE SOBRE EL CORREDOR!
-  // 4. Corredor predeterminado (CITY_CORRIDORS)
-  // 5. Balanceo radial para San Juan de los Lagos y zonas sin asignar
-  const routeClientsMap: Record<number, any[]> = {};
-  activeRoutes.forEach((r: any) => routeClientsMap[r.id] = []);
-
-  const localClients: any[] = [];
-
-  validClients.forEach((c: any) => {
-    // 1. Prioridad 1: Asignación permanente individual
-    if (c.permanentRouteId !== undefined && c.permanentRouteId !== null) {
-      const matchR = activeRoutes.find((r: any) => r.id === c.permanentRouteId);
-      if (matchR) {
-        c.assignedRouteId = matchR.id;
-        routeClientsMap[matchR.id].push(c);
-        return;
+  // Helper para resolver la ruta de una zona en un día específico (soporta routePerDay)
+  function resolveRouteForZoneDay(zOverride: any, dayName: string, fallbackRoute: any) {
+    if (zOverride) {
+      if (zOverride.routePerDay && zOverride.routePerDay[dayName] !== undefined && zOverride.routePerDay[dayName] !== null && zOverride.routePerDay[dayName] !== '') {
+        const rId = Number(zOverride.routePerDay[dayName]);
+        const match = activeRoutes.find((r: any) => r.id === rId);
+        if (match) return match;
+      }
+      if (zOverride.assignedRouteId !== undefined && zOverride.assignedRouteId !== null && zOverride.assignedRouteId !== '') {
+        const rId = Number(zOverride.assignedRouteId);
+        const match = activeRoutes.find((r: any) => r.id === rId);
+        if (match) return match;
       }
     }
-
-    // 2. Prioridad 2: Asignación manual individual (clientOverrides)
-    const cOverride = clientOverrides[c.id] || {};
-    if (cOverride.assignedRouteId !== undefined && cOverride.assignedRouteId !== null) {
-      const matchR = activeRoutes.find((r: any) => r.id === cOverride.assignedRouteId);
-      if (matchR) {
-        c.assignedRouteId = matchR.id;
-        routeClientsMap[matchR.id].push(c);
-        return;
-      }
-    }
-
-    // 3. Prioridad 3: Asignación de ZONA configurada por supervisor (zoneOverrides)
-    const normCity = (c.city || '').trim().toLowerCase();
-    const zOverride = getZoneOverride(zoneOverrides, normCity);
-    if (zOverride.assignedRouteId !== undefined && zOverride.assignedRouteId !== null) {
-      const matchR = activeRoutes.find((r: any) => r.id === zOverride.assignedRouteId);
-      if (matchR) {
-        c.assignedRouteId = matchR.id;
-        routeClientsMap[matchR.id].push(c);
-        return;
-      }
-    }
-
-    // 4. Prioridad 4: Corredor Geográfico Predeterminado (CITY_CORRIDORS)
-    const corridorInfo = getCorridorInfo(normCity);
-    if (corridorInfo) {
-      const targetR = getRouteForName(corridorInfo.targetName, 0);
-      c.assignedRouteId = targetR.id;
-      c.corridor = corridorInfo.corridor;
-      if (corridorInfo.preferredDay && !c.assignedDay) {
-        c.assignedDay = corridorInfo.preferredDay;
-      }
-      routeClientsMap[targetR.id].push(c);
-      return;
-    }
-
-    // 5. Prioridad 5: Clientes locales de San Juan de los Lagos o sin corredor predefinido
-    c.bearing = getBearing(SJ_CENTER.lat, SJ_CENTER.lng, c.lat, c.lng);
-    localClients.push(c);
-  });
-
-  // Balancear clientes locales de San Juan de los Lagos manteniendo continuidad radial
-  localClients.sort((a, b) => a.bearing - b.bearing);
-  const targetPerRoute = Math.ceil(validClients.length / activeRoutes.length);
-
-  // Orden radial de llenado acorde al cuadrante geográfico de salida de cada ruta
-  const routeFillingOrder = [r4Route, r2Route, r3Route, r1Route];
-  let currentFillingIdx = 0;
-
-  localClients.forEach((c: any) => {
-    while (
-      currentFillingIdx < routeFillingOrder.length - 1 &&
-      routeClientsMap[routeFillingOrder[currentFillingIdx].id].length >= targetPerRoute
-    ) {
-      currentFillingIdx++;
-    }
-    const assignedR = routeFillingOrder[currentFillingIdx];
-    c.assignedRouteId = assignedR.id;
-    routeClientsMap[assignedR.id].push(c);
-  });
-
-  // Blindaje geográfico estricto de seguridad:
-  // Solo aplicar a clientes asignados automáticamente (si el supervisor fijó la zona o cliente, se respeta 100%)
-  if (routeClientsMap[r1Route.id]) {
-    const southClients = routeClientsMap[r1Route.id].filter((c: any) => {
-      const hasExplicit = (c.permanentRouteId !== undefined && c.permanentRouteId !== null) || 
-                          clientOverrides[c.id]?.assignedRouteId !== undefined || 
-                          getZoneOverride(zoneOverrides, (c.city || '')).assignedRouteId !== undefined;
-      return !hasExplicit && c.lat && c.lat < 21.2;
-    });
-    if (southClients.length > 0) {
-      routeClientsMap[r1Route.id] = routeClientsMap[r1Route.id].filter((c: any) => {
-        const hasExplicit = (c.permanentRouteId !== undefined && c.permanentRouteId !== null) || 
-                            clientOverrides[c.id]?.assignedRouteId !== undefined || 
-                            getZoneOverride(zoneOverrides, (c.city || '')).assignedRouteId !== undefined;
-        return hasExplicit || !c.lat || c.lat >= 21.2;
-      });
-      southClients.forEach((c: any) => {
-        c.assignedRouteId = r2Route.id;
-        c.corridor = 'SUR';
-        c.city = 'Arandas';
-        c.assignedDay = 'Miércoles';
-        routeClientsMap[r2Route.id].push(c);
-      });
-    }
+    return fallbackRoute;
   }
 
-  // Generar visitas diarias por ruta respetando la regla: UN SOLO MUNICIPIO FORÁNEO POR DÍA
-  let allVisits: any[] = [];
+  // Matriz de visitas diarias por ruta: routeDailyVisits[routeId][dayIdx] = [clients...]
+  const routeDailyVisits: Record<number, any[][]> = {};
+  activeRoutes.forEach((r: any) => {
+    routeDailyVisits[r.id] = Array(6).fill(null).map(() => []);
+  });
 
-  activeRoutes.forEach((route: any) => {
-    const clientsInRoute = routeClientsMap[route.id] || [];
-    if (clientsInRoute.length === 0) return;
+  // Conjunto de IDs de clientes ya programados
+  const scheduledClientIds = new Set<number>();
 
-    const dailyVisits: any[][] = Array(6).fill(null).map(() => []);
+  // Helper para espaciar días cuando un cliente tiene freq > 1 pero días automáticos
+  function getSpacedDays(freq: number, startDay?: string): string[] {
+    if (freq <= 1) return startDay && DAYS.includes(startDay) ? [startDay] : ['Lunes'];
+    if (freq === 2) {
+      if (startDay === 'Martes') return ['Martes', 'Viernes'];
+      if (startDay === 'Miércoles') return ['Miércoles', 'Sábado'];
+      if (startDay === 'Jueves') return ['Lunes', 'Jueves'];
+      if (startDay === 'Viernes') return ['Martes', 'Viernes'];
+      if (startDay === 'Sábado') return ['Miércoles', 'Sábado'];
+      return ['Lunes', 'Jueves'];
+    }
+    if (freq === 3) {
+      if (startDay === 'Martes') return ['Martes', 'Jueves', 'Sábado'];
+      return ['Lunes', 'Miércoles', 'Viernes'];
+    }
+    if (freq === 4) return ['Lunes', 'Martes', 'Jueves', 'Viernes'];
+    if (freq === 5) return ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    return DAYS.slice(0, 6);
+  }
 
-    // Clasificación de clientes en la ruta:
-    // A. Clientes con día fijo individual (permanentDay o clientOverrides.assignedDay)
-    // B. Clientes de zonas que tienen días asignados en zoneOverrides (assignedDays con 1 o más días, o assignedDay)
-    // C. Clientes flexibles (sin día forzado de zona ni de cliente)
+  // 1. PRIORIDAD 1: CLIENTES CON DÍAS FIJOS INDIVIDUALES (permanentDays, assignedDays, permanentDay, assignedDay)
+  validClients.forEach((c: any) => {
+    const cOverride = clientOverrides[c.id] || {};
+    const zOverride = getZoneOverride(zoneOverrides, c.city);
 
-    const individualFixedClients: any[] = [];
-    const zoneDayClientsMap = new Map<string, { days: string[]; clients: any[] }>();
-    const flexibleClients: any[] = [];
+    const explicitDays = (c.permanentDays && c.permanentDays.length > 0)
+      ? c.permanentDays.filter((d: string) => DAYS.includes(d))
+      : (cOverride.assignedDays && cOverride.assignedDays.length > 0)
+      ? cOverride.assignedDays.filter((d: string) => DAYS.includes(d))
+      : (c.permanentDay && DAYS.includes(c.permanentDay))
+      ? [c.permanentDay]
+      : (cOverride.assignedDay && DAYS.includes(cOverride.assignedDay))
+      ? [cOverride.assignedDay]
+      : [];
 
-    clientsInRoute.forEach((c: any) => {
-      const cOverride = clientOverrides[c.id] || {};
-      const zOverride = getZoneOverride(zoneOverrides, c.city);
+    if (explicitDays.length === 0) return;
 
-      // 1. Candado individual de cliente
-      if (c.permanentDay && DAYS.includes(c.permanentDay)) {
-        c.assignedDay = c.permanentDay;
-        individualFixedClients.push(c);
-        return;
+    let targetDays = [...explicitDays];
+    const freq = Math.max(c.visitFrequency || 1, targetDays.length);
+    if (freq > targetDays.length) {
+      targetDays = getSpacedDays(freq, targetDays[0]);
+    }
+
+    targetDays.forEach((dayName: string) => {
+      const dIdx = DAYS.indexOf(dayName);
+      if (dIdx === -1) return;
+
+      // Resolver ruta
+      let targetR: any = null;
+      if (c.permanentRouteId) {
+        targetR = activeRoutes.find((r: any) => r.id === c.permanentRouteId);
       }
-      if (cOverride.assignedDay && DAYS.includes(cOverride.assignedDay)) {
-        c.assignedDay = cOverride.assignedDay;
-        individualFixedClients.push(c);
-        return;
+      if (!targetR && cOverride.assignedRouteId) {
+        targetR = activeRoutes.find((r: any) => r.id === cOverride.assignedRouteId);
       }
-
-      // 2. Días asignados a la Zona (soporta múltiples días específicos, ej. 2 días para Encarnación de Díaz)
-      const rawDays: string[] = Array.isArray(zOverride.assignedDays) && zOverride.assignedDays.length > 0
-        ? zOverride.assignedDays
-        : (zOverride.assignedDay ? [zOverride.assignedDay] : []);
-      const validZDays = rawDays.filter((d: string) => DAYS.includes(d));
-
-      if (validZDays.length > 0) {
-        const normCity = normalizeZoneKey(c.city || '');
-        if (!zoneDayClientsMap.has(normCity)) {
-          zoneDayClientsMap.set(normCity, { days: validZDays, clients: [] });
-        }
-        zoneDayClientsMap.get(normCity)!.clients.push(c);
-        return;
+      if (!targetR) {
+        const corridor = getCorridorInfo(c.city);
+        const fallbackR = corridor ? getRouteForName(corridor.targetName, 0) : r1Route;
+        targetR = resolveRouteForZoneDay(zOverride, dayName, fallbackR);
       }
+      if (!targetR) targetR = r1Route;
 
-      // 3. Clientes flexibles
-      flexibleClients.push(c);
+      routeDailyVisits[targetR.id][dIdx].push({
+        ...c,
+        assignedDay: dayName,
+        assignedRouteId: targetR.id
+      });
     });
 
-    // 1. Asignar clientes con día individual fijo
-    individualFixedClients.forEach((c: any) => {
-      const dayIdx = DAYS.indexOf(c.assignedDay);
-      if (dayIdx !== -1) {
-        dailyVisits[dayIdx].push(c);
+    scheduledClientIds.add(c.id);
+  });
+
+  // 2. PRIORIDAD 2: CLIENTES DE ZONAS CONFIGURADAS EN zoneOverrides (assignedDays, assignedDay, routePerDay)
+  // Agrupar clientes no programados por zona
+  const unscheduledByZone = new Map<string, any[]>();
+  validClients.forEach((c: any) => {
+    if (scheduledClientIds.has(c.id)) return;
+    const normCity = normalizeZoneKey(c.city || '');
+    if (!unscheduledByZone.has(normCity)) {
+      unscheduledByZone.set(normCity, []);
+    }
+    unscheduledByZone.get(normCity)!.push(c);
+  });
+
+  unscheduledByZone.forEach((zoneClients, normCity) => {
+    if (zoneClients.length === 0) return;
+    const sampleClient = zoneClients[0];
+    const zOverride = getZoneOverride(zoneOverrides, sampleClient.city);
+
+    const rawZDays = Array.isArray(zOverride.assignedDays) && zOverride.assignedDays.length > 0
+      ? zOverride.assignedDays
+      : (zOverride.assignedDay ? [zOverride.assignedDay] : []);
+    const validZDays = rawZDays.filter((d: string) => DAYS.includes(d));
+
+    if (validZDays.length === 0) return; // Se procesará más adelante
+
+    const corridor = getCorridorInfo(sampleClient.city);
+    const fallbackR = corridor ? getRouteForName(corridor.targetName, 0) : r1Route;
+
+    if (validZDays.length === 1) {
+      // Toda la zona en un solo día
+      const dayName = validZDays[0];
+      const dIdx = DAYS.indexOf(dayName);
+      if (dIdx !== -1) {
+        const targetR = resolveRouteForZoneDay(zOverride, dayName, fallbackR);
+        zoneClients.forEach((c: any) => {
+          routeDailyVisits[targetR.id][dIdx].push({
+            ...c,
+            assignedDay: dayName,
+            assignedRouteId: targetR.id
+          });
+          scheduledClientIds.add(c.id);
+        });
       }
-    });
+    } else {
+      // Zona con múltiples días (ej. Encarnación de Díaz: Lunes y Jueves, con ruta por día)
+      // Se ordenan por proximidad TSP para agrupar microzonas continuas y se reparten equitativamente
+      const orderedZoneClients = nearestNeighborTSP(zoneClients, DEPOT.lat, DEPOT.lng);
 
-    // 2. Asignar clientes de zonas con días específicos (si son 2 o más días, se reparten por TSP entre esos días)
-    zoneDayClientsMap.forEach(({ days, clients }) => {
-      if (clients.length === 0) return;
+      // Separar clientes con visitas múltiples (visitFrequency >= validZDays.length)
+      const multiVisit = orderedZoneClients.filter((c: any) => (c.visitFrequency || 1) >= validZDays.length);
+      const singleVisit = orderedZoneClients.filter((c: any) => (c.visitFrequency || 1) < validZDays.length);
 
-      if (days.length === 1) {
-        // Toda la zona en un solo día
-        const dayIdx = DAYS.indexOf(days[0]);
-        if (dayIdx !== -1) {
-          clients.forEach((c: any) => c.assignedDay = days[0]);
-          dailyVisits[dayIdx].push(...clients);
-        }
-      } else {
-        // Zona con múltiples días (ej. 2 días: Martes y Jueves, o Miércoles y Jueves)
-        // Se ordenan por proximidad TSP para agrupar microzonas continuas y se reparten equitativamente
-        const orderedClients = nearestNeighborTSP(clients, DEPOT.lat, DEPOT.lng);
-        const perDay = Math.ceil(orderedClients.length / days.length);
-
-        days.forEach((dayName: string, step: number) => {
-          const dayIdx = DAYS.indexOf(dayName);
-          if (dayIdx !== -1) {
-            const slice = orderedClients.slice(step * perDay, (step + 1) * perDay);
-            slice.forEach((c: any) => c.assignedDay = dayName);
-            dailyVisits[dayIdx].push(...slice);
+      // Clientes multidía se visitan en TODOS los días de la zona
+      multiVisit.forEach((c: any) => {
+        validZDays.forEach((dayName: string) => {
+          const dIdx = DAYS.indexOf(dayName);
+          if (dIdx !== -1) {
+            const targetR = resolveRouteForZoneDay(zOverride, dayName, fallbackR);
+            routeDailyVisits[targetR.id][dIdx].push({
+              ...c,
+              assignedDay: dayName,
+              assignedRouteId: targetR.id
+            });
           }
+        });
+        scheduledClientIds.add(c.id);
+      });
+
+      // Clientes de una visita se reparten equitativamente entre los días asignados a la zona
+      const perDay = Math.ceil(singleVisit.length / validZDays.length);
+      validZDays.forEach((dayName: string, step: number) => {
+        const dIdx = DAYS.indexOf(dayName);
+        if (dIdx !== -1) {
+          const targetR = resolveRouteForZoneDay(zOverride, dayName, fallbackR);
+          const slice = singleVisit.slice(step * perDay, (step + 1) * perDay);
+          slice.forEach((c: any) => {
+            routeDailyVisits[targetR.id][dIdx].push({
+              ...c,
+              assignedDay: dayName,
+              assignedRouteId: targetR.id
+            });
+            scheduledClientIds.add(c.id);
+          });
+        }
+      });
+    }
+  });
+
+  // 3. PRIORIDAD 3: FORÁNEOS RESTANTES CON CORREDOR GEOGRÁFICO
+  validClients.forEach((c: any) => {
+    if (scheduledClientIds.has(c.id)) return;
+    const corridor = getCorridorInfo(c.city);
+    if (!corridor) return;
+
+    const targetR = getRouteForName(corridor.targetName, 0);
+    const prefDay = corridor.preferredDay || 'Lunes';
+    const freq = c.visitFrequency || 1;
+    const daysToAssign = getSpacedDays(freq, prefDay);
+
+    daysToAssign.forEach((dayName: string) => {
+      const dIdx = DAYS.indexOf(dayName);
+      if (dIdx !== -1) {
+        routeDailyVisits[targetR.id][dIdx].push({
+          ...c,
+          assignedDay: dayName,
+          assignedRouteId: targetR.id
         });
       }
     });
 
-    // 3. Clientes flexibles (distribución dinámica garantizando CERO DÍAS EN CERO):
-    const foreignFlexible = flexibleClients.filter((c: any) => {
-      const nc = (c.city || '').trim().toLowerCase();
-      return nc && !nc.includes('san juan');
-    });
-    const localFlexible = flexibleClients.filter((c: any) => {
-      const nc = (c.city || '').trim().toLowerCase();
-      return !nc || nc.includes('san juan');
-    });
+    scheduledClientIds.add(c.id);
+  });
 
-    // 3.1 Asignar foráneos con corredor preferido si coinciden con esta ruta
-    const unassignedForeign: any[] = [];
-    foreignFlexible.forEach((c: any) => {
-      const nc = (c.city || '').toLowerCase();
-      if (route.id === r2Route.id) {
-        if (nc.includes('arandas') || nc.includes('jesus') || nc.includes('jesús') || nc.includes('manuel doblado')) {
-          c.assignedDay = 'Miércoles';
-          dailyVisits[2].push(c);
-          return;
-        } else if (nc.includes('jalos') || nc.includes('valle') || nc.includes('miguel') || nc.includes('tepa')) {
-          c.assignedDay = 'Martes';
-          dailyVisits[1].push(c);
-          return;
-        }
-      } else if (route.id === r4Route.id) {
-        if (nc.includes('lagos')) {
-          c.assignedDay = 'Jueves';
-          dailyVisits[3].push(c);
-          return;
-        }
-      }
-      unassignedForeign.push(c);
-    });
+  // 4. PRIORIDAD 4: CLIENTES FLEXIBLES (SAN JUAN DE LOS LAGOS Y ZONAS RESTANTES)
+  // Water-Filling inteligente con SUPER-PRIORIDAD a slots con 0 visitas
+  // Garantiza:
+  // a) NINGUNA RUTA Y NINGÚN DÍA SE QUEDA CON 0 CLIENTES (incluyendo Miércoles y Jueves en Ruta 1)
+  // b) Balanceo equitativo de carga diaria y semanal entre rutas
+  // c) Continuidad geográfica por cuadrantes radiales de San Juan de los Lagos
+  const flexiblePool = validClients.filter((c: any) => !scheduledClientIds.has(c.id));
 
-    // 3.2 Agrupar todo el pool flexible restante (locales y foráneos sin día fijo)
-    const remainingPool = [...unassignedForeign, ...localFlexible];
+  // Asignar bearing radial para clientes locales
+  flexiblePool.forEach((c: any) => {
+    c.bearing = getBearing(SJ_CENTER.lat, SJ_CENTER.lng, c.lat, c.lng);
+  });
 
-    if (remainingPool.length > 0) {
-      // Ordenar por cercanía geográfica TSP
-      const orderedRemaining = nearestNeighborTSP(remainingPool, DEPOT.lat, DEPOT.lng);
+  // Ordenar pool flexible por proximidad geográfica continua
+  const orderedFlexible = nearestNeighborTSP(flexiblePool, DEPOT.lat, DEPOT.lng);
 
-      // Algoritmo Water-Filling con Super-Prioridad a días con 0 paradas
-      // Garantiza:
-      // a) NINGUNA RUTA Y NINGÚN DÍA SE QUEDA CON 0 CLIENTES
-      // b) Carga balanceada equitativamente
-      // c) Continuidad geográfica por día
-      const numDays = 6;
-      const currentCounts = dailyVisits.map(dv => dv.length);
-      const toAdd = Array(numDays).fill(0);
-      let remainingCount = orderedRemaining.length;
+  // Mapear afinidad de cuadrantes radiales de San Juan a rutas:
+  // Norte (315° a 45°) -> Ruta 1
+  // Sur (135° a 225°) -> Ruta 2
+  // Oeste (225° a 315°) -> Ruta 3
+  // Este (45° a 135°) -> Ruta 4
+  function getPreferredRouteForBearing(bearing: number): any {
+    if (bearing >= 315 || bearing < 45) return r1Route;
+    if (bearing >= 135 && bearing < 225) return r2Route;
+    if (bearing >= 225 && bearing < 315) return r3Route;
+    return r4Route;
+  }
 
-      while (remainingCount > 0) {
-        let bestDay = -1;
-        let minPriorityLoad = Infinity;
+  orderedFlexible.forEach((c: any) => {
+    const freq = Math.min(c.visitFrequency || 1, 3);
+    const assignedDaysForClient: number[] = [];
 
-        for (let d = 0; d < numDays; d++) {
-          const load = currentCounts[d] + toAdd[d];
-          // Días con 0 clientes reciben prioridad absoluta
-          const priorityScore = load === 0 ? -10000 : load;
-          if (priorityScore < minPriorityLoad) {
-            minPriorityLoad = priorityScore;
-            bestDay = d;
+    for (let visitNum = 0; visitNum < freq; visitNum++) {
+      let bestRouteId = activeRoutes[0].id;
+      let bestDayIdx = 0;
+      let minScore = Infinity;
+
+      activeRoutes.forEach((r: any) => {
+        const totalInRoute = routeDailyVisits[r.id].reduce((acc, d) => acc + d.length, 0);
+
+        for (let d = 0; d < 6; d++) {
+          // No repetir el mismo día para el mismo cliente
+          if (assignedDaysForClient.includes(d)) continue;
+
+          const currentDayLoad = routeDailyVisits[r.id][d].length;
+          // SUPER-PRIORIDAD ABSOLUTA: si una ruta no tiene clientes en ese día, score es fuertemente negativo
+          let score = currentDayLoad === 0 ? -10000 : (currentDayLoad * 3 + totalInRoute);
+
+          // Bonificación por afinidad de cuadrante
+          const preferredR = getPreferredRouteForBearing(c.bearing || 0);
+          if (preferredR && preferredR.id === r.id) {
+            score -= 10;
+          }
+
+          if (score < minScore) {
+            minScore = score;
+            bestRouteId = r.id;
+            bestDayIdx = d;
           }
         }
+      });
 
-        toAdd[bestDay]++;
-        remainingCount--;
-      }
-
-      // Asignar rebanadas continuas de orderedRemaining a los días según toAdd
-      let offset = 0;
-      for (let d = 0; d < numDays; d++) {
-        const count = toAdd[d];
-        if (count > 0) {
-          const slice = orderedRemaining.slice(offset, offset + count);
-          const dayName = DAYS[d];
-          slice.forEach((c: any) => c.assignedDay = dayName);
-          dailyVisits[d].push(...slice);
-          offset += count;
-        }
-      }
+      assignedDaysForClient.push(bestDayIdx);
+      const chosenDayName = DAYS[bestDayIdx];
+      routeDailyVisits[bestRouteId][bestDayIdx].push({
+        ...c,
+        assignedDay: chosenDayName,
+        assignedRouteId: bestRouteId
+      });
     }
 
-    // 4. Trazar ruta final por día con TSP (nearest-neighbor + 2-opt) y sincronizar asignaciones
-    dailyVisits.forEach((clientsInDay: any[], dayIdx: number) => {
-      if (clientsInDay.length === 0) return;
+    scheduledClientIds.add(c.id);
+  });
+
+  // 5. GENERACIÓN FINAL DE VISITAS CON OPTIMIZACIÓN TSP (2-OPT) POR RUTA Y POR DÍA
+  const allVisits: any[] = [];
+
+  activeRoutes.forEach((route: any) => {
+    for (let dayIdx = 0; dayIdx < 6; dayIdx++) {
+      const clientsInDay = routeDailyVisits[route.id][dayIdx];
+      if (clientsInDay.length === 0) continue;
+
       const actualDay = DAYS[dayIdx];
       const orderedDay = nearestNeighborTSP(clientsInDay, DEPOT.lat, DEPOT.lng);
 
       orderedDay.forEach((c: any, vIdx: number) => {
-        c.assignedDay = actualDay;
-        c.assignedRouteId = route.id;
-
-        // Actualizar en el catálogo allClients para que se persista en data_store
-        const matchedMaster = allClients.find((mc: any) => mc.id === c.id);
-        if (matchedMaster) {
-          matchedMaster.assignedDay = actualDay;
-          matchedMaster.assignedRouteId = route.id;
-        }
-
         const existingV = existingVisits.find((ev: any) => ev.clientId === c.id && ev.day === actualDay);
         let finalStatus = 'PENDIENTE';
         if (existingV && existingV.status && existingV.status !== 'PENDIENTE') {
@@ -682,6 +691,7 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
         } else if (c.boughtThisWeek) {
           finalStatus = 'SURTIDO';
         }
+
         allVisits.push({
           id: existingV ? existingV.id : 'v-' + c.id + '-' + actualDay + '-' + vIdx + '-' + Math.random().toString(36).substr(2, 4),
           clientId: c.id,
@@ -694,15 +704,28 @@ export async function generateMasterPlan(existingRoutes = [], clientOverrides = 
           status: finalStatus
         });
       });
-    });
+    }
   });
+
+  // 6. SINCRONIZAR ASIGNACIONES EN allClients PARA PERSISTENCIA
+  allClients.forEach((mc: any) => {
+    const visitsForClient = allVisits.filter((v: any) => v.clientId === mc.id);
+    if (visitsForClient.length > 0) {
+      mc.assignedRouteId = visitsForClient[0].routeId;
+      mc.assignedDay = visitsForClient[0].day;
+      mc.assignedDays = Array.from(new Set(visitsForClient.map((v: any) => v.day)));
+      mc.visitFrequency = visitsForClient.length;
+    }
+  });
+
   if (invalidClients.length > 0) {
-    addLog("warning", "Se excluyeron " + invalidClients.length + " clientes an\xF3malos (sin GPS) de las rutas.");
+    addLog("warning", "Se excluyeron " + invalidClients.length + " clientes anómalos (sin GPS) de las rutas.");
     const supRouteIdx = routes.findIndex((r) => r.id === 999999);
     if (supRouteIdx !== -1) {
       routes.splice(supRouteIdx, 1);
     }
   }
-  addLog("success", "Planificador geogr\xE1fico y por esfuerzo generado. Total visitas: " + allVisits.length);
+
+  addLog("success", "Planificador geográfico y por esfuerzo generado. Total visitas: " + allVisits.length);
   return { clients: allClients, visits: allVisits, routes, logs };
 }

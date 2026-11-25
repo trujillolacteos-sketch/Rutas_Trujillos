@@ -208,8 +208,18 @@ export async function saveZonesToGoogleSheet(state: any): Promise<{ success: boo
       const info = allZonesMap.get(key)!;
       const override = zoneOverrides[key] || zoneOverrides[info.originalName] || {};
 
-      const rId = override.assignedRouteId;
-      const routeName = rId ? (routeMap.get(rId) || `Ruta ${rId}`) : '⚡ Automático';
+      let rId: any = override.assignedRouteId;
+      let routeName = rId ? (routeMap.get(rId) || `Ruta ${rId}`) : '⚡ Automático';
+
+      if (override.routePerDay && Object.keys(override.routePerDay).length > 0) {
+        const parts = Object.entries(override.routePerDay).map(([day, routeId]) => {
+          const rName = routeMap.get(Number(routeId)) || `Ruta ${routeId}`;
+          return `${day}: ${rName}`;
+        });
+        routeName = parts.join(' | ');
+        const idParts = Object.entries(override.routePerDay).map(([day, routeId]) => `${day}: ${routeId}`);
+        rId = idParts.join(' | ');
+      }
       
       const daysList: string[] = Array.isArray(override.assignedDays) && override.assignedDays.length > 0
         ? override.assignedDays
@@ -313,12 +323,25 @@ export async function loadZonesFromGoogleSheet(): Promise<{
       if (!zoneName) continue;
 
       const lowerZone = zoneName.toLowerCase();
-      const rIdRaw = r[1] ? parseInt(r[1], 10) : NaN;
+      let rIdRaw = r[1] ? parseInt(r[1], 10) : NaN;
       const daysRaw = (r[3] || '').trim();
       const statusRaw = (r[5] || '').trim();
 
-      const override: { assignedRouteId?: number; assignedDay?: string; assignedDays?: string[]; visitFrequency?: number } = {};
-      if (!isNaN(rIdRaw) && rIdRaw > 0) {
+      const override: { assignedRouteId?: number; assignedDay?: string; assignedDays?: string[]; visitFrequency?: number; routePerDay?: Record<string, number> } = {};
+      
+      if (typeof r[1] === 'string' && r[1].includes(':')) {
+        const rpd: Record<string, number> = {};
+        r[1].split('|').forEach((seg: string) => {
+          const [d, rid] = seg.split(':').map((s: string) => s.trim());
+          if (d && rid && !isNaN(parseInt(rid, 10))) {
+            rpd[d] = parseInt(rid, 10);
+          }
+        });
+        if (Object.keys(rpd).length > 0) {
+          override.routePerDay = rpd;
+          override.assignedRouteId = Object.values(rpd)[0];
+        }
+      } else if (!isNaN(rIdRaw) && rIdRaw > 0) {
         override.assignedRouteId = rIdRaw;
       }
       if (daysRaw && !daysRaw.toLowerCase().includes('auto') && !daysRaw.toLowerCase().includes('cualquiera')) {

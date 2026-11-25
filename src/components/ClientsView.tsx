@@ -75,6 +75,7 @@ export default function ClientsView({
     number | "none"
   >("none");
   const [editAssignedDay, setEditAssignedDay] = useState<string>("auto");
+  const [editAssignedDays, setEditAssignedDays] = useState<string[]>([]);
   const [savingOverride, setSavingOverride] = useState(false);
   const [editLat, setEditLat] = useState<string>("");
   const [editLng, setEditLng] = useState<string>("");
@@ -326,8 +327,38 @@ export default function ClientsView({
     }
 
     setEditAssignedDay(permDay || tempDay || "auto");
+
+    const rawClientDays = state.clientOverrides?.[client.id]?.assignedDays || 
+      state.clientOverrides?.[client.id]?.permanentDays || 
+      (state.clientOverrides?.[client.id]?.permanentDay ? [state.clientOverrides[client.id].permanentDay] : []) ||
+      (state.clientOverrides?.[client.id]?.assignedDay ? [state.clientOverrides[client.id].assignedDay] : []) ||
+      (client.assignedDays || []) ||
+      (client.assignedDay ? [client.assignedDay] : []);
+
+    const initialDays = Array.isArray(rawClientDays) 
+      ? rawClientDays.filter(Boolean) 
+      : (rawClientDays ? [rawClientDays] : []);
+    setEditAssignedDays(initialDays);
+
     setEditLat(client.lat ? client.lat.toString() : "");
     setEditLng(client.lng ? client.lng.toString() : "");
+  };
+
+  const toggleClientDay = (day: string) => {
+    setEditAssignedDays(prev => {
+      let newDays: string[];
+      if (prev.includes(day)) {
+        newDays = prev.filter(d => d !== day);
+      } else {
+        newDays = [...prev, day];
+        if (newDays.length > (editFreq || 1)) {
+          setEditFreq(newDays.length);
+        }
+      }
+      const DAYS_ORDER = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      newDays.sort((a, b) => DAYS_ORDER.indexOf(a) - DAYS_ORDER.indexOf(b));
+      return newDays;
+    });
   };
 
   const handleSaveOverride = async () => {
@@ -338,23 +369,30 @@ export default function ClientsView({
         isActive: editIsActive,
       };
 
-      const selectedDayVal = editAssignedDay === "auto" ? null : editAssignedDay;
+      const primaryDay = editAssignedDays.length > 0 ? editAssignedDays[0] : (editAssignedDay === "auto" ? null : editAssignedDay);
+      const selectedDaysVal = editAssignedDays.length > 0 ? editAssignedDays : (primaryDay ? [primaryDay] : null);
 
       if (editAssignmentType === "permanent") {
         updates.permanentRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
         updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
-        updates.permanentDay = selectedDayVal;
-        updates.assignedDay = selectedDayVal;
+        updates.permanentDay = primaryDay;
+        updates.assignedDay = primaryDay;
+        updates.permanentDays = selectedDaysVal;
+        updates.assignedDays = selectedDaysVal;
       } else if (editAssignmentType === "temporal") {
         updates.assignedRouteId = editAssignedRouteId === "none" ? null : editAssignedRouteId;
         updates.permanentRouteId = null;
-        updates.assignedDay = selectedDayVal;
+        updates.assignedDay = primaryDay;
+        updates.assignedDays = selectedDaysVal;
         updates.permanentDay = null;
+        updates.permanentDays = null;
       } else {
         updates.assignedRouteId = null;
         updates.permanentRouteId = null;
-        updates.assignedDay = selectedDayVal;
+        updates.assignedDay = primaryDay;
+        updates.assignedDays = selectedDaysVal;
         updates.permanentDay = null;
+        updates.permanentDays = null;
       }
 
       try {
@@ -1070,30 +1108,68 @@ export default function ClientsView({
                 )}
               </div>
 
-              {/* Selección de Día Específico */}
+              {/* Selección de Días Específicos de Visita según Frecuencia */}
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-blue-600" />
-                  Día Específico de Visita (Opcional)
-                </label>
-                <select
-                  value={editAssignedDay}
-                  onChange={(e) => setEditAssignedDay(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 font-medium text-sm"
-                >
-                  <option value="auto">⚡ Automático (Según histórico de ventas en Odoo)</option>
-                  <option value="Lunes">Lunes</option>
-                  <option value="Martes">Martes</option>
-                  <option value="Miércoles">Miércoles</option>
-                  <option value="Jueves">Jueves</option>
-                  <option value="Viernes">Viernes</option>
-                  <option value="Sábado">Sábado</option>
-                </select>
-                <p className="text-xs text-slate-500 mt-1">
-                  {editAssignedDay === "auto"
-                    ? "Si no se especifica un día, se respetará el patrón histórico de ventas de Odoo."
-                    : `El cliente se programará obligatoriamente el día ${editAssignedDay}.`}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    Días Específicos de Visita ({editFreq || 1} {(editFreq || 1) === 1 ? 'visita' : 'visitas'})
+                  </label>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                    editAssignedDays.length === (editFreq || 1)
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : editAssignedDays.length === 0
+                      ? 'bg-slate-100 text-slate-600'
+                      : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                  }`}>
+                    {editAssignedDays.length === 0 
+                      ? '⚡ Automático' 
+                      : `${editAssignedDays.length} de ${editFreq || 1} ${(editFreq || 1) === 1 ? 'día asignado' : 'días asignados'}`}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 mb-3">
+                  {(editFreq || 1) > 1 
+                    ? `Este cliente tiene ${editFreq} visitas por semana. Activa los ${editFreq} días en los que debe surtirse:`
+                    : `Activa el día específico de visita o déjalo en automático:`}
                 </p>
+
+                {/* Pills de selección de días: Lunes, Martes, Miércoles, Jueves, Viernes, Sábado */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'].map((day) => {
+                    const isSelected = editAssignedDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleClientDay(day)}
+                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all shadow-2xs flex flex-col items-center justify-center gap-1 border ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-500/30'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <span>{day}</span>
+                        <span className={`text-[10px] font-semibold ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                          {isSelected ? '✓ Activo' : 'Inactivo'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {editAssignedDays.length > 0 && (
+                  <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500">
+                    <span>Días seleccionados: <strong className="text-slate-800">{editAssignedDays.join(', ')}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => setEditAssignedDays([])}
+                      className="text-blue-600 hover:text-blue-800 font-semibold"
+                    >
+                      Restablecer a Automático
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
